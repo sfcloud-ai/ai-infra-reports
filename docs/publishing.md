@@ -1,6 +1,6 @@
 # 发布与恢复
 
-实现和启用是两个步骤。本 PR 只提供可审查的代码；创建凭据、修改保护规则、打开合并或部署开关都需要仓库所有者另行批准。
+实现和启用是两个步骤。仓库代码不会自行创建凭据、修改保护规则或打开合并、部署开关；这些操作需要仓库所有者明确授权。提交公开配置核验记录不等于启用自动合入。
 
 ## 最小身份与权限
 
@@ -8,17 +8,21 @@
 
 合并工作流运行在默认分支。基础 GITHUB_TOKEN 只有 Contents read；独立可信 Merger App 的短期令牌拥有 Contents write、Pull requests read、Actions read、Checks read，仅限本库。Merger App 私钥只保存在可信工作流秘密中，生产者不得持有该私钥或任何同一 App 的其他私钥。REPORT_MERGER_APP_ID 与 REPORT_PRODUCER_APP_ID 必须是两个不同的 App ID；Bot 用户 ID 是另一种标识，需分别核对。固定 REPORT_BOT_ID（数字）及 REPORT_BOT_LOGIN（完整 [bot] 登录名）；不能只按分支前缀信任身份。仓库变量 REPORT_AUTOMERGE_ENABLED 默认缺省/false。
 
-启用前，仓库所有者须明确批准并配置三个独立的仓库级 active ruleset：
+启用前，仓库所有者须明确批准并配置四个独立的仓库级 active ruleset：
 
-- main：只包含 refs/heads/main；无 bypass actors；要求 pull_request、non_fast_forward、deletion，以及绑定 GitHub Actions 的 validate 严格检查。pull_request 必须启用 require_code_owner_review 与 dismiss_stale_reviews_on_push；全局 required_approving_review_count 可设 0，让无 code owner 的纯报告 PR 自动通过审查要求。
+- main 质量：只包含 refs/heads/main；无 bypass actors；要求 pull_request、non_fast_forward、deletion，以及绑定 GitHub Actions 的 validate 严格检查。pull_request 的 required_approving_review_count=0、require_code_owner_review=false、require_last_push_approval=false，启用 dismiss_stale_reviews_on_push。所有人都必须通过 PR 和 CI；具备写权限的审查者提交的阻塞性 Request changes 仍须解决，不能利用独立人工审查例外跳过。
 - main 更新权限：只包含 refs/heads/main，只有 update 规则且 update_allows_fetch_and_merge=false；bypass 仅允许 Merger App 和明确命名的人类 User，拒绝 Producer App、GitHub Actions、角色或团队。不能把质量规则放进这个允许 Merger bypass 的 ruleset。质量规则仍独立、无任何 bypass。
 - 其他分支：include 为 ~ALL，exclude 仅 refs/heads/main；同时要求 update（update_allows_fetch_and_merge=false）和 deletion 限制，不设置 creation 限制。仅可给明确的人类 User ID 配置 always bypass，不能给 GitHub Actions、其他 App、团队或角色绕过。这样机器人仍能创建一次性报告分支，但不能更新或删除分支，也不能通过删除后重建来替换既有分支；合并调用即使遇到并发 retarget，也不能写入任何非 main 目标。维护代码的人需在明确的 User 列表内。
 
-默认分支 .github/CODEOWNERS 必须把所有路径交给已验证的人工维护者 @shipiyouniao，仅 /reports/ 排除。规则和 CODEOWNERS 自身也受人工审查保护。这样生产者即使直接调用 merge API，也不能自行合并脚本、依赖或配置变更；不会把“两个 App”或同一私钥的 token 降权当成安全隔离。运行时核对准确 base 的 CODEOWNERS 内容及 GitHub 检测结果。代码所有者必须持续具备仓库写权限；角色、成员或规则变更前先停用自动化。
+- main 代码审查：只包含 refs/heads/main，只有 pull_request 规则；require_code_owner_review=true、dismiss_stale_reviews_on_push=true、required_approving_review_count=0、require_last_push_approval=false。仅同一批明确命名的人类 User 使用 pull_request bypass；两个 App 没有此例外。不能把 CI、禁止强推或删除限制放进这个规则集。
 
-GitHub 的普通工作流令牌不能读取完整 bypass_actors，因此不能把字段缺失当作“没有绕过”。配置完成至少五秒后，所有者在本地用既有、已授权且能管理这些规则的令牌运行 `node scripts/verify-configuration.mjs QUALITY_ID NON_MAIN_ID MAIN_UPDATE_ID ACTIONS_APP_ID PRODUCER_APP_ID MERGER_APP_ID`，令牌仅通过 REPORT_CONFIGURATION_TOKEN 注入。脚本只 GET 配置并输出核验后的公开 JSON，不修改规则；把输出作为 .github/report-policy.json 的独立审查提交。初始文件为 null，自动合并因此保持关闭。该管理令牌不进入 Actions 或报告生产器。
+三个人工例外名单必须是相同、无重复的 User ID，成员须为实际拥有 write 或更高权限的真人。人工通过 PR 合入无需等待另一个人 Approve；GitHub 可能要求明确选择仅跳过代码审查规则。质量规则没有 bypass，因此 Request changes、失败或过期的 validate 仍会阻塞。新增或移除写入成员时，须同步这三个名单并重新生成核验记录；不以 RepositoryRole 绕过替代，以免扩大 App 权限。Request changes 的 GitHub 语义见[提交审查的官方说明](https://docs.github.com/en/pull-requests/how-tos/review-pull-requests/reviewing-proposed-changes-in-a-pull-request#submitting-your-review)。
 
-合并任务读取默认分支中的核验记录，用普通元数据权限比对实时 ruleset ID、范围、规则、状态和 updated_at；缺失或配置变更一律停止。仓库管理员属于受信任配置方；修改规则前必须先关闭 REPORT_AUTOMERGE_ENABLED，等待运行结束，再修改并重新核验，不能在合并过程中更改授权。旧式 branch protection 不满足此契约。本 PR 没有执行上述配置步骤。
+默认分支 .github/CODEOWNERS 必须把所有路径交给已验证的人工维护者 @shipiyouniao，仅 /reports/ 排除。机器人合入规则、CODEOWNERS、脚本、依赖或配置时仍须人工代码审查；真人写入成员可通过独立审查规则的 PR 例外自行合入。Producer 还受 main 更新限制，即使报告 PR 全绿也不能自行合并。不会把“两个 App”或同一私钥的 token 降权当成安全隔离。运行时核对准确 base 的 CODEOWNERS 内容及 GitHub 检测结果。代码所有者必须持续具备仓库写权限；角色、成员或规则变更前先停用自动化。
+
+GitHub 的普通工作流令牌不能读取完整 bypass_actors，因此不能把字段缺失当作“没有绕过”。配置完成至少五秒后，所有者在本地用既有、已授权且能管理这些规则的令牌运行 `node scripts/verify-configuration.mjs QUALITY_ID NON_MAIN_ID MAIN_UPDATE_ID CODE_REVIEW_ID ACTIONS_APP_ID PRODUCER_APP_ID MERGER_APP_ID`，令牌仅通过 REPORT_CONFIGURATION_TOKEN 注入。脚本只 GET 配置并输出 schema_version=2.0 的公开 JSON，不修改规则；把输出作为 .github/report-policy.json 的独立审查提交。旧版三规则集记录被拒绝，缺失记录也会阻止自动合并。该管理令牌不进入 Actions 或报告生产器。 已有 gh 登录也可读取四个完整 ruleset 后在本地调用 mergerPolicy 核验，无需导出凭据。
+
+合并任务读取默认分支中的核验记录，用普通元数据权限比对实时 ruleset ID、范围、规则、状态和 updated_at；缺失或配置变更一律停止。仓库管理员属于受信任配置方；修改规则前必须先关闭 REPORT_AUTOMERGE_ENABLED，等待运行结束，再修改并重新核验，不能在合并过程中更改授权。旧式 branch protection 不满足此契约。核验记录本身不会开启 REPORT_AUTOMERGE_ENABLED。
 
 GitHub 的 [合并 PR 接口](https://docs.github.com/en/rest/pulls/pulls#merge-a-pull-request)要求 Contents write；当前 Merger 只读取 PR 元数据，不更新 PR、审查或评论，所以 Pull requests 保持 read。离线权限模型测试覆盖完整合并路径；它不代替真实 GitHub App 的权限负向联调。
 
@@ -83,6 +87,6 @@ PNG/JPEG 在 CI、提 PR、受限合并和站点构建中都必须通过 Sharp �
 
 ## 启用前必须完成的真实负向联调
 
-这仍是默认关闭的候选实现，离线测试不代表 GitHub 上的权限隔离已完成。获得具体仓库/测试分支与凭据授权后，必须核验：Producer 对全绿报告 PR 直接 merge 和直接 push 都不能更新 main；Producer/Merger 不能删除或更新既有非 main 分支，Producer 能创建全新报告分支；Merger 缺少 required checks 时仍被拒绝；代码、workflow、symlink 混入报告被拒绝；head/base 改变使旧验证失效；组织继承规则与管理员绕过不会削弱以上三个规则。记录实际回执后才允许启用。当前没有运行这些真实写入测试，没有创建 App、密钥或配置规则。
+这仍是默认关闭的候选实现，离线测试和配置回读不代表 GitHub 上的权限隔离已经实测完成。获得具体仓库/测试分支与凭据授权后，必须核验：Producer 对全绿报告 PR 直接 merge 和直接 push 都不能更新 main；Producer/Merger 不能删除或更新既有非 main 分支，Producer 能创建全新报告分支；Merger 缺少 required checks 或代码所有者批准时仍被拒绝；代码、workflow、symlink 混入报告被拒绝；head/base 改变使旧验证失效；组织继承规则与管理员绕过不会削弱以上四个规则。人工路径须验证：零 Approve 的全绿 PR 可以合入；另一位 write 成员提交 Request changes 后不能合入，须该审查者批准或按 GitHub 权限正式撤销阻塞审查；CI 失败、过期或缺失也不能合入。记录实际回执后才允许启用。自动化测试不创建真实 App 或密钥，不执行这些真实写入测试。
 
 如果所在仓库计划/规则 API 不支持该配置，则保持关闭，改评估生产者对目标库零写权限的独立收件箱或可信发布器；不通过给 Producer main 绕过权限来降级。

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {configurationPolicy,mergerPolicy,verifyRules} from "../scripts/rules.mjs";
+import {mergerPolicy,verifyRules} from "../scripts/rules.mjs";
 import {sets} from "./helpers/policy.mjs";
 const identity={producerAppId:101,mergerAppId:102};
 const policyFor=s=>mergerPolicy(...s,99,101,102);
@@ -11,9 +11,11 @@ test("owner policy allows ordinary metadata token while detecting configuration 
  source[1].updated_at="2026-10-30T00:00:01Z";await assert.rejects(()=>verifyRules(api,99,policy,identity),/changed/);
  await assert.rejects(()=>verifyRules(api,99,null,identity),/Owner-verified/);
 });
-test("configuration needs visible bypass actors, code-owner review, exact scope and strict checks",()=>{
+test("configuration needs visible bypass actors, zero human approvals, exact scope and strict checks",()=>{
  for(const change of [
- s=>delete s[0].bypass_actors,s=>s[0].rules[0].parameters.require_code_owner_review=false,s=>s[0].rules[0].parameters.dismiss_stale_reviews_on_push=false,
+ s=>delete s[0].bypass_actors,s=>s[0].rules[0].parameters.require_code_owner_review=true,s=>s[0].rules[0].parameters.dismiss_stale_reviews_on_push=false,
+ s=>s[0].rules[0].parameters.required_approving_review_count=1,s=>s[0].rules[0].parameters.require_last_push_approval=true,
+ s=>s[0].rules[0].parameters.required_reviewers=[{reviewer_id:1,reviewer_type:"Team"}],
  s=>s[0].bypass_actors=[{actor_type:"Integration",actor_id:102}],
  s=>s[0].rules.at(-1).parameters.strict_required_status_checks_policy=false,
  s=>s[0].rules.at(-1).parameters.required_status_checks[0].integration_id=98,
@@ -25,8 +27,50 @@ test("configuration needs visible bypass actors, code-owner review, exact scope 
  ]){const s=sets();change(s);assert.throws(()=>policyFor(s));}
 });
 test("non-main updates may exempt named human users but never the merging App",()=>{
- const s=sets();s[1].bypass_actors=[{actor_type:"User",actor_id:123,bypass_mode:"always"}];
+ const s=sets();
  assert.equal(policyFor(s).rulesets[1].bypass_actors[0].actor_type,"User");
+});
+
+test("human approval bypass is limited to PRs and cannot skip the quality gate",()=>{
+ const policy=policyFor(sets()),[quality,,,codeReview]=policy.rulesets;
+ assert.equal(policy.schema_version,"2.0");
+ assert.equal(quality.rules.find(r=>r.type==="pull_request").parameters.required_approving_review_count,0);
+ assert.deepEqual(quality.bypass_actors,[]);
+ assert(codeReview.bypass_actors.every(a=>a.actor_type==="User"&&a.bypass_mode==="pull_request"));
+ assert.equal(codeReview.rules[0].parameters.require_code_owner_review,true);
+ for(const change of [
+  s=>s[0].rules=s[0].rules.filter(r=>r.type!=="pull_request"),
+  s=>s[0].bypass_actors.push({actor_type:"User",actor_id:123,bypass_mode:"pull_request"}),
+  s=>s[3].bypass_actors[0].bypass_mode="always",
+  s=>s[3].bypass_actors.push({actor_type:"Integration",actor_id:102,bypass_mode:"pull_request"}),
+  s=>s[3].bypass_actors.push({actor_type:"RepositoryRole",actor_id:4,bypass_mode:"pull_request"}),
+  s=>s[3].rules[0].parameters.require_code_owner_review=false,
+  s=>s[3].rules[0].parameters.dismiss_stale_reviews_on_push=false,
+  s=>s[3].rules.push({type:"required_status_checks"}),
+  s=>s[3].conditions.ref_name.include.push("refs/heads/release"),
+  s=>s[3].id=2
+ ]){const s=sets();change(s);assert.throws(()=>policyFor(s));}
+});
+
+test("the same explicit human writers must appear once in all three bypass lists",()=>{
+ for(const mutate of [
+  s=>s[1].bypass_actors.pop(),s=>s[2].bypass_actors.pop(),s=>s[3].bypass_actors.pop(),
+  s=>s[3].bypass_actors.push({...s[3].bypass_actors[0]}),
+  s=>s[1].bypass_actors=[],s=>s[2].bypass_actors[1].actor_id=789
+ ]){const s=sets();mutate(s);assert.throws(()=>policyFor(s));}
+ const s=sets();s[3].bypass_actors.reverse();assert.doesNotThrow(()=>policyFor(s));
+});
+
+test("code-review drift is detected even when the runtime token cannot see bypass actors",async()=>{
+ const source=sets(),policy=policyFor(source);source[3].rules[0].parameters.require_code_owner_review=false;
+ await assert.rejects(()=>verifyRules({request:async(_,route)=>{
+  const s=structuredClone(source[Number(route.split("/").at(-1))-1]);delete s.bypass_actors;return s;
+ }},99,policy,identity),/changed/);
+});
+
+test("three-ruleset v1 attestations fail before any merge-time API call",async()=>{
+ const policy=policyFor(sets());policy.schema_version="1.0";policy.rulesets.pop();
+ await assert.rejects(()=>verifyRules({request:()=>{throw Error("unexpected API call");}},99,policy,identity),/Owner-verified/);
 });
 test("ruleset object key order is semantically irrelevant",async()=>{
  const s=sets(),policy=policyFor(s);
@@ -53,11 +97,20 @@ test("non-main deletion and merge-based updates cannot reopen the immutable bran
  for(const mutate of [
   s=>s[1].rules=s[1].rules.filter(r=>r.type!=="deletion"),
   s=>s[1].rules[0].parameters.update_allows_fetch_and_merge=true,
-  s=>delete s[1].rules[0].parameters,
+  s=>s[1].rules[0].parameters={},
+  s=>s[1].rules[0].parameters=null,
   s=>s[1].rules.push({type:"creation"})
  ]){const s=sets();mutate(s);assert.throws(()=>policyFor(s));}
  const policy=policyFor(sets());
  assert(!policy.rulesets[1].rules.some(r=>r.type==="creation"));
+});
+
+test("GitHub's omitted false update parameters remain restrictive and are attested verbatim",async()=>{
+ const s=sets();delete s[1].rules[0].parameters;delete s[2].rules[0].parameters;
+ const policy=policyFor(s);assert.equal(policy.rulesets[1].rules[0].parameters,undefined);
+ await verifyRules({request:async(_,route)=>s[Number(route.split("/").at(-1))-1]},99,policy,identity);
+ s[2].rules[0].parameters={update_allows_fetch_and_merge:true};
+ await assert.rejects(()=>verifyRules({request:async(_,route)=>s[Number(route.split("/").at(-1))-1]},99,policy,identity),/changed/);
 });
 
 test("old update-only attestations fail before any merge-time API call",async()=>{

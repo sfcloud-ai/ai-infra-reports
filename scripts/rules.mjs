@@ -2,38 +2,64 @@ import {PREFIX} from "./github.mjs";
 import {REPOSITORY} from "./archive.mjs";
 const canonical=v=>Array.isArray(v)?v.map(canonical):v&&typeof v==="object"?Object.fromEntries(Object.keys(v).sort().map(k=>[k,canonical(v[k])])):v;
 const stable=v=>JSON.stringify(canonical(v));
+const mainScope={ref_name:{include:["refs/heads/main"],exclude:[]}};
+const positive=n=>Number.isSafeInteger(n)&&n>0;
+const attested=s=>structuredClone({...publicRuleset(s),bypass_actors:s.bypass_actors});
 export function publicRuleset(s) {
  return {id:s.id,source:s.source,source_type:s.source_type,target:s.target,enforcement:s.enforcement,updated_at:s.updated_at,conditions:s.conditions,rules:s.rules};
 }
+function active(s,now){
+ if(!positive(s?.id)||s.source!==REPOSITORY||s.source_type!=="Repository"||s.target!=="branch"||s.enforcement!=="active"||!Array.isArray(s.bypass_actors)||!Array.isArray(s.rules))throw Error("Complete active repository ruleset required");
+ const time=Date.parse(s.updated_at);if(!Number.isFinite(time)||now-time<5000)throw Error("Ruleset must remain unchanged for five seconds before verification");
+}
+function exactRules(s,types){
+ return stable(s.rules.map(r=>r.type).sort())===stable([...types].sort());
+}
+function deniesFetchMerge(rule){
+ // GitHub omits the entire optional parameters object when false is configured
+ // on this non-fork repository. A present object must explicitly disable it.
+ return rule?.type==="update"&&(rule.parameters===undefined||rule.parameters?.update_allows_fetch_and_merge===false);
+}
+function humanIds(actors,mode){
+ if(!actors.length||actors.some(a=>a.actor_type!=="User"||!positive(a.actor_id)||a.bypass_mode!==mode))throw Error("Bypass must name human Users with the required mode");
+ const ids=actors.map(a=>a.actor_id).sort((a,b)=>a-b);
+ if(new Set(ids).size!==ids.length)throw Error("Duplicate human bypass identity");
+ return ids;
+}
+function reviewRule(pr,codeOwners){
+ return pr?.required_approving_review_count===0&&pr.require_code_owner_review===codeOwners&&pr.require_last_push_approval===false&&pr.dismiss_stale_reviews_on_push===true&&(!pr.required_reviewers||pr.required_reviewers.length===0);
+}
 export function configurationPolicy(main,other,actionsAppId,now=Date.now()) {
- for(const s of [main,other]){
-  if(!Number.isSafeInteger(s?.id)||s.source!==REPOSITORY||s.source_type!=="Repository"||s.target!=="branch"||s.enforcement!=="active"||!Array.isArray(s.bypass_actors)||!Array.isArray(s.rules))throw Error("Complete active repository ruleset required");
-  const time=Date.parse(s.updated_at);if(!Number.isFinite(time)||now-time<5000)throw Error("Ruleset must remain unchanged for five seconds before verification");
- }
- if(!Number.isSafeInteger(actionsAppId)||actionsAppId<=0||main.id===other.id)throw Error("Distinct rulesets and Actions identity required");
- if(main.bypass_actors.length||stable(main.conditions)!==stable({ref_name:{include:["refs/heads/main"],exclude:[]}}))throw Error("Main ruleset must have exact scope and no bypass");
+ for(const s of [main,other])active(s,now);
+ if(!positive(actionsAppId)||main.id===other.id)throw Error("Distinct rulesets and Actions identity required");
+ if(main.bypass_actors.length||stable(main.conditions)!==stable(mainScope))throw Error("Main ruleset must have exact scope and no bypass");
  const pr=main.rules.find(r=>r.type==="pull_request")?.parameters;
- if(pr?.require_code_owner_review!==true||pr.dismiss_stale_reviews_on_push!==true)throw Error("Code-owner review with stale approval dismissal is required");
- const has=t=>main.rules.some(r=>r.type===t),status=main.rules.find(r=>r.type==="required_status_checks")?.parameters;
- if(!has("pull_request")||!has("non_fast_forward")||!has("deletion")||status?.strict_required_status_checks_policy!==true||!status.required_status_checks?.some(c=>c.context==="validate"&&c.integration_id===actionsAppId))throw Error("Main requires strict Actions validate and PR/force/deletion protection");
- // Only explicitly named human users may maintain non-main branches. Apps cannot bypass.
- if(other.bypass_actors.some(a=>a.actor_type!=="User"||!Number.isSafeInteger(a.actor_id)||a.actor_id<=0||a.bypass_mode!=="always"))throw Error("Non-main bypass may name human Users only");
- if(stable(other.conditions)!==stable({ref_name:{include:["~ALL"],exclude:["refs/heads/main"]}})||!other.rules.some(r=>r.type==="update"&&r.parameters?.update_allows_fetch_and_merge===false)||!other.rules.some(r=>r.type==="deletion"))throw Error("All non-main branches must deny App updates and deletion");
- if(other.rules.some(r=>r.type==="creation"))throw Error("Report Apps must be able to create a fresh non-main branch");
- return {schema_version:"1.0",actions_app_id:actionsAppId,rulesets:[main,other].map(s=>({...publicRuleset(s),bypass_actors:s.bypass_actors}))};
+ if(!reviewRule(pr,false))throw Error("Main requires a PR with zero approvals and no code-owner or last-push approval requirement");
+ const status=main.rules.find(r=>r.type==="required_status_checks")?.parameters;
+ if(!exactRules(main,["pull_request","non_fast_forward","deletion","required_status_checks"])||status?.strict_required_status_checks_policy!==true||!status.required_status_checks?.some(c=>c.context==="validate"&&c.integration_id===actionsAppId))throw Error("Main requires strict Actions validate and PR/force/deletion protection");
+ humanIds(other.bypass_actors,"always");
+ if(stable(other.conditions)!==stable({ref_name:{include:["~ALL"],exclude:["refs/heads/main"]}})||!exactRules(other,["update","deletion"])||!deniesFetchMerge(other.rules.find(r=>r.type==="update")))throw Error("All non-main branches must deny App updates and deletion without restricting creation");
+ return {schema_version:"2.0",actions_app_id:actionsAppId,rulesets:[main,other].map(attested)};
 }
 
-export function mergerPolicy(quality,other,updates,actionsAppId,producerAppId,mergerAppId,now=Date.now()){
+export function mergerPolicy(quality,other,updates,codeReview,actionsAppId,producerAppId,mergerAppId,now=Date.now()){
  const basic=configurationPolicy(quality,other,actionsAppId,now);
- if(!Number.isSafeInteger(producerAppId)||!Number.isSafeInteger(mergerAppId)||producerAppId<=0||mergerAppId<=0||producerAppId===mergerAppId||[producerAppId,mergerAppId].includes(actionsAppId))throw Error("Independent producer and merger App identities required");
- if(updates?.source!==REPOSITORY||updates.source_type!=="Repository"||updates.target!=="branch"||updates.enforcement!=="active"||!Number.isSafeInteger(updates.id)||[quality.id,other.id].includes(updates.id))throw Error("Separate active main update ruleset required");
- if(stable(updates.conditions)!==stable({ref_name:{include:["refs/heads/main"],exclude:[]}})||updates.rules?.length!==1||updates.rules[0].type!=="update"||updates.rules[0].parameters?.update_allows_fetch_and_merge!==false)throw Error("Main update restriction must be separate from quality rules");
- if(!Array.isArray(updates.bypass_actors)||updates.bypass_actors.filter(a=>a.actor_type==="Integration"&&a.actor_id===mergerAppId&&a.bypass_mode==="always").length!==1||updates.bypass_actors.some(a=>!(a.actor_type==="Integration"&&a.actor_id===mergerAppId&&a.bypass_mode==="always")&&!(a.actor_type==="User"&&Number.isSafeInteger(a.actor_id)&&a.actor_id>0&&a.bypass_mode==="always")))throw Error("Only the trusted merger App and named humans may update main");
- const time=Date.parse(updates.updated_at);if(!Number.isFinite(time)||now-time<5000)throw Error("Update ruleset must remain unchanged for five seconds");
- return {...basic,producer_app_id:producerAppId,merger_app_id:mergerAppId,rulesets:[...basic.rulesets,{...publicRuleset(updates),bypass_actors:updates.bypass_actors}]};
+ if(!positive(producerAppId)||!positive(mergerAppId)||producerAppId===mergerAppId||[producerAppId,mergerAppId].includes(actionsAppId))throw Error("Independent producer and merger App identities required");
+ for(const s of [updates,codeReview])active(s,now);
+ if(new Set([quality,other,updates,codeReview].map(s=>s.id)).size!==4)throw Error("Four distinct rulesets required");
+ if(stable(updates.conditions)!==stable(mainScope)||!exactRules(updates,["update"])||!deniesFetchMerge(updates.rules[0]))throw Error("Main update restriction must be separate from quality rules");
+ const mergerActors=updates.bypass_actors.filter(a=>a.actor_type==="Integration");
+ if(mergerActors.length!==1||mergerActors[0].actor_id!==mergerAppId||mergerActors[0].bypass_mode!=="always")throw Error("Only the trusted merger App and named humans may update main");
+ const humans=humanIds(other.bypass_actors,"always");
+ if(stable(humanIds(updates.bypass_actors.filter(a=>a.actor_type!=="Integration"),"always"))!==stable(humans))throw Error("Main and non-main must allow the same named humans");
+ if(stable(codeReview.conditions)!==stable(mainScope)||!exactRules(codeReview,["pull_request"])||!reviewRule(codeReview.rules[0].parameters,true))throw Error("Separate code-owner review with stale approval dismissal is required for Apps");
+ // Humans bypass only this approval rule, through a PR. Quality rules still block
+ // unresolved Request changes and failed/outdated checks for every actor.
+ if(stable(humanIds(codeReview.bypass_actors,"pull_request"))!==stable(humans))throw Error("Code-review bypass must match the named human writers");
+ return {...basic,producer_app_id:producerAppId,merger_app_id:mergerAppId,rulesets:[...basic.rulesets,attested(updates),attested(codeReview)]};
 }
 export async function verifyRules(api,actionsAppId,policy,identity) {
- if(!policy||policy.schema_version!=="1.0"||policy.actions_app_id!==actionsAppId||policy.rulesets?.length!==3||identity?.producerAppId!==policy.producer_app_id||identity?.mergerAppId!==policy.merger_app_id)throw Error("Owner-verified ruleset policy and separate App identities required");
+ if(!policy||policy.schema_version!=="2.0"||policy.actions_app_id!==actionsAppId||policy.rulesets?.length!==4||identity?.producerAppId!==policy.producer_app_id||identity?.mergerAppId!==policy.merger_app_id)throw Error("Owner-verified ruleset policy and separate App identities required");
  const normalized=mergerPolicy(...policy.rulesets,actionsAppId,policy.producer_app_id,policy.merger_app_id);
  for(const expected of normalized.rulesets){
   const live=await api.request("GET",PREFIX+"/rulesets/"+expected.id);
