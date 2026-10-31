@@ -1,0 +1,136 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-11-01",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-11-01",
+  "subtitle": "显存预算之外，还要守住升级与服务边界",
+  "articles": [
+    {
+      "id": "vllm-logprobs-memory",
+      "title": "vLLM 将分块 logprobs 的重复结果驻留移出峰值",
+      "summary": "临时结果也要计入显存预算：分块结果预分配避免最终拼接副本，但跨调度步驻留仍未解决。",
+      "sha256": "7221a329f71fff555bbca34c541b7470a1e8bbb8f3f7e6dee171563bc73f0316"
+    },
+    {
+      "id": "vllm-tool-parser",
+      "title": "vLLM 降低工具解析对健康检查的影响",
+      "summary": "单 H200 的强制参数循环案例显示，CPU 解析会拖垮健康检查；缓存已闭合参数缓解退化路径，不代表普遍推理提速。",
+      "sha256": "0e4b05a0cc74674a986dcdb60513e4240eb76f7597a5c36f3821db6a3bb9629e"
+    },
+    {
+      "id": "sglang-persistent-buffers",
+      "title": "SGLang 先扣持久缓冲 再给 KV cache 定容",
+      "summary": "DeepSeek MegaMoE 把持久缓冲提前分配，KV 池相应缩小以避免漏算；GB300 证据不能外推到 H100/H200。",
+      "sha256": "3bb8ce79457744177dfd25a568176be36963fee927a8731cef42859ece50689a"
+    },
+    {
+      "id": "sglang-pd-boundaries",
+      "title": "SGLang 的 PD 升级要同时检查协议与乱序请求",
+      "summary": "注册协议改版要求 P/D 同版；迟到 staging 请求不应重新占用已完成 chunk 的 ring slot。",
+      "sha256": "77a544a19e9f9bc6cf126f3c565cc11dad682e736940d3a36e091c027c2487f1"
+    },
+    {
+      "id": "vllm-direct-reload",
+      "title": "vLLM direct reload 已合并但不宜默认开启",
+      "summary": "原地更新节约副本不能凌驾于正确性：失败更新可能以错误布局继续服务，默认 layerwise 仍应保留。",
+      "sha256": "90945e9d481f0c0abb3f7566cd4a589e0b8bef184832d9fd4c71928b1d9bbc80"
+    },
+    {
+      "id": "engine-status-and-checks",
+      "title": "DeepInfer 持续跟踪 不补凑新闻",
+      "summary": "DeepInfer 主线近72小时无新提交；记录离线硬件边界，并给出本期按正确性、资源账和服务行为排序的验证清单。",
+      "sha256": "a85121fcb3e3f153bcfa0b6bfe081fb3b6dc828110238dd73f109d3d02e4bb90"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-11-01-vllm-pr-64841",
+      "event_key": "vllm-pr-64841",
+      "title": "vLLM 将分块 logprobs 的重复结果驻留移出峰值",
+      "summary": "临时结果也要计入显存预算：分块结果预分配避免最终拼接副本，但跨调度步驻留仍未解决。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/64841"
+      ],
+      "update_of": null,
+      "article_id": "vllm-logprobs-memory"
+    },
+    {
+      "id": "2026-11-01-vllm-pr-64675",
+      "event_key": "vllm-pr-64675",
+      "title": "vLLM 降低工具解析对健康检查的影响",
+      "summary": "单 H200 的强制参数循环案例显示，CPU 解析会拖垮健康检查；缓存已闭合参数缓解退化路径，不代表普遍推理提速。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/64675"
+      ],
+      "update_of": null,
+      "article_id": "vllm-tool-parser"
+    },
+    {
+      "id": "2026-11-01-sglang-pr-47577",
+      "event_key": "sglang-pr-47577",
+      "title": "SGLang 先扣持久缓冲 再给 KV cache 定容",
+      "summary": "DeepSeek MegaMoE 把持久缓冲提前分配，KV 池相应缩小以避免漏算；GB300 证据不能外推到 H100/H200。",
+      "source_urls": [
+        "https://github.com/sgl-project/sglang/pull/47577"
+      ],
+      "update_of": null,
+      "article_id": "sglang-persistent-buffers"
+    },
+    {
+      "id": "2026-11-01-sglang-47638",
+      "event_key": "sglang-pr-47638",
+      "title": "SGLang #47638：PD 注册协议升级边界",
+      "summary": "PD 注册帧布局变化，新旧 P/D 构建不能混跑，升级须保持两端同版。",
+      "source_urls": [
+        "https://github.com/sgl-project/sglang/pull/47638"
+      ],
+      "update_of": null,
+      "article_id": "sglang-pd-boundaries"
+    },
+    {
+      "id": "2026-11-01-sglang-47652",
+      "event_key": "sglang-pr-47652",
+      "title": "SGLang #47652：迟到 staging 请求修复",
+      "summary": "通过保留 CHUNK_SCATTERED 状态忽略迟到申请，避免重新分配孤儿 ring slot。",
+      "source_urls": [
+        "https://github.com/sgl-project/sglang/pull/47652"
+      ],
+      "update_of": null,
+      "article_id": "sglang-pd-boundaries"
+    },
+    {
+      "id": "2026-11-01-vllm-pr-64336",
+      "event_key": "vllm-pr-64336",
+      "title": "vLLM direct reload 已合并但不宜默认开启",
+      "summary": "原地更新节约副本不能凌驾于正确性：失败更新可能以错误布局继续服务，默认 layerwise 仍应保留。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/64336"
+      ],
+      "update_of": null,
+      "article_id": "vllm-direct-reload"
+    },
+    {
+      "id": "2026-11-01-deepinfer-status-2026-11-01",
+      "event_key": "deepinfer-status-2026-11-01",
+      "title": "DeepInfer 持续跟踪 不补凑新闻",
+      "summary": "DeepInfer 主线近72小时无新提交；记录离线硬件边界，并给出本期按正确性、资源账和服务行为排序的验证清单。",
+      "source_urls": [
+        "https://github.com/deepseek-ai/DeepInfer/blob/553741557a57df44a46fb3ab72b6aafeaf945337/README.md",
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/commits?per_page=10",
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/releases?per_page=10",
+        "https://github.com/vllm-project/vllm/releases",
+        "https://github.com/sgl-project/sglang/releases"
+      ],
+      "update_of": null,
+      "article_id": "engine-status-and-checks"
+    }
+  ],
+  "images": [
+    {
+      "path": "assets/service-boundaries.png",
+      "sha256": "9b02e5f03d0c65ab1e5eb6299820af214a1a2a270a59931ce96fe953a374af1a",
+      "alt": "原创简化示意：各模型独立权重、持久通信缓冲、KV与运行余量；先分配持久缓冲再定KV容量；PD同版与迟到请求处理。非性能对比。"
+    }
+  ],
+  "poster": "assets/service-boundaries.png"
+}
