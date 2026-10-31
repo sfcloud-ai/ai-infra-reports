@@ -25,7 +25,7 @@ export class GitObjects {
   await mkdir(path.join(this.root,"hooks"));await writeFile(path.join(this.root,"config-empty"),"");
   const env={...process.env};
   for(const key of Object.keys(env))if(key.startsWith("GIT_"))delete env[key];
-  delete env.GITHUB_TOKEN;delete env.REPORT_APP_TOKEN;delete env.REPORT_MERGER_TOKEN;
+  delete env.GITHUB_TOKEN;delete env.REPORT_APP_TOKEN;delete env.REPORT_MERGER_TOKEN;delete env.REPORT_PRODUCER_PRIVATE_KEY_FILE;
   this.env={...env,GIT_CONFIG_GLOBAL:path.join(this.root,"config-empty"),GIT_CONFIG_SYSTEM:path.join(this.root,"config-empty"),GIT_TERMINAL_PROMPT:"0"};
   await this.run(["init","--bare","--template=",path.join(this.root,"objects.git")],false);
  }

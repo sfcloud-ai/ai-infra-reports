@@ -32,7 +32,7 @@ jobs:
           owner: sfcloud-ai
           repositories: ai-infra-reports
           permission-contents: write
-          permission-pull-requests: write
+          permission-pull-requests: read
           permission-actions: read
           permission-checks: read
       - run: node scripts/merge-report.mjs
