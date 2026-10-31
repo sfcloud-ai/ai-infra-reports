@@ -37,12 +37,20 @@ destinations supplied by the payload. A new ID or message timestamp is not an
 automatic retry mechanism; the same ID with different bytes or source message
 is rejected. Do not edit, thread or repost the original command.
 
-The first adapter deliberately accepts only an explicitly pinned **human Slack
-user identity**. A cloud connector's actual upload identity must be observed in
-an approved trial; channel membership does not prove the sender identity. If
-uploads instead come from an App/bot identity, do not broaden the allowlist:
-that identity requires a separately reviewed adapter change. The read-only
-`!ai-brief` control protocol is independent and remains untouched.
+By default, `sender_user_id` pins a human sender and bot/App messages are rejected.
+For an App-based cloud producer, explicitly configure both `sender_bot_id` and
+`sender_app_id` alongside its `sender_user_id`. All three identities must match
+the authenticated message; a human message, another App, an incomplete identity,
+or the publisher's own bot cannot substitute for that sender. Native file shares
+and bot messages with a verified native file are accepted in this mode.
+
+Obtain all sender IDs from trusted Slack metadata, never from a display name or
+the report payload. Membership alone does not prove the upload identity; if the
+connector does not expose `app_id`, leave App-mode activation blocked until it
+is verified. A sender identity change is also a state-store identity change and
+requires reconciliation. The producer App must be explicitly invited to the
+control channel; adding it or the publisher bot requires separate authorization.
+The read-only `!ai-brief` control protocol remains independent.
 
 ## Independent publisher process
 
@@ -60,7 +68,11 @@ The dedicated Slack bot needs exactly `groups:read`, `groups:history`,
 `files:read`, `chat:write`, and membership only in the approved private control
 channel. Preflight checks the workspace, bot user and bot ID, exact scopes,
 channel privacy/membership and absence of sharing. The existing DM relay token
-is not suitable. Slack API documentation: [history](https://docs.slack.dev/reference/methods/conversations.history/),
+is not suitable. The reviewable [publisher manifest](../deployment/slack-publisher.manifest.json)
+contains only those four bot scopes, with no user scopes, event subscriptions,
+webhooks or socket mode. It is an offline template, not an installed App;
+installation and creation/storage of its bot token require separate approval.
+Slack API documentation: [history](https://docs.slack.dev/reference/methods/conversations.history/),
 [file information](https://docs.slack.dev/reference/methods/files.info/),
 [thread messages](https://docs.slack.dev/reference/methods/chat.postMessage/).
 
@@ -83,6 +95,19 @@ Example config, with deliberately fictitious IDs:
 ```
 
 After the credentials, scope, service and one real publication have been approved:
+
+For an App producer, add the two explicit fields to that config (example IDs only):
+
+```json
+{
+  "sender_user_id": "UPRODUCERBOT",
+  "sender_bot_id": "BPRODUCERBOT",
+  "sender_app_id": "APRODUCER"
+}
+```
+
+This fragment replaces `sender_user_id` and supplements the complete config;
+it does not replace the other required fields. Then run one approved tick:
 
 ```sh
 node scripts/run-handoff.mjs /var/lib/report-publisher/config/publisher.json --live

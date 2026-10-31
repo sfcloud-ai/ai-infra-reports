@@ -1,0 +1,22 @@
+{
+  "display_information": {
+    "name": "AI Infra Publisher",
+    "description": "Publish validated report bundles and return verified Pages receipts in a private control channel."
+  },
+  "features": {
+    "bot_user": {
+      "display_name": "AI Infra Publisher",
+      "always_online": false
+    }
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": ["groups:read", "groups:history", "files:read", "chat:write"]
+    }
+  },
+  "settings": {
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": false,
+    "token_rotation_enabled": false
+  }
+}
