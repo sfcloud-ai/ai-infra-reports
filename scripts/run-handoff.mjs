@@ -20,9 +20,12 @@ async function privateFile(filename,limit,read=true){
 }
 export function validateConfig(c){
  const keys=["team_id","channel_id","sender_user_id","bot_user_id","bot_id","producer_app_id","merger_app_id","slack_token_file","producer_key_file","state_dir","ready_for_review"];
+ const appSender=c&&(Object.hasOwn(c,"sender_bot_id")||Object.hasOwn(c,"sender_app_id"));
+ if(appSender)keys.push("sender_bot_id","sender_app_id");
  requireThat(c&&Object.keys(c).sort().join()===keys.sort().join(),"Unexpected publisher config");
  for(const [key,prefix]of [["team_id","T"],["channel_id","[CG]"],["sender_user_id","U"],["bot_user_id","U"],["bot_id","B"]])requireThat(new RegExp("^"+prefix+"[A-Z0-9]+$").test(c[key]),"Publisher identity config");
  requireThat(c.sender_user_id!==c.bot_user_id&&typeof c.ready_for_review==="boolean"&&Number.isSafeInteger(c.producer_app_id)&&c.producer_app_id>0&&Number.isSafeInteger(c.merger_app_id)&&c.merger_app_id>0&&c.producer_app_id!==c.merger_app_id,"Independent publisher identities required");
+ if(appSender)requireThat(typeof c.sender_bot_id==="string"&&/^B[A-Z0-9]+$/.test(c.sender_bot_id)&&typeof c.sender_app_id==="string"&&/^A[A-Z0-9]+$/.test(c.sender_app_id)&&c.sender_bot_id!==c.bot_id,"Explicit independent Slack App sender required");
  for(const k of ["slack_token_file","producer_key_file","state_dir"])requireThat(typeof c[k]==="string"&&path.isAbsolute(c[k]),"Absolute private paths required");
  return c;
 }

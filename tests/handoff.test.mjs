@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import sharp from "sharp";
-import {mkdtemp,rm} from "node:fs/promises";
+import {mkdtemp,rm,readFile} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {readReports,digest,REPOSITORY} from "../scripts/archive.mjs";
@@ -45,6 +45,24 @@ test("intake pins authenticated human sender and rejects edits, threads, bots, s
  assert.deepEqual(acceptMessage(message,config,now),event);assert.equal(acceptMessage({text:"!ai-brief x ping"},config,now),null);
  assert.deepEqual(acceptMessage({...message,thread_ts:ts},config,now),event);
  for(const patch of [{user:"U999"},{edited:{}},{hidden:true},{thread_ts:"1793447999.000001"},{bot_id:"B456"},{app_id:"A123"},{subtype:"message_changed"},{ts:"1.000000"},{files:[]},{text:message.text+" extra"}])assert.throws(()=>acceptMessage({...message,...patch},config,now));
+});
+test("App intake pins user, bot and App IDs without accepting a general bot allowlist",()=>{
+ const appConfig=validateConfig({...config,sender_user_id:"U789",sender_bot_id:"B789",sender_app_id:"A789"});
+ const appMessage={...message,user:"U789",bot_id:"B789",app_id:"A789"};
+ assert.deepEqual(acceptMessage(appMessage,appConfig,now),event);
+ assert.deepEqual(acceptMessage({...appMessage,subtype:"bot_message"},appConfig,now),event);
+ assert.throws(()=>acceptMessage(appMessage,config,now));
+ for(const patch of [{user:"U123"},{bot_id:"B999"},{app_id:"A999"},{bot_id:undefined},{app_id:undefined},{files:[]},{edited:{}},{thread_ts:"1793447999.000001"}])assert.throws(()=>acceptMessage({...appMessage,...patch},appConfig,now));
+ assert.throws(()=>acceptMessage({...message,user:"U789"},appConfig,now));
+ for(const patch of [{sender_bot_id:"B789"},{sender_app_id:"A789"},{sender_bot_id:null,sender_app_id:"A789"},{sender_bot_id:"B456",sender_app_id:"A789"}])assert.throws(()=>validateConfig({...config,...patch}));
+});
+test("publisher manifest grants exactly the required bot scopes and no other integration surfaces",async()=>{
+ const manifest=JSON.parse(await readFile("deployment/slack-publisher.manifest.json","utf8"));
+ assert.deepEqual(Object.keys(manifest).sort(),["display_information","features","oauth_config","settings"]);
+ assert.deepEqual(Object.keys(manifest.oauth_config),["scopes"]);assert.deepEqual(Object.keys(manifest.oauth_config.scopes),["bot"]);
+ assert.deepEqual(manifest.oauth_config.scopes.bot.slice().sort(),["chat:write","files:read","groups:history","groups:read"]);
+ assert.deepEqual(Object.keys(manifest.features),["bot_user"]);
+ assert.deepEqual(manifest.settings,{org_deploy_enabled:false,socket_mode_enabled:false,token_rotation_enabled:false});
 });
 test("durable intake rejects changed/reposted request IDs and mismatched identities after reopening",async()=>{
  const dir=await mkdtemp(path.join(os.tmpdir(),"handoff-test-")),filename=path.join(dir,"state.sqlite");

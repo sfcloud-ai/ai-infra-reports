@@ -55,7 +55,12 @@ export async function encodeBundle(files,requestId,base,promptCommit){
 // Caller must obtain this message from the authenticated, pinned channel history.
 export function acceptMessage(message,config,now=Date.now()){
  if(!message?.text?.startsWith("!ai-report "))return null;
- requireThat(message.type==="message"&&message.subtype==="file_share"&&!message.edited&&!message.hidden&&(!message.thread_ts||message.thread_ts===message.ts)&&!message.bot_id&&!message.app_id&&message.user===config.sender_user_id,"Untrusted report message");
+ const appSender=config.sender_bot_id!==undefined||config.sender_app_id!==undefined;
+ const identity=message.user===config.sender_user_id&&(appSender
+  ?typeof config.sender_bot_id==="string"&&typeof config.sender_app_id==="string"&&message.bot_id===config.sender_bot_id&&message.app_id===config.sender_app_id
+  :!message.bot_id&&!message.app_id);
+ const nativeShare=message.subtype==="file_share"||(appSender&&message.subtype==="bot_message");
+ requireThat(message.type==="message"&&nativeShare&&!message.edited&&!message.hidden&&(!message.thread_ts||message.thread_ts===message.ts)&&identity,"Untrusted report message");
  requireThat(/^\d{10}\.\d{6}$/.test(message.ts)&&Number(message.ts)*1000<=now+30000&&Number(message.ts)*1000>=now-15*60000,"Report message outside intake window");
  const match=/^!ai-report publish ([a-z0-9][a-z0-9-]{7,79}) ([a-f0-9]{64})$/.exec(message.text);
  requireThat(match&&message.files?.length===1&&/^F[A-Z0-9]+$/.test(message.files[0].id),"Report command/file format");
