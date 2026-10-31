@@ -150,6 +150,16 @@ that window require explicit recovery, not replay of old commands. One pending
 request progresses per tick, so a waiting/failed older request must be reconciled
 before later work can advance. Public GitHub reads use no authentication token.
 
+After GitHub reports the pinned PR as merged, the reader obtains its SHA from
+the repository's own [`merged` timeline event](https://docs.github.com/en/rest/using-the-rest-api/issue-event-types#merged).
+It requires a complete, bounded page (at most 100 events), exactly one merge
+event, a commit URL in this repository, and matching merge time and actor from
+the PR response. A legacy `merge_commit_sha`, when present, must agree. Missing,
+conflicting or paginated evidence stops the read without changing durable state;
+the reader never substitutes the current main tip or a commit mentioned in text.
+The worker then independently checks both Git commit objects, identical trees,
+and each commit's sole parent against the bundle's pinned base.
+
 The Producer App key is read only for the proposal. Its existing short-lived
 installation token is narrowed to this repository and revoked by the existing
 token wrapper. The Merger App's ID is used to enforce independent identities;
@@ -181,6 +191,13 @@ No automatic database reset or force-retry command is provided. Recovery must
 record the observed external state before an operator changes a stalled phase.
 A stale base or intervening deployment needs a fresh explicit decision; the
 worker does not rebase, replace reports, or accept a newer deployment as proof.
+
+A job stopped at `pr_open` solely because the PR response omitted its legacy
+merge SHA needs no reset or replacement request. Preserve the database and
+external evidence, validate the corrected reader, and resume only the original
+job after reviewing its phase and the deployment identity. A code deployment
+that changes the Pages manifest commit can still make an older report's exact
+publication check fail; this fix does not relax that check or authorize a replay.
 
 ## Cloud task completion contract
 

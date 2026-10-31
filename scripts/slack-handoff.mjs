@@ -1,5 +1,5 @@
 import {REPOSITORY} from "./archive.mjs";
-import {requireThat,boundedBytes,MAX_BUNDLE} from "./report-handoff.mjs";
+import {requireThat,boundedBytes,MAX_BUNDLE,SHA} from "./report-handoff.mjs";
 export class SlackHandoff{
  constructor(config,token,fetcher=fetch){this.config=config;this.token=token;this.fetcher=fetcher;}
  async call(method,params={},write=false){
@@ -46,4 +46,22 @@ export async function publicGitHub(route,fetcher=fetch){
  requireThat(/^\/(pulls\/[1-9]\d*|git\/commits\/[a-f0-9]{40})$/.test(route),"GitHub read route");
  const response=await fetcher("https://api.github.com/repos/"+REPOSITORY+route,{headers:{accept:"application/vnd.github+json","x-github-api-version":"2026-03-10"},redirect:"error",signal:AbortSignal.timeout(30000)});
  return JSON.parse((await boundedBytes(response,2*1024*1024)).toString("utf8"));
+}
+// Read the repository's own merge event, never a commit mentioned in a comment
+// or the current branch tip. Some PR representations omit merge_commit_sha.
+export async function publicMergeCommit(number,pr,fetcher=fetch){
+ requireThat(/^[1-9]\d*$/.test(String(number))&&Number.isSafeInteger(Number(number))&&pr?.number===Number(number)&&pr.merged===true&&pr.state==="closed","Merged PR identity required");
+ requireThat(typeof pr.merged_at==="string"&&/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test(pr.merged_at)&&Number.isSafeInteger(pr.merged_by?.id)&&pr.merged_by.id>0,"Merged PR event metadata required");
+ const origin="https://api.github.com/repos/"+REPOSITORY;
+ const response=await fetcher(`${origin}/issues/${number}/timeline?per_page=100`,{headers:{accept:"application/vnd.github+json","x-github-api-version":"2026-03-10"},redirect:"error",signal:AbortSignal.timeout(30000)});
+ const events=JSON.parse((await boundedBytes(response,2*1024*1024)).toString("utf8"));
+ // A partial page cannot prove uniqueness. Leave the durable phase unchanged
+ // for operator reconciliation instead of following arbitrary pagination URLs.
+ requireThat(!response.headers.get("link")&&Array.isArray(events)&&events.length<=100&&events.every(e=>e&&typeof e==="object"&&!Array.isArray(e)),"Incomplete merge timeline; reconcile first");
+ const merged=events.filter(e=>e.event==="merged");
+ requireThat(merged.length===1,"Missing or ambiguous merge event");
+ const event=merged[0];
+ requireThat(Number.isSafeInteger(event.id)&&event.id>0&&typeof event.commit_id==="string"&&SHA.test(event.commit_id)&&event.commit_url===`${origin}/commits/${event.commit_id}`&&event.created_at===pr.merged_at&&event.actor?.id===pr.merged_by.id,"Merge event identity mismatch");
+ requireThat(pr.merge_commit_sha==null||pr.merge_commit_sha===event.commit_id,"Conflicting merge commit evidence");
+ return event.commit_id;
 }

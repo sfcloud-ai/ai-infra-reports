@@ -5,7 +5,7 @@ import {constants} from "node:fs";
 import path from "node:path";
 import {pathToFileURL} from "node:url";
 import {HandoffState} from "./handoff-state.mjs";
-import {SlackHandoff,publicGitHub} from "./slack-handoff.mjs";
+import {SlackHandoff,publicGitHub,publicMergeCommit} from "./slack-handoff.mjs";
 import {acceptMessage,decodeBundle,requireThat,verifyReportPublication} from "./report-handoff.mjs";
 import {advanceHandoff} from "./handoff-worker.mjs";
 import {proposeWithApp} from "./propose-with-app.mjs";
@@ -55,7 +55,7 @@ export async function runHandoff(configFile){
   }
   const io={
    propose:async(files,base)=>proposeWithApp(files,base,{appId:config.producer_app_id,mergerAppId:config.merger_app_id,privateKey:await privateFile(config.producer_key_file,32768)},{ready:config.ready_for_review}),
-   readPR:n=>publicGitHub("/pulls/"+n),readCommit:sha=>publicGitHub("/git/commits/"+sha),
+   readPR:n=>publicGitHub("/pulls/"+n),readMergeCommit:publicMergeCommit,readCommit:sha=>publicGitHub("/git/commits/"+sha),
    verify:verifyReportPublication,receipt:(thread,proof)=>slack.receipt(thread,proof)
   };
   // One active request per tick bounds the public GitHub polling budget.

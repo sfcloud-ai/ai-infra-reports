@@ -8,7 +8,7 @@ import {readReports,digest,REPOSITORY} from "../scripts/archive.mjs";
 import {encodeBundle,decodeBundle,acceptMessage,boundedBytes,verifyReportPublication,MAX_BUNDLE} from "../scripts/report-handoff.mjs";
 import {HandoffState} from "../scripts/handoff-state.mjs";
 import {advanceHandoff} from "../scripts/handoff-worker.mjs";
-import {SlackHandoff,publicGitHub} from "../scripts/slack-handoff.mjs";
+import {SlackHandoff,publicGitHub,publicMergeCommit} from "../scripts/slack-handoff.mjs";
 import {validateConfig} from "../scripts/run-handoff.mjs";
 import {propose} from "../scripts/propose.mjs";
 import {FakeGitHub} from "./helpers/fake-github.mjs";
@@ -25,7 +25,7 @@ const message={type:"message",subtype:"file_share",user:"U123",ts,text:`!ai-repo
 const proof={publication_status:"verified",commit:merge,url:"https://sfcloud-ai.github.io/ai-infra-reports/2026-10-31/r1/",bundle_sha256:event.hash,request_id:request,delivery_allowed:false};
 function rig(state=new HandoffState(":memory:",config)){
  state.admit(event,bytes);let proposals=0,receipts=0,verified=0;
- const io={propose:async()=>{proposals++;return {url:`https://github.com/${REPOSITORY}/pull/4`,sha:head};},readPR:async()=>({number:4,state:"closed",merged:true,merge_commit_sha:merge,head:{sha:head,repo:{full_name:REPOSITORY}},base:{ref:"main",repo:{full_name:REPOSITORY}}}),readCommit:async sha=>({sha,tree:{sha:tree},parents:[{sha:base}]}),verify:async()=>{verified++;return proof;},receipt:async()=>{receipts++;return "1793448300.000001";}};
+ const io={propose:async()=>{proposals++;return {url:`https://github.com/${REPOSITORY}/pull/4`,sha:head};},readPR:async()=>({number:4,state:"closed",merged:true,merge_commit_sha:merge,head:{sha:head,repo:{full_name:REPOSITORY}},base:{ref:"main",repo:{full_name:REPOSITORY}}}),readMergeCommit:async()=>merge,readCommit:async sha=>({sha,tree:{sha:tree},parents:[{sha:base}]}),verify:async()=>{verified++;return proof;},receipt:async()=>{receipts++;return "1793448300.000001";}};
  return {state,io,counts:()=>({proposals,receipts,verified})};
 }
 test("transport round-trip is data-only and feeds the existing validating publisher",async()=>{
@@ -127,12 +127,70 @@ test("one request reaches the receipt only after exact merge and repeated public
   await advanceHandoff(state,request,io);assert.deepEqual(counts(),{proposals:1,receipts:1,verified:2});
  }finally{state.close();}
 });
+
+const mergedPR={number:4,state:"closed",merged:true,merged_at:"2026-10-31T12:05:00Z",merged_by:{id:42}};
+const mergeEvent={id:1234,event:"merged",commit_id:merge,commit_url:`https://api.github.com/repos/${REPOSITORY}/commits/${merge}`,created_at:mergedPR.merged_at,actor:{id:42}};
+test("merge SHA comes from the pinned complete timeline when the PR omits its legacy field",async()=>{
+ for(const extra of [{},{merge_commit_sha:null},{merge_commit_sha:merge}]){
+  let calls=0;
+  assert.equal(await publicMergeCommit("4",{...mergedPR,...extra},async(url,o)=>{
+   calls++;assert.equal(url,`https://api.github.com/repos/${REPOSITORY}/issues/4/timeline?per_page=100`);
+   assert.equal(o.redirect,"error");assert.equal(o.headers.authorization,undefined);assert.equal(o.headers["x-github-api-version"],"2026-03-10");
+   return Response.json([{event:"referenced",commit_id:head},mergeEvent]);
+  }),merge);assert.equal(calls,1);
+ }
+});
+
+test("merge evidence rejects missing, conflicting, spoofed, unrelated and incomplete events",async()=>{
+ for(const events of [[],[{event:"referenced",commit_id:merge}],[mergeEvent,mergeEvent],[null],{},
+  ...[{id:0},{commit_id:head},{commit_url:`https://api.github.com/repos/other/repo/commits/${merge}`},
+      {commit_url:`https://evil.example/commits/${merge}`},{created_at:"2026-10-31T12:06:00Z"},{actor:{id:99}}].map(patch=>[{...mergeEvent,...patch}])]){
+  await assert.rejects(()=>publicMergeCommit(4,mergedPR,async()=>Response.json(events)));
+ }
+ await assert.rejects(()=>publicMergeCommit(4,{...mergedPR,merge_commit_sha:head},async()=>Response.json([mergeEvent])),/Conflicting/);
+ for(const link of [`<https://api.github.com/repos/${REPOSITORY}/issues/4/timeline?page=2>; rel="next"`,"<https://evil.example/next>; rel=\"next\""]){
+  let calls=0;await assert.rejects(()=>publicMergeCommit(4,mergedPR,async()=>{calls++;return Response.json([mergeEvent],{headers:{link}});}),/Incomplete/);assert.equal(calls,1);
+ }
+ for(const [number,patch]of [["../4",{}],[Number.MAX_SAFE_INTEGER+1,{}],[5,{}],[4,{merged:false}],[4,{merged:"true"}],[4,{state:"open"}],[4,{merged_at:null}],[4,{merged_by:null}]]){
+  let calls=0;await assert.rejects(()=>publicMergeCommit(number,{...mergedPR,...patch},async()=>{calls++;return Response.json([mergeEvent]);}));assert.equal(calls,0);
+ }
+ await assert.rejects(()=>publicMergeCommit(4,mergedPR,async()=>Response.json({message:"rate limited"},{status:403})),/Remote read failed/);
+});
+
+test("a persisted pr_open job resumes without re-proposing when merge_commit_sha is absent",async()=>{
+ const dir=await mkdtemp(path.join(os.tmpdir(),"merge-resume-")),filename=path.join(dir,"state.sqlite");let current;
+ try{
+  const first=rig(new HandoffState(filename,config));current=first.state;
+  await advanceHandoff(current,request,first.io);assert.equal(first.counts().proposals,1);
+  current.close();current=null;
+  const resumed=rig(new HandoffState(filename,config));current=resumed.state;
+  const read=resumed.io.readPR;
+  resumed.io.readPR=async()=>{const pr={...await read(),...mergedPR};delete pr.merge_commit_sha;return pr;};
+  resumed.io.readMergeCommit=(n,pr)=>publicMergeCommit(n,pr,async()=>Response.json([mergeEvent]));
+  for(const phase of ["merged","verified","receipt_sent"]){await advanceHandoff(current,request,resumed.io);assert.equal(current.get(request).phase,phase);}
+  assert.equal(current.get(request).detail.commit,merge);
+  assert.deepEqual(resumed.counts(),{proposals:0,receipts:1,verified:2});
+ }finally{current?.close();await rm(dir,{recursive:true,force:true});}
+});
+
+test("missing merge evidence preserves the existing job and cannot send or re-propose",async()=>{
+ const {state,io,counts}=rig();try{
+  await advanceHandoff(state,request,io);const before=state.get(request),read=io.readPR;
+  io.readPR=async()=>{const pr={...await read(),...mergedPR};delete pr.merge_commit_sha;return pr;};
+  io.readMergeCommit=(n,pr)=>publicMergeCommit(n,pr,async()=>Response.json([]));
+  await assert.rejects(()=>advanceHandoff(state,request,io),/Missing or ambiguous/);
+  assert.deepEqual(state.get(request),before);assert.deepEqual(counts(),{proposals:1,receipts:0,verified:0});
+  io.readMergeCommit=async()=>undefined;
+  await assert.rejects(()=>advanceHandoff(state,request,io),/Missing merge commit evidence/);
+  assert.deepEqual(state.get(request),before);
+ }finally{state.close();}
+});
 test("unmerged, mismatched head/base/tree or closed PR never yields a publication receipt",async()=>{
- for(const kind of ["open","head","repository","tree","parent","closed"]){
+ for(const kind of ["open","head","repository","tree","parent","head-parent","head-sha","merge-sha","extra-parent","closed"]){
   const {state,io,counts}=rig();try{
    await advanceHandoff(state,request,io);const read=io.readPR,commit=io.readCommit;
    io.readPR=async()=>{const p=await read();if(kind==="open"){p.merged=false;p.state="open";}if(kind==="closed")p.merged=false;if(kind==="head")p.head.sha=base;if(kind==="repository")p.head.repo.full_name="wrong/repo";return p;};
-   io.readCommit=async sha=>{const c=await commit(sha);if(sha===merge&&kind==="tree")c.tree.sha=base;if(sha===merge&&kind==="parent")c.parents[0].sha=head;return c;};
+   io.readCommit=async sha=>{const c=await commit(sha);if(sha===merge&&kind==="tree")c.tree.sha=base;if(sha===merge&&kind==="parent")c.parents[0].sha=head;if(sha===head&&kind==="head-parent")c.parents[0].sha=merge;if((sha===head&&kind==="head-sha")||(sha===merge&&kind==="merge-sha"))c.sha=base;if(sha===merge&&kind==="extra-parent")c.parents.push({sha:head});return c;};
    if(kind==="open")await advanceHandoff(state,request,io);else await assert.rejects(()=>advanceHandoff(state,request,io));
    assert.equal(state.get(request).phase,"pr_open");assert.equal(counts().receipts,0);
   }finally{state.close();}
