@@ -1,16 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {configurationPolicy,mergerPolicy,verifyRules} from "../scripts/rules.mjs";
-import {REPOSITORY} from "../scripts/archive.mjs";
+import {sets} from "./helpers/policy.mjs";
 const identity={producerAppId:101,mergerAppId:102};
-function sets(){
- const common={source:REPOSITORY,source_type:"Repository",target:"branch",enforcement:"active",updated_at:"2026-10-30T00:00:00Z",bypass_actors:[]};
- return [
- {...common,id:1,conditions:{ref_name:{include:["refs/heads/main"],exclude:[]}},rules:[{type:"pull_request",parameters:{require_code_owner_review:true,dismiss_stale_reviews_on_push:true}},{type:"non_fast_forward"},{type:"deletion"},{type:"required_status_checks",parameters:{strict_required_status_checks_policy:true,required_status_checks:[{context:"validate",integration_id:99}]}}]},
- {...common,id:2,conditions:{ref_name:{include:["~ALL"],exclude:["refs/heads/main"]}},rules:[{type:"update"}]},
- {...common,id:3,conditions:{ref_name:{include:["refs/heads/main"],exclude:[]}},rules:[{type:"update",parameters:{update_allows_fetch_and_merge:false}}],bypass_actors:[{actor_type:"Integration",actor_id:102,bypass_mode:"always"}]}
- ];
-}
 const policyFor=s=>mergerPolicy(...s,99,101,102);
 test("owner policy allows ordinary metadata token while detecting configuration changes",async()=>{
  const source=sets(),policy=policyFor(source);
@@ -55,4 +47,20 @@ test("producer cannot bypass main updates and merger cannot bypass quality check
 });
 test("runtime identity drift cannot reuse an attested policy",async()=>{
  await assert.rejects(()=>verifyRules({request:()=>{throw Error("must not call");}},99,policyFor(sets()),{producerAppId:102,mergerAppId:102}),/Owner-verified/);
+});
+
+test("non-main deletion and merge-based updates cannot reopen the immutable branch boundary",()=>{
+ for(const mutate of [
+  s=>s[1].rules=s[1].rules.filter(r=>r.type!=="deletion"),
+  s=>s[1].rules[0].parameters.update_allows_fetch_and_merge=true,
+  s=>delete s[1].rules[0].parameters,
+  s=>s[1].rules.push({type:"creation"})
+ ]){const s=sets();mutate(s);assert.throws(()=>policyFor(s));}
+ const policy=policyFor(sets());
+ assert(!policy.rulesets[1].rules.some(r=>r.type==="creation"));
+});
+
+test("old update-only attestations fail before any merge-time API call",async()=>{
+ const policy=policyFor(sets());policy.rulesets[1].rules=policy.rulesets[1].rules.filter(r=>r.type!=="deletion");
+ await assert.rejects(()=>verifyRules({request:()=>{throw Error("unexpected API call");}},99,policy,identity),/updates and deletion/);
 });

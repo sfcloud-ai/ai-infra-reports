@@ -18,7 +18,8 @@ export function configurationPolicy(main,other,actionsAppId,now=Date.now()) {
  if(!has("pull_request")||!has("non_fast_forward")||!has("deletion")||status?.strict_required_status_checks_policy!==true||!status.required_status_checks?.some(c=>c.context==="validate"&&c.integration_id===actionsAppId))throw Error("Main requires strict Actions validate and PR/force/deletion protection");
  // Only explicitly named human users may maintain non-main branches. Apps cannot bypass.
  if(other.bypass_actors.some(a=>a.actor_type!=="User"||!Number.isSafeInteger(a.actor_id)||a.actor_id<=0||a.bypass_mode!=="always"))throw Error("Non-main bypass may name human Users only");
- if(stable(other.conditions)!==stable({ref_name:{include:["~ALL"],exclude:["refs/heads/main"]}})||!other.rules.some(r=>r.type==="update"))throw Error("All non-main branches must deny App updates");
+ if(stable(other.conditions)!==stable({ref_name:{include:["~ALL"],exclude:["refs/heads/main"]}})||!other.rules.some(r=>r.type==="update"&&r.parameters?.update_allows_fetch_and_merge===false)||!other.rules.some(r=>r.type==="deletion"))throw Error("All non-main branches must deny App updates and deletion");
+ if(other.rules.some(r=>r.type==="creation"))throw Error("Report Apps must be able to create a fresh non-main branch");
  return {schema_version:"1.0",actions_app_id:actionsAppId,rulesets:[main,other].map(s=>({...publicRuleset(s),bypass_actors:s.bypass_actors}))};
 }
 

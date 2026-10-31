@@ -9,6 +9,13 @@ test("binary Git batches verify object identity, length and separator",()=>{
 });
 
 import {GitObjects} from "../scripts/git-objects.mjs";
+
+test("Git object subprocesses do not inherit the Producer secret-file location",async()=>{
+ const original=process.env.REPORT_PRODUCER_PRIVATE_KEY_FILE,store=new GitObjects();
+ process.env.REPORT_PRODUCER_PRIVATE_KEY_FILE="fixture-secret-path";
+ try {await store.init();assert.equal(store.env.REPORT_PRODUCER_PRIVATE_KEY_FILE,undefined);}
+ finally {if(original===undefined)delete process.env.REPORT_PRODUCER_PRIVATE_KEY_FILE;else process.env.REPORT_PRODUCER_PRIVATE_KEY_FILE=original;await store.close();}
+});
 test("real Git batch reads binary objects without checkout and reuses cached bytes",async()=>{
  const store=new GitObjects();
  try{
