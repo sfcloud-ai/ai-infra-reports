@@ -53,16 +53,34 @@ export async function encodeBundle(files,requestId,base,promptCommit){
  const bytes=Buffer.from(JSON.stringify(data)+"\n");await decodeBundle(bytes);return bytes;
 }
 // Caller must obtain this message from the authenticated, pinned channel history.
+function connectorCommand(message,config){
+ const b=message.blocks,footer=config.sender_attribution_text;
+ requireThat(typeof footer==="string"&&footer.length>0&&message.text.endsWith(" "+footer),"Connector attribution mismatch");
+ const command=message.text.slice(0,-footer.length-1);
+ // Match the actual visible command and attribution, not just Slack's fallback.
+ requireThat(Array.isArray(b)&&b.length===2&&b[0]?.type==="rich_text"&&b[1]?.type==="context","Connector visible blocks required");
+ for(const block of b)requireThat(Object.keys(block).every(k=>["type","block_id","elements"].includes(k)),"Unexpected connector block field");
+ const sections=b[0].elements,context=b[1].elements;
+ requireThat(Array.isArray(sections)&&sections.length===1&&sections[0]?.type==="rich_text_section"&&Object.keys(sections[0]).sort().join()==="elements,type","Connector command section");
+ const content=sections[0].elements;
+ requireThat(Array.isArray(content)&&content.length===1&&content[0]?.type==="text"&&Object.keys(content[0]).sort().join()==="text,type"&&content[0].text===command,"Connector visible command mismatch");
+ requireThat(Array.isArray(context)&&context.length===1&&context[0]?.type==="mrkdwn"&&context[0].text===footer&&context[0].verbatim===false&&Object.keys(context[0]).sort().join()==="text,type,verbatim","Connector visible attribution mismatch");
+ return command;
+}
 export function acceptMessage(message,config,now=Date.now()){
  if(!message?.text?.startsWith("!ai-report "))return null;
  const appSender=config.sender_bot_id!==undefined||config.sender_app_id!==undefined;
- const identity=message.user===config.sender_user_id&&(appSender
+ const userAppSender=config.sender_user_app_id!==undefined;
+ const identity=message.user===config.sender_user_id&&(userAppSender
+  ?!appSender&&!message.bot_id&&typeof config.sender_user_app_id==="string"&&message.app_id===config.sender_user_app_id
+  :appSender
   ?typeof config.sender_bot_id==="string"&&typeof config.sender_app_id==="string"&&message.bot_id===config.sender_bot_id&&message.app_id===config.sender_app_id
   :!message.bot_id&&!message.app_id);
- const nativeShare=message.subtype==="file_share"||(appSender&&message.subtype==="bot_message");
- requireThat(message.type==="message"&&nativeShare&&!message.edited&&!message.hidden&&(!message.thread_ts||message.thread_ts===message.ts)&&identity,"Untrusted report message");
+ const nativeShare=message.subtype==="file_share"||(appSender&&message.subtype==="bot_message")||(userAppSender&&message.subtype===undefined);
+ requireThat(message.type==="message"&&nativeShare&&!message.edited&&!message.hidden&&(!message.thread_ts||message.thread_ts===message.ts)&&identity&&(message.attachments===undefined||(Array.isArray(message.attachments)&&message.attachments.length===0)),"Untrusted report message");
  requireThat(/^\d{10}\.\d{6}$/.test(message.ts)&&Number(message.ts)*1000<=now+30000&&Number(message.ts)*1000>=now-15*60000,"Report message outside intake window");
- const match=/^!ai-report publish ([a-z0-9][a-z0-9-]{7,79}) ([a-f0-9]{64})$/.exec(message.text);
+ const command=userAppSender?connectorCommand(message,config):message.text;
+ const match=/^!ai-report publish ([a-z0-9][a-z0-9-]{7,79}) ([a-f0-9]{64})$/.exec(command);
  requireThat(match&&message.files?.length===1&&/^F[A-Z0-9]+$/.test(message.files[0].id),"Report command/file format");
  return {request_id:match[1],hash:match[2],source_ts:message.ts,file_id:message.files[0].id};
 }

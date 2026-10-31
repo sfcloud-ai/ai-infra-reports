@@ -26,7 +26,8 @@ export class SlackHandoff{
  }
  async download(event){
   const {data:{file:f}}=await this.call("files.info",{file:event.file_id});
-  requireThat(f?.id===event.file_id&&f.user===this.config.sender_user_id&&f.name==="ai-brief-bundle.json"&&f.mode==="hosted"&&!f.is_external&&Number.isSafeInteger(f.size)&&f.size>0&&f.size<=MAX_BUNDLE,"Unexpected Slack file metadata");
+  const userApp=this.config.sender_user_app_id!==undefined;
+  requireThat(f?.id===event.file_id&&f.user===this.config.sender_user_id&&f.name==="ai-brief-bundle.json"&&(f.mode==="hosted"||(userApp&&f.mode==="snippet"))&&(!userApp||f.user_team===this.config.team_id)&&!f.is_external&&Number.isSafeInteger(f.size)&&f.size>0&&f.size<=MAX_BUNDLE,"Unexpected Slack file metadata");
   requireThat(f.shares?.private?.[this.config.channel_id]?.some(s=>s.ts===event.source_ts),"File is not shared in the command message");
   const url=new URL(f.url_private_download);
   requireThat(url.protocol==="https:"&&url.hostname==="files.slack.com"&&!url.port&&!url.username&&!url.password&&!url.search&&!url.hash&&url.pathname.startsWith(`/files-pri/${this.config.team_id}-${event.file_id}/`),"Unexpected Slack download origin/path");
