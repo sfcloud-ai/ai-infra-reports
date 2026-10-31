@@ -20,10 +20,12 @@ export async function advanceHandoff(state,id,io){
   const pr=await io.readPR(number);
   requireThat(pr.number===Number(number)&&pr.head?.sha===job.detail.head&&pr.head?.repo?.full_name===REPOSITORY&&pr.base?.repo?.full_name===REPOSITORY&&pr.base?.ref==="main","PR identity changed");
   if(!pr.merged){requireThat(pr.state==="open","PR closed without merging");return;}
-  requireThat(SHA.test(pr.merge_commit_sha),"Missing merge commit");
-  const [head,merge]=await Promise.all([io.readCommit(job.detail.head),io.readCommit(pr.merge_commit_sha)]);
-  requireThat(head.sha===job.detail.head&&merge.sha===pr.merge_commit_sha&&SHA.test(head.tree?.sha)&&head.tree.sha===merge.tree?.sha&&merge.parents?.length===1&&merge.parents[0].sha===bundle.data.expected_base_sha,"Merge must contain the exact proposed tree and base (squash only)");
-  state.move(id,"pr_open","merged",{...job.detail,commit:pr.merge_commit_sha});return;
+  requireThat(pr.merged===true&&pr.state==="closed","Merged PR state required");
+  const commit=await io.readMergeCommit(number,pr);
+  requireThat(typeof commit==="string"&&SHA.test(commit),"Missing merge commit evidence");
+  const [head,merge]=await Promise.all([io.readCommit(job.detail.head),io.readCommit(commit)]);
+  requireThat(head.sha===job.detail.head&&merge.sha===commit&&SHA.test(head.tree?.sha)&&head.tree.sha===merge.tree?.sha&&head.parents?.length===1&&head.parents[0].sha===bundle.data.expected_base_sha&&merge.parents?.length===1&&merge.parents[0].sha===bundle.data.expected_base_sha,"Merge must contain the exact proposed tree and base (squash only)");
+  state.move(id,"pr_open","merged",{...job.detail,commit});return;
  }
  if(job.phase==="merged"){
   const proof=await io.verify(job.detail.commit,bundle);
