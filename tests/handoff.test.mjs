@@ -56,6 +56,52 @@ test("App intake pins user, bot and App IDs without accepting a general bot allo
  assert.throws(()=>acceptMessage({...message,user:"U789"},appConfig,now));
  for(const patch of [{sender_bot_id:"B789"},{sender_app_id:"A789"},{sender_bot_id:null,sender_app_id:"A789"},{sender_bot_id:"B456",sender_app_id:"A789"}])assert.throws(()=>validateConfig({...config,...patch}));
 });
+const userAppConfig=validateConfig({...config,sender_user_app_id:"A789",sender_attribution_text:"*Sent using* <@U789>"});
+function connectorMessage(command=message.text){
+ return {...message,subtype:undefined,app_id:"A789",text:command+" "+userAppConfig.sender_attribution_text,
+  blocks:[{type:"rich_text",block_id:"variable",elements:[{type:"rich_text_section",elements:[{type:"text",text:command}]}]},
+          {type:"context",elements:[{type:"mrkdwn",text:userAppConfig.sender_attribution_text,verbatim:false}]}]};
+}
+test("user-authorized connector requires the exact user, App and visible native upload command",()=>{
+ const m=connectorMessage();assert.deepEqual(acceptMessage(m,userAppConfig,now),event);
+ assert.deepEqual(acceptMessage({...m,subtype:"file_share"},userAppConfig,now),event);
+ for(const c of [config,{...config,sender_bot_id:"B789",sender_app_id:"A789"}])assert.throws(()=>acceptMessage(m,c,now));
+ for(const patch of [{user:"U999"},{app_id:"A999"},{app_id:undefined},{bot_id:"B789"},{subtype:"bot_message"},{subtype:"message_changed"},{edited:{}},{hidden:true},{thread_ts:"1793447999.000001"},{ts:"1793440000.000001"},{ts:"1793449000.000001"},{files:[]},{files:[{id:"F123"},{id:"F999"}]},{attachments:[{text:"another command"}]},{attachments:{}},{text:message.text},{text:m.text+" extra"},{blocks:[]}]){
+  assert.throws(()=>acceptMessage({...m,...patch},userAppConfig,now));
+ }
+ for(const mutate of [
+  x=>x.blocks[0].elements[0].elements[0].text+=" altered",
+  x=>x.blocks[0].elements[0].elements.push({type:"text",text:"hidden authority"}),
+  x=>x.blocks[0].elements[0].elements[0].style={bold:true},
+  x=>x.blocks[0].elements.push({type:"rich_text_section",elements:[]}),
+  x=>x.blocks[1].elements[0].text="*Sent using* <@U999>",
+  x=>x.blocks[1].elements[0].verbatim=true,
+  x=>x.blocks[1].accessory={type:"image",image_url:"https://invalid.example/"},
+  x=>x.blocks.push({type:"section",text:{type:"plain_text",text:"extra"}})
+ ]){const changed=structuredClone(m);mutate(changed);assert.throws(()=>acceptMessage(changed,userAppConfig,now));}
+});
+test("connector configuration cannot ambiguously combine sender modes or omit attribution",()=>{
+ for(const patch of [
+  {sender_user_app_id:"A789"},{sender_attribution_text:"*Sent using* <@U789>"},
+  {sender_user_app_id:"A789",sender_attribution_text:""},
+  {sender_user_app_id:"A789",sender_attribution_text:"*Sent using* <@U789>\nextra"},
+  {...userAppConfig,sender_bot_id:"B789",sender_app_id:"A789"}
+ ])assert.throws(()=>validateConfig({...config,...patch}));
+});
+test("connector upload replay, changed bytes and identity migration cannot silently create another job",async()=>{
+ const dir=await mkdtemp(path.join(os.tmpdir(),"connector-replay-")),filename=path.join(dir,"state.sqlite");
+ let state;
+ try{
+  const accepted=acceptMessage(connectorMessage(),userAppConfig,now);
+  state=new HandoffState(filename,userAppConfig);state.admit(accepted,bytes);
+  assert.throws(()=>state.admit({...accepted,source_ts:"1793448001.000001"},bytes),/reused/);
+  assert.throws(()=>state.admit(accepted,Buffer.from("edited native snippet")),/digest/);
+  assert.deepEqual(state.pending(),[request]);state.close();state=null;
+  assert.throws(()=>new HandoffState(filename,{...userAppConfig,sender_user_app_id:"A999"}),/identity changed/);
+  assert.throws(()=>new HandoffState(filename,config),/identity changed/);
+ }finally{state?.close();await rm(dir,{recursive:true,force:true});}
+});
+
 test("publisher manifest grants exactly the required bot scopes and no other integration surfaces",async()=>{
  const manifest=JSON.parse(await readFile("deployment/slack-publisher.manifest.json","utf8"));
  assert.deepEqual(Object.keys(manifest).sort(),["display_information","features","oauth_config","settings"]);
@@ -152,6 +198,28 @@ test("Slack file transport sends credentials only to pinned Slack origins with r
   await assert.rejects(()=>s.download(event));assert.equal(n,1);
  }
 });
+test("native connector snippets keep owner, workspace, share and download origin checks",async()=>{
+ const hosted={...file,user_team:"T123"},snippet={...hosted,mode:"snippet"};
+ for(const metadata of [hosted,snippet]){
+  const s=new SlackHandoff(userAppConfig,"fake",async url=>url.startsWith("https://slack.com/")?Response.json({ok:true,file:metadata}):new Response(bytes));
+  assert.deepEqual(await s.download(event),bytes);
+ }
+ for(const [cfg,patch]of [
+  [config,{mode:"snippet"}],[userAppConfig,{user:"U999"}],[userAppConfig,{user_team:"T999"}],
+  [userAppConfig,{user_team:undefined}],[userAppConfig,{mode:"external"}],[userAppConfig,{is_external:true}],
+  [userAppConfig,{name:"different.json"}],[userAppConfig,{id:"F999"}],
+  [userAppConfig,{shares:{private:{C123:[{ts:"1793448001.000001"}]}}}],
+  [userAppConfig,{url_private_download:"https://files.slack.com.evil.example/file"}],
+  [userAppConfig,{url_private_download:"https://files.slack.com/files-pri/T999-F123/ai-brief-bundle.json"}],
+  [userAppConfig,{url_private_download:file.url_private_download+"?redirect=elsewhere"}]
+ ]){
+  let reads=0;const s=new SlackHandoff(cfg,"fake",async()=>{reads++;return Response.json({ok:true,file:{...snippet,...patch}});});
+  await assert.rejects(()=>s.download(event));assert.equal(reads,1);
+ }
+ const changed=new SlackHandoff(userAppConfig,"fake",async url=>url.startsWith("https://slack.com/")?Response.json({ok:true,file:snippet}):new Response("changed"));
+ await assert.rejects(()=>changed.download(event),/size mismatch/);
+});
+
 test("Slack preflight rejects expanded scopes, shared channels, wrong bot and incomplete history",async()=>{
  for(const bad of [null,"scopes","channel","mpim","bot","history"]){
   const s=new SlackHandoff(config,"fake",async url=>{

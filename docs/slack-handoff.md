@@ -52,6 +52,32 @@ requires reconciliation. The producer App must be explicitly invited to the
 control channel; adding it or the publisher bot requires separate authorization.
 The read-only `!ai-brief` control protocol remains independent.
 
+Some user-authorized connectors upload as the connected human, attach an App ID
+without a bot ID, render a separate attribution block, and store JSON as a native
+Slack snippet. This is a distinct opt-in mode: set `sender_user_app_id` and
+`sender_attribution_text` alongside `sender_user_id`, and omit both bot-sender
+fields. For example, a verified connector might use App `AEXAMPLE` and the exact
+attribution `*Sent using* <@UCONNECTOR>`. Obtain the values from authenticated
+message metadata and verify harmless uploads in the actual scheduled runtime.
+Do not copy display names, assume that desktop and scheduled tools share an
+identity, or activate from an offline fixture alone.
+
+This mode pins the human and App IDs, rejects bot identities, and requires the
+single visible command plus the exact attribution in both fallback text and
+native blocks. It accepts only the verified native file-share shape; arbitrary
+attachments, additional visible content, edits and thread replies are rejected.
+The JSON may be `hosted` or `snippet`, but its owner and workspace, private share
+timestamp, filename, size, Slack download origin and payload hash remain checked.
+An editable snippet is not trusted after upload: changed bytes fail the bound
+digest before admission. Other sender modes still reject snippets and connector
+attribution. The attribution is a format check, never a substitute for App identity.
+
+Switching sender modes changes the durable state identity. Reconcile and retain
+existing state before provisioning a separately scoped store; do not delete or
+reset it to retry. Leave consumption disabled until the real transport and the
+complete adapter validation pass. These optional fields do not change the
+publisher's OAuth permissions, installation scope or final-notification contract.
+
 ## Independent publisher process
 
 Provisioning and activation require separate authorization. The intended runtime
