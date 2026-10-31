@@ -1,1 +1,239 @@
-null
+{
+  "schema_version": "2.0",
+  "actions_app_id": 15368,
+  "rulesets": [
+    {
+      "id": 26280092,
+      "source": "sfcloud-ai/ai-infra-reports",
+      "source_type": "Repository",
+      "target": "branch",
+      "enforcement": "active",
+      "updated_at": "2026-11-01T01:41:36.451+08:00",
+      "conditions": {
+        "ref_name": {
+          "exclude": [],
+          "include": [
+            "refs/heads/main"
+          ]
+        }
+      },
+      "rules": [
+        {
+          "type": "pull_request",
+          "parameters": {
+            "required_approving_review_count": 0,
+            "dismiss_stale_reviews_on_push": true,
+            "required_reviewers": [],
+            "require_code_owner_review": false,
+            "dismissal_restriction": {
+              "enabled": false,
+              "allowed_actors": []
+            },
+            "require_last_push_approval": false,
+            "required_review_thread_resolution": false,
+            "require_extra_approval_for_unattributed_changes": true,
+            "allowed_merge_methods": [
+              "merge",
+              "squash",
+              "rebase"
+            ]
+          }
+        },
+        {
+          "type": "non_fast_forward"
+        },
+        {
+          "type": "deletion"
+        },
+        {
+          "type": "required_status_checks",
+          "parameters": {
+            "strict_required_status_checks_policy": true,
+            "do_not_enforce_on_create": false,
+            "required_status_checks": [
+              {
+                "context": "validate",
+                "integration_id": 15368
+              }
+            ]
+          }
+        }
+      ],
+      "bypass_actors": []
+    },
+    {
+      "id": 26280093,
+      "source": "sfcloud-ai/ai-infra-reports",
+      "source_type": "Repository",
+      "target": "branch",
+      "enforcement": "active",
+      "updated_at": "2026-11-01T01:41:37.846+08:00",
+      "conditions": {
+        "ref_name": {
+          "exclude": [
+            "refs/heads/main"
+          ],
+          "include": [
+            "~ALL"
+          ]
+        }
+      },
+      "rules": [
+        {
+          "type": "update"
+        },
+        {
+          "type": "deletion"
+        }
+      ],
+      "bypass_actors": [
+        {
+          "actor_id": 13200012,
+          "actor_type": "User",
+          "bypass_mode": "always"
+        },
+        {
+          "actor_id": 44562010,
+          "actor_type": "User",
+          "bypass_mode": "always"
+        },
+        {
+          "actor_id": 93473331,
+          "actor_type": "User",
+          "bypass_mode": "always"
+        },
+        {
+          "actor_id": 117171321,
+          "actor_type": "User",
+          "bypass_mode": "always"
+        },
+        {
+          "actor_id": 213046593,
+          "actor_type": "User",
+          "bypass_mode": "always"
+        }
+      ]
+    },
+    {
+      "id": 26280094,
+      "source": "sfcloud-ai/ai-infra-reports",
+      "source_type": "Repository",
+      "target": "branch",
+      "enforcement": "active",
+      "updated_at": "2026-11-01T01:41:38.869+08:00",
+      "conditions": {
+        "ref_name": {
+          "exclude": [],
+          "include": [
+            "refs/heads/main"
+          ]
+        }
+      },
+      "rules": [
+        {
+          "type": "update"
+        }
+      ],
+      "bypass_actors": [
+        {
+          "actor_id": 5556896,
+          "actor_type": "Integration",
+          "bypass_mode": "always"
+        },
+        {
+          "actor_id": 13200012,
+          "actor_type": "User",
+          "bypass_mode": "always"
+        },
+        {
+          "actor_id": 44562010,
+          "actor_type": "User",
+          "bypass_mode": "always"
+        },
+        {
+          "actor_id": 93473331,
+          "actor_type": "User",
+          "bypass_mode": "always"
+        },
+        {
+          "actor_id": 117171321,
+          "actor_type": "User",
+          "bypass_mode": "always"
+        },
+        {
+          "actor_id": 213046593,
+          "actor_type": "User",
+          "bypass_mode": "always"
+        }
+      ]
+    },
+    {
+      "id": 26280095,
+      "source": "sfcloud-ai/ai-infra-reports",
+      "source_type": "Repository",
+      "target": "branch",
+      "enforcement": "active",
+      "updated_at": "2026-11-01T01:41:39.897+08:00",
+      "conditions": {
+        "ref_name": {
+          "exclude": [],
+          "include": [
+            "refs/heads/main"
+          ]
+        }
+      },
+      "rules": [
+        {
+          "type": "pull_request",
+          "parameters": {
+            "required_approving_review_count": 0,
+            "dismiss_stale_reviews_on_push": true,
+            "required_reviewers": [],
+            "require_code_owner_review": true,
+            "dismissal_restriction": {
+              "enabled": false,
+              "allowed_actors": []
+            },
+            "require_last_push_approval": false,
+            "required_review_thread_resolution": false,
+            "require_extra_approval_for_unattributed_changes": true,
+            "allowed_merge_methods": [
+              "merge",
+              "squash",
+              "rebase"
+            ]
+          }
+        }
+      ],
+      "bypass_actors": [
+        {
+          "actor_id": 13200012,
+          "actor_type": "User",
+          "bypass_mode": "pull_request"
+        },
+        {
+          "actor_id": 44562010,
+          "actor_type": "User",
+          "bypass_mode": "pull_request"
+        },
+        {
+          "actor_id": 93473331,
+          "actor_type": "User",
+          "bypass_mode": "pull_request"
+        },
+        {
+          "actor_id": 117171321,
+          "actor_type": "User",
+          "bypass_mode": "pull_request"
+        },
+        {
+          "actor_id": 213046593,
+          "actor_type": "User",
+          "bypass_mode": "pull_request"
+        }
+      ]
+    }
+  ],
+  "producer_app_id": 5556888,
+  "merger_app_id": 5556896
+}
