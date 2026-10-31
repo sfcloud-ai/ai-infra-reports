@@ -1,0 +1,100 @@
+---
+// 修改自 MetriCraft 728caaa；报告按日期索引与子文章组织。见 LICENSE、NOTICE。
+import { getEntry, render } from "astro:content";
+import Shell from "../layouts/Shell.astro";
+import Navigation from "../components/Navigation.astro";
+import {
+  pages,
+  localizedPage,
+  href as localizedHref,
+  repository,
+  preview,
+} from "../data/navigation.mjs";
+import { translator, type Locale } from "../data/translate";
+const { page, index, legacy = false } = Astro.props;
+const locale = Astro.props.locale as Locale;
+const t = translator(locale);
+const href = (slug = "") => localizedHref(slug, locale);
+const entry = await getEntry("docs", page.source.replace(/\.md$/, ""));
+if (!entry) throw new Error(`Missing documentation: ${page.source}`);
+const { Content, headings } = await render(entry);
+const toc = headings.filter((heading) => heading.depth === 2);
+let evidenceId = "report-evidence";
+while (headings.some(heading => heading.slug === evidenceId)) evidenceId += "-sources";
+if (page.evidence?.length) toc.push({depth:2, slug:evidenceId, text:"来源与证据"});
+const previous = pages[index - 1] && localizedPage(pages[index - 1], locale),
+  next = pages[index + 1] && localizedPage(pages[index + 1], locale);
+---
+
+<Shell
+  title={page.title}
+  description={page.description}
+  current={page.slug}
+  locale={locale}
+  legacy={legacy}
+>
+  <div class="docs-layout">
+    <aside class="sidebar">
+      <div class="edition">
+        <span class="status-dot"></span>报告归档<span>{page.date || "INDEX"}</span>
+      </div><Navigation current={page.slug} locale={locale} />
+    </aside>
+    <main id="content" class="doc-main" data-report-id={page.slug} data-pagefind-body>
+      <div class="eyebrow">{page.group}</div>
+      <h1 data-pagefind-meta="title">{page.title}</h1>
+      <p class="doc-intro">{page.description}</p>
+      {toc.length > 0 && <details class="mobile-toc" data-pagefind-ignore><summary>文章目录</summary><ul>{toc.map(heading => <li><a href={`#${heading.slug}`}>{heading.text}</a></li>)}</ul></details>}
+      <div class="prose">
+        <Content />
+        {page.evidence?.length > 0 && <section data-report-sources>
+          <h2 id={evidenceId}>来源与证据</h2>
+          {page.evidence.map(entry => <div><h3>{entry.title}</h3><ul>{entry.urls.map(url => <li><a href={url}>{url}</a></li>)}</ul></div>)}
+        </section>}
+      </div>
+      {repository && !preview && <div class="source-link" data-pagefind-ignore>
+        <a href={`${repository}/tree/${page.commit}/${page.origin}`}
+          >{t("Read this page on GitHub ↗")}</a
+        >
+      </div>}
+      <nav
+        class="page-neighbors"
+        aria-label={t("Adjacent pages")}
+        data-pagefind-ignore
+      >
+        {
+          previous ? (
+            <a href={href(previous.slug)}>
+              <span>{t("← Previous")}</span>
+              {previous.title}
+            </a>
+          ) : (
+            <div />
+          )
+        }
+        {
+          next && (
+            <a href={href(next.slug)}>
+              <span>{t("Next →")}</span>
+              {next.title}
+            </a>
+          )
+        }
+      </nav>
+    </main>
+    <aside class="table-of-contents">
+      <span class="eyebrow">{t("On this page")}</span><nav
+        aria-label={t("On this page")}
+      >
+        <ul>
+          {
+            toc.map((heading) => (
+              <li>
+                <a href={`#${heading.slug}`}>{heading.text}</a>
+              </li>
+            ))
+          }
+        </ul>
+      </nav>
+    </aside>
+  </div>
+</Shell>

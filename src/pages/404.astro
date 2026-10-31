@@ -1,0 +1,7 @@
+---
+import Shell from "../layouts/Shell.astro";
+import {href} from "../data/navigation.mjs";
+---
+<Shell title="页面不存在" description="这个地址没有对应的报告。" noindex={true}>
+<main id="content" class="not-found"><div class="eyebrow">404</div><h1>没有找到这篇报告</h1><p>可以搜索关键词，或返回日期索引。</p><a href={href()}>返回报告归档 →</a></main>
+</Shell>

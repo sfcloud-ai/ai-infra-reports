@@ -1,0 +1,30 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-10-30",
+  "revision": 1,
+  "title": "训练与通信：先理解瓶颈所在",
+  "subtitle": "合成样例 · 通信重叠的观察方法与限制",
+  "articles": [
+    {
+      "id": "communication",
+      "title": "通信重叠：何时真正缩短迭代",
+      "summary": "用时间线解释计算与通信重叠的适用条件。",
+      "sha256": "e6ab1d1ce813af0fa7d61b31aa765536cef0783c56e7a8a6d9f61d672e5ba11d"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-10-30-communication",
+      "event_key": "communication",
+      "title": "通信重叠：何时真正缩短迭代",
+      "summary": "用时间线解释计算与通信重叠的适用条件。",
+      "source_urls": [
+        "https://docs.pytorch.org/"
+      ],
+      "update_of": null,
+      "article_id": "communication"
+    }
+  ],
+  "images": [],
+  "poster": null
+}
