@@ -1,5 +1,7 @@
 # AI Infra Reports
 
+Optional publisher integration: [Slack report handoff](docs/slack-handoff.md) (disabled until separately configured and authorized).
+
 AI 基础设施报告的独立公开档案。每天一个索引，每个主题一篇独立文章；完整分析、证据和图片在站内阅读。消息端长期格式为「本期子标题 + 已发布的日期索引 URL + 单张信息海报」。
 
 站点直接复用 [MetriCraft](https://github.com/NagareWorks/metricraft) 的 Astro Shell、Doc、导航、Pagefind、主题与移动对话框代码，移除 SDK / Rust / playground 耦合，换用中性白灰和炭灰主题。来源固定在 728caaae2b59021c62731c6d54c3f515fe629811；许可与修改说明见 LICENSE、NOTICE。
