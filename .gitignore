@@ -1,0 +1,8 @@
+node_modules/
+.astro/
+dist/
+dist-preview/
+generated/
+public/reports/
+.env*
+public/publication.json

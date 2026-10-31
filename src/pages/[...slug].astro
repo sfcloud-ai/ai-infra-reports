@@ -1,0 +1,8 @@
+---
+// MetriCraft document route adapted to report and child-article paths.
+import Doc from "../components/Doc.astro";
+import {pages} from "../data/navigation.mjs";
+export function getStaticPaths(){return pages.map((page,index)=>({params:{slug:page.slug},props:{page,index}}));}
+const {page,index}=Astro.props;
+---
+<Doc page={page} index={index} locale="zh" />

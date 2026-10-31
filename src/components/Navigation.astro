@@ -1,0 +1,11 @@
+---
+// Adapted directly from MetriCraft's grouped navigation and native details. See NOTICE.
+import {localizedGroups,href} from "../data/navigation.mjs";
+const {current}=Astro.props;
+const groups=localizedGroups();
+---
+<nav aria-label="报告索引">
+ <div class="nav-group"><p>AI INFRA / ARCHIVE</p><ul><li><a href={href()} aria-current={!current?"page":undefined}>全部报告</a></li></ul></div>
+ {groups.map((group,i)=><div class="nav-group"><details class="api-nav" open={current?.startsWith(group.slug)||(!current&&i===0)}><summary>{group.title}</summary><ul>{group.pages.map(page=><li><a href={href(page.slug)} aria-current={current===page.slug?"page":undefined}>{page.kind==="day"?"本期概览":page.title}</a></li>)}</ul></details></div>)}
+ {!groups.length&&<p class="empty-nav">正式报告发布后按日期归档。</p>}
+</nav>

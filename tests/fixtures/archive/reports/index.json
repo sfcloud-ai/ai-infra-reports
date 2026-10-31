@@ -1,0 +1,92 @@
+{
+  "schema_version": "1.0",
+  "reports": [
+    {
+      "schema_version": "1.0",
+      "date": "2026-10-30",
+      "revision": 1,
+      "title": "训练与通信：先理解瓶颈所在",
+      "subtitle": "合成样例 · 通信重叠的观察方法与限制",
+      "articles": [
+        {
+          "id": "communication",
+          "title": "通信重叠：何时真正缩短迭代",
+          "summary": "用时间线解释计算与通信重叠的适用条件。",
+          "sha256": "e6ab1d1ce813af0fa7d61b31aa765536cef0783c56e7a8a6d9f61d672e5ba11d",
+          "path": "reports/2026-10-30/r1/articles/communication.md"
+        }
+      ],
+      "poster": null,
+      "path": "reports/2026-10-30/r1/"
+    },
+    {
+      "schema_version": "1.0",
+      "date": "2026-10-31",
+      "revision": 1,
+      "title": "推理系统：从缓存效率到调度边界",
+      "subtitle": "合成样例 · 拆解 KV cache、调度与可复现实验",
+      "articles": [
+        {
+          "id": "kv-cache",
+          "title": "KV cache：容量之外的命中条件",
+          "summary": "从共享前缀到生命周期，解释缓存收益取决于哪些条件。",
+          "sha256": "30b4b455997b82e136422eabcd5b695e7c2cc2ac36d4aa1bffd88e244d9822b8",
+          "path": "reports/2026-10-31/r1/articles/kv-cache.md"
+        },
+        {
+          "id": "scheduler",
+          "title": "调度：吞吐量与尾延迟之间",
+          "summary": "将吞吐、排队和请求公平性放在同一个实验条件中理解。",
+          "sha256": "9e5486a66dfeb8034da38231002f62548b2fc15f423f7da3c2bc15a570992beb",
+          "path": "reports/2026-10-31/r1/articles/scheduler.md"
+        }
+      ],
+      "poster": null,
+      "path": "reports/2026-10-31/r1/"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-10-30-communication",
+      "event_key": "communication",
+      "title": "通信重叠：何时真正缩短迭代",
+      "summary": "用时间线解释计算与通信重叠的适用条件。",
+      "source_urls": [
+        "https://docs.pytorch.org/"
+      ],
+      "update_of": null,
+      "article_id": "communication",
+      "fingerprint": "d36ba91b3a79b7b17e8c365c7cbc49fd2d30b6215feb499572bfb11a3bdafc92",
+      "date": "2026-10-30",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-31-kv-cache",
+      "event_key": "kv-cache",
+      "title": "KV cache：容量之外的命中条件",
+      "summary": "从共享前缀到生命周期，解释缓存收益取决于哪些条件。",
+      "source_urls": [
+        "https://docs.vllm.ai/"
+      ],
+      "update_of": null,
+      "article_id": "kv-cache",
+      "fingerprint": "4f598b34bbbfcd533f024cfea19392dc150d36e5757d709b3dc837a8657c0910",
+      "date": "2026-10-31",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-31-scheduler",
+      "event_key": "scheduler",
+      "title": "调度：吞吐量与尾延迟之间",
+      "summary": "将吞吐、排队和请求公平性放在同一个实验条件中理解。",
+      "source_urls": [
+        "https://docs.vllm.ai/"
+      ],
+      "update_of": null,
+      "article_id": "scheduler",
+      "fingerprint": "c8239dc3a967acca983d3e9c1842145b48ed3cf8e10c4ada620a39209967139b",
+      "date": "2026-10-31",
+      "revision": 1
+    }
+  ]
+}

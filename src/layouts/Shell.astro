@@ -1,0 +1,173 @@
+---
+// 修改自 MetriCraft 728caaa；移除 SDK 页面、语言路由与构建耦合，适配报告站。见 LICENSE、NOTICE。
+import Navigation from "../components/Navigation.astro";
+import {
+  href as localizedHref,
+  asset,
+  repository,
+} from "../data/navigation.mjs";
+import { translator, type Locale } from "../data/translate";
+import "@fontsource/manrope/latin-400.css";
+import "@fontsource/manrope/latin-500.css";
+import "@fontsource/manrope/latin-600.css";
+import "@fontsource/manrope/latin-700.css";
+import "@fontsource/manrope/latin-800.css";
+import "@fontsource/ibm-plex-mono/latin-400.css";
+import "../styles/site.css";
+interface Props {
+  title: string;
+  description: string;
+  current?: string;
+  home?: boolean;
+  noindex?: boolean;
+  locale?: Locale;
+  legacy?: boolean;
+}
+const {
+  title,
+  description,
+  current,
+  home = false,
+  noindex = false,
+  locale = "zh",
+  legacy = false,
+} = Astro.props;
+const href = (slug = "") => localizedHref(slug, locale);
+const t = translator(locale);
+const canonical = new URL(href(current), Astro.site);
+
+---
+
+<!doctype html>
+<html lang={locale === "zh" ? "zh-CN" : "en"}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>
+      {`${title} · AI Infra 晨报`}
+    </title>
+    <meta name="description" content={description} />
+    <meta name="color-scheme" content="light dark" />
+    {(noindex || legacy) && <meta name="robots" content="noindex" />}
+    <link rel="canonical" href={canonical} />
+    <meta property="og:title" content={`${title} · AI Infra 晨报`} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <link rel="icon" type="image/svg+xml" href={asset("favicon.svg")} />
+    <script is:inline>
+      try {
+        const preference = localStorage.getItem("ai-brief-theme");
+        document.documentElement.dataset.theme =
+          preference === "dark" ||
+          (!preference && matchMedia("(prefers-color-scheme: dark)").matches)
+            ? "dark"
+            : "light";
+      } catch {
+        document.documentElement.dataset.theme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      }
+    </script>
+  </head>
+  <body
+    class:list={[home && "home"]}
+    data-pagefind-ignore={legacy || noindex ? "all" : undefined}
+  >
+    <a class="skip-link" href="#content">{t("Skip to content")}</a>
+    <header class="site-header">
+      <a class="brand" href={href()} aria-label={t("AI Infra 晨报 home")}>
+        <span class="report-mark" aria-hidden="true">AI</span>
+        AI Infra 晨报<span class="brand-divider">/</span><span class="brand-docs"
+          >{t("docs")}</span
+        >
+      </a>
+      <nav class="header-nav" aria-label="主导航"><a href={href()}>报告归档</a></nav>
+      <div class="header-actions">
+<button
+          class="search-trigger"
+          data-search-open
+          aria-label={t("Search documentation")}
+          ><span aria-hidden="true">⌕</span><span class="search-label"
+            >{t("Search docs")}</span
+          ><kbd>⌘ K</kbd></button
+        >
+        <button
+          class="icon-button"
+          id="theme-toggle"
+          aria-label={t("Toggle color theme")}
+          title={t("Toggle color theme")}
+          ><svg
+            width="19"
+            height="19"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            aria-hidden="true"
+            ><circle cx="12" cy="12" r="4"></circle><path
+              d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M19 5l-1.5 1.5m-11 11L5 19"
+            ></path></svg
+          ></button
+        >
+        {repository && <a class="github-link" href={repository}>GitHub ↗</a>}
+        <button
+          class="icon-button mobile-menu"
+          id="menu-open"
+          aria-label={t("Open navigation")}
+          aria-controls="mobile-navigation"
+          ><svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path></svg
+          ></button
+        >
+      </div>
+    </header>
+    <slot />
+    <footer class="site-footer"><a class="footer-brand" href={href()}>AI Infra 晨报</a><span>机制、证据与工程边界。</span></footer>
+    <dialog id="mobile-navigation" aria-label={t("Documentation navigation")}>
+      <div class="dialog-top">
+        <strong>{t("Explore the docs")}</strong><button
+          class="icon-button"
+          data-close-dialog
+          aria-label={t("Close navigation")}>✕</button
+        >
+      </div><Navigation current={current} locale={locale} />
+    </dialog>
+    <dialog id="search-dialog" aria-labelledby="search-heading">
+      <div class="dialog-top">
+        <h2 id="search-heading">{t("Find your next step")}</h2><button
+          class="icon-button"
+          data-close-dialog
+          aria-label={t("Close search")}>✕</button
+        >
+      </div>
+      <label class="sr-only" for="search-input"
+        >{t("Search documentation")}</label
+      >
+      <input
+        type="search"
+        id="search-input"
+        placeholder={t("Try “grouping”, “async”, or “memory”…")}
+        autocomplete="off"
+      />
+      <p
+        class="search-status"
+        id="search-status"
+        role="status"
+        aria-live="polite"
+      >
+        {t("Search guides, examples and the Python API.")}
+      </p>
+      <ol id="search-results"></ol>
+      <div class="search-footer">
+        <span>{t("Local search · no tracking")}</span><span
+          ><kbd>esc</kbd>{" "}{t("to close")}</span
+        >
+      </div>
+    </dialog>
+    <script src="../scripts/site.ts"></script>
+  </body>
+</html>

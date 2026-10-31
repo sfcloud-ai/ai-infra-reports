@@ -1,0 +1,31 @@
+{
+  "name": "ai-infra-report-site",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "prepare:content": "node scripts/prepare-content.mjs",
+    "prebuild": "npm run prepare:content && astro sync --force",
+    "build": "astro build && pagefind --site dist && node scripts/check-output.mjs dist",
+    "preview": "astro preview --host 127.0.0.1",
+    "test": "node --test tests/*.test.mjs",
+    "fixtures": "node scripts/make-fixtures.mjs",
+    "validate": "node scripts/validate.mjs",
+    "build:preview": "node scripts/build-preview.mjs",
+    "check": "npm test && npm run validate && npm run build"
+  },
+  "dependencies": {
+    "@astrojs/markdown-remark": "7.3.4",
+    "@fontsource/ibm-plex-mono": "^5.2.0",
+    "@fontsource/manrope": "^5.2.0",
+    "astro": "7.4.2",
+    "pagefind": "1.5.2",
+    "sharp": "0.35.5",
+    "mdast-util-from-markdown": "2.1.0",
+    "mdast-util-gfm": "3.1.0",
+    "micromark-extension-gfm": "3.0.0"
+  }
+}

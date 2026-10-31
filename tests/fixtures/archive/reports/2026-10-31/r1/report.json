@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-10-31",
+  "revision": 1,
+  "title": "推理系统：从缓存效率到调度边界",
+  "subtitle": "合成样例 · 拆解 KV cache、调度与可复现实验",
+  "articles": [
+    {
+      "id": "kv-cache",
+      "title": "KV cache：容量之外的命中条件",
+      "summary": "从共享前缀到生命周期，解释缓存收益取决于哪些条件。",
+      "sha256": "30b4b455997b82e136422eabcd5b695e7c2cc2ac36d4aa1bffd88e244d9822b8"
+    },
+    {
+      "id": "scheduler",
+      "title": "调度：吞吐量与尾延迟之间",
+      "summary": "将吞吐、排队和请求公平性放在同一个实验条件中理解。",
+      "sha256": "9e5486a66dfeb8034da38231002f62548b2fc15f423f7da3c2bc15a570992beb"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-10-31-kv-cache",
+      "event_key": "kv-cache",
+      "title": "KV cache：容量之外的命中条件",
+      "summary": "从共享前缀到生命周期，解释缓存收益取决于哪些条件。",
+      "source_urls": [
+        "https://docs.vllm.ai/"
+      ],
+      "update_of": null,
+      "article_id": "kv-cache"
+    },
+    {
+      "id": "2026-10-31-scheduler",
+      "event_key": "scheduler",
+      "title": "调度：吞吐量与尾延迟之间",
+      "summary": "将吞吐、排队和请求公平性放在同一个实验条件中理解。",
+      "source_urls": [
+        "https://docs.vllm.ai/"
+      ],
+      "update_of": null,
+      "article_id": "scheduler"
+    }
+  ],
+  "images": [],
+  "poster": null
+}
