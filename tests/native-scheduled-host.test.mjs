@@ -14,6 +14,7 @@ import {publicationSite} from './helpers/publication-site.mjs';
 import {FILES,SCOPE,MERGE,TARGET} from './helpers/cloud-sender-fixture.mjs';
 const ID='isolated-native-host-fixture',workspace='fixture-workspace.slack.com';
 const jsonResult=value=>({content:[{type:'text',text:JSON.stringify(value)}]});
+const nativeTicket=(id,url,length)=>jsonResult({result:`Upload URL generated successfully!\n\nFile ID: ${id}\nUpload URL: ${url}\n\nInstructions:\n1. POST the raw file bytes to the Upload URL above\n2. Set Content-Type to match the file type\n3. Content-Length must be exactly ${length} bytes\n4. After upload completes, call slack_complete_file_upload with the File ID to finalize\n`});
 const bytes=await encodeBundle(FILES,ID,'a'.repeat(40),'b'.repeat(40)),bundle=await decodeBundle(bytes);
 const poster=bundle.files.get(bundle.report.path+bundle.report.poster),manifest=createNoticeManifest(bundle.files.get(bundle.report.path+'report.json'),MERGE);
 const empty=()=>jsonResult({results:'# Search Results for: \n\nNo results found.\n',pagination_info:'End of results - No more pages available.\\n'});
@@ -50,7 +51,7 @@ async function rig({filename=':memory:',start=TARGET-600000,allowFinal=true}={})
  const outbox=new NoticeOutbox(publisher,notificationScope(pc));
  const proof={publication_status:'verified',commit:MERGE,request_id:ID,bundle_sha256:bundle.hash,edition:'2026-11-01/r1',url:manifest.index_url,poster_sha256:digest(poster)};
  const callTool=async(tool,args)=>{
-  if(tool===NATIVE_TOOLS.ticket){counts.ticket++;const id='F'+counts.ticket;uploads.set(id,{...args});return jsonResult({file_id:id,upload_url:'https://files.slack.com/upload/v1/'+id});}
+  if(tool===NATIVE_TOOLS.ticket){counts.ticket++;const id='F'+counts.ticket;uploads.set(id,{...args});return modes.malformedTicket?jsonResult({result:'Unexpected response'}):nativeTicket(id,'https://files.slack.com/upload/v1/'+id,args.content_length);}
   if(tool===NATIVE_TOOLS.complete){
    const file=uploads.get(args.file_id);assert(file?.bytes);
    if(args.channel_id==='D123'){
@@ -101,6 +102,14 @@ test('default host stops before begin and never consumes a live completion inten
 test('unknown poster POST never obtains a replacement ticket',async()=>{
  const r=await rig();try{r.modes.posterUnknown=true;await assert.rejects(()=>r.host.step(ID),/Poster upload unknown/);r.modes.posterUnknown=false;await assert.rejects(()=>r.host.step(ID),/Poster upload unknown/);assert.equal(r.counts.ticket,1);assert.equal(r.counts.post,1);assert.equal(r.counts.control,0);}finally{r.close();}
 });
+test('malformed ticket remains unresolved across restart without allocating or posting again',async()=>{
+ const tmp=await mkdtemp(path.join(os.tmpdir(),'native-ticket-')),filename=path.join(tmp,'state.sqlite'),r=await rig({filename});let reopened;
+ try{
+  r.modes.malformedTicket=true;await assert.rejects(()=>r.host.step(ID),/Poster upload unknown/);assert.equal(r.state.op(ID,'native:poster').phase,'unknown');
+  r.state.close();reopened=new CloudRunState(filename,SCOPE);r.modes.malformedTicket=false;
+  await assert.rejects(()=>r.makeHost(reopened).step(ID),/Poster upload unknown/);assert.equal(r.counts.ticket,1);assert.equal(r.counts.post,0);assert.equal(r.counts.control,0);assert.equal(r.counts.final,0);
+ }finally{reopened?.close();r.publisher.close();await rm(tmp,{recursive:true,force:true});}
+});
 test('lost control completion is reconciled through reads without reposting',async()=>{
  const r=await rig();try{await r.host.step(ID);r.modes.controlTimeout=true;await r.host.step(ID);assert.equal(r.state.get(ID).phase,'native_begin');assert.equal(r.counts.control,1);}finally{r.close();}
 });
@@ -139,8 +148,29 @@ test('locator rejects ambiguous results, changed sender, text, workspace and thr
  for(const [a,b] of [['1 results','2 results'],[workspace,'other.slack.com'],['available.\\\\n','available.\\\\nextra']]){const v=structuredClone(good);v.content[0].text=v.content[0].text.replace(a,b);assert.throws(()=>nativeMessageLocator(v,{config,channel:'C123',expectedText:'expected'}));}
 });
 test('transport rejects credential-bearing/foreign upload endpoints before POST',async()=>{
- for(const url of ['https://evil.example/upload/v1/id','http://files.slack.com/upload/v1/id','https://user:pass@files.slack.com/upload/v1/id','https://files.slack.com/other']){
-  const t=new NativeSlackTransport(async()=>jsonResult({file_id:'F123',upload_url:url}),{uploadFetch:()=>assert.fail('no POST')});await assert.rejects(()=>t.upload(Buffer.from('bytes'),'poster.png'));
+ for(const url of ['https://evil.example/upload/v1/id','http://files.slack.com/upload/v1/id','https://user:pass@files.slack.com/upload/v1/id','https://files.slack.com/other','https://files.slack.com:443/upload/v1/id','https://files.slack.com/upload/v1/a\nb','https://files.slack.com/upload/v1/a\\b','https://files.slack.com/upload/v1/id#fragment','https://files.slack.com/upload/v1/../../../other']){
+  for(const result of [jsonResult({file_id:'F123',upload_url:url}),nativeTicket('F123',url,5)]){
+   const t=new NativeSlackTransport(async()=>result,{uploadFetch:()=>assert.fail('no POST')});await assert.rejects(()=>t.upload(Buffer.from('bytes'),'poster.png'));
+  }
+ }
+});
+test('native formatted ticket preserves exact signed URL and file bytes; legacy JSON stays supported',async()=>{
+ const bytes=Buffer.from([0,128,255,10]),url='https://files.slack.com/upload/v1/AbC%2fDeF?token=XyZ%2B09&x=1';
+ for(const result of [nativeTicket('F123',url,bytes.length),jsonResult({file_id:'F123',upload_url:url})]){
+  let tickets=0,posts=0;
+  const t=new NativeSlackTransport(async(tool,args)=>{tickets++;assert.equal(tool,NATIVE_TOOLS.ticket);assert.deepEqual(args,{filename:'poster.png',content_length:4});return result;},{uploadFetch:async(actual,options)=>{posts++;assert.equal(actual,url);assert.deepEqual(options.body,bytes);assert.equal(options.headers['content-length'],'4');assert.equal(options.headers['content-type'],'image/png');assert.equal(options.redirect,'error');return new Response('ok');}});
+  assert.deepEqual(await t.upload(bytes,'poster.png'),{file_id:'F123'});assert.equal(tickets,1);assert.equal(posts,1);
+ }
+});
+test('malformed or ambiguous ticket envelopes fail closed before POST or completion',async()=>{
+ const valid=nativeTicket('F123','https://files.slack.com/upload/v1/test',5),text=JSON.parse(valid.content[0].text).result;
+ const cases=[{...valid,isError:true},{content:[...valid.content,...valid.content]},jsonResult(null),jsonResult([]),jsonResult({result:{file_id:'F123'}}),jsonResult({result:text,file_id:'FOTHER'}),jsonResult({file_id:'F123',upload_url:'https://files.slack.com/upload/v1/test',result:text}),jsonResult({result:text.replace('successfully!','maybe!')}),jsonResult({result:text+'File ID: FOTHER\n'}),jsonResult({result:text+'Upload URL: https://files.slack.com/upload/v1/other\n'}),jsonResult({result:text.replace('F123','f123')}),jsonResult({result:text+'x'.repeat(16384)}),{content:[{type:'text',text:'invalid JSON'}]}];
+ for(const result of cases){let calls=0;const t=new NativeSlackTransport(async()=>{calls++;return result;},{uploadFetch:()=>assert.fail('no POST')});await assert.rejects(()=>t.upload(Buffer.from('bytes'),'poster.png'));assert.equal(calls,1);}
+});
+test('formatted ticket with unsuccessful POST never retries or completes',async()=>{
+ for(const status of [302,401,500]){let tickets=0,posts=0;
+  const t=new NativeSlackTransport(async tool=>{assert.equal(tool,NATIVE_TOOLS.ticket);tickets++;return nativeTicket('F123','https://files.slack.com/upload/v1/test',5);},{uploadFetch:async()=>{posts++;return new Response(null,{status});}});
+  await assert.rejects(()=>t.upload(Buffer.from('bytes'),'poster.png'),/unconfirmed/);assert.equal(tickets,1);assert.equal(posts,1);
  }
 });
 test('starting too early does not allocate an expiring upload, and changed inputs cannot reuse a run',async()=>{

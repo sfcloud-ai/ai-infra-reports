@@ -12,9 +12,20 @@ export const NATIVE_TOOLS=Object.freeze({
  search:'mcp__codex_apps__slack_slack_search_public_and_private'
 });
 const TS=/^\d{10}\.\d{6}$/;
-function toolJson(result){
- requireThat(result&&!result.isError&&result.content?.length===1&&result.content[0].type==='text','Native tool failed or changed format');
+function toolJson(result,maxBytes=Infinity){
+ requireThat(result&&!result.isError&&result.content?.length===1&&result.content[0].type==='text'&&typeof result.content[0].text==='string'&&Buffer.byteLength(result.content[0].text)<=maxBytes,'Native tool failed or changed format');
  return JSON.parse(result.content[0].text);
+}
+function uploadTicket(result){
+ const value=toolJson(result,16384);
+ requireThat(value&&typeof value==='object'&&!Array.isArray(value),'Upload ticket format changed');
+ if(Object.keys(value).sort().join() === 'file_id,upload_url')return value;
+ requireThat(Object.keys(value).join()==='result'&&typeof value.result==='string','Upload ticket format changed');
+ // The native connector wraps a formatted result inside its JSON text block.
+ // Only these two fields are data; never interpret the trailing instructions.
+ const m=/^Upload URL generated successfully!\r?\n\r?\nFile ID: (F[A-Z0-9]+)\r?\nUpload URL: ([^\r\n]+)\r?\n\r?\nInstructions:\r?\n([^\0]+)$/.exec(value.result);
+ requireThat(m&&!/(?:File ID|Upload URL):/.test(m[3]),'Upload ticket format changed');
+ return {file_id:m[1],upload_url:m[2]};
 }
 function searchArgs(config,keywords,channel=config.channel_id){
  return {keywords,filters:`in:<#${channel}> from:<@${config.sender_user_id}>`,natural_language_query:'',channel_types:channel.startsWith('D')?'im':'private_channel',content_types:'messages',include_bots:true,include_context:false,response_format:'detailed',limit:2,sort:'timestamp',sort_dir:'desc'};
@@ -37,8 +48,9 @@ export function nativeMessageLocator(result,{config,channel,expectedText,expecte
 export class NativeSlackTransport{
  constructor(callTool,{uploadFetch=fetch}={}){this.callTool=callTool;this.uploadFetch=uploadFetch;}
  async upload(bytes,name){
-  const t=toolJson(await this.callTool(NATIVE_TOOLS.ticket,{filename:name,content_length:bytes.length}));
+  const t=uploadTicket(await this.callTool(NATIVE_TOOLS.ticket,{filename:name,content_length:bytes.length}));
   requireThat(typeof t.file_id==='string'&&/^F[A-Z0-9]+$/.test(t.file_id)&&typeof t.upload_url==='string','Upload ticket format changed');
+  requireThat(/^https:\/\/files\.slack\.com\/upload\/v1\/[A-Za-z0-9._~!$&'()*+,;=:@%/?-]+$/.test(t.upload_url),'Unexpected upload endpoint');
   const u=new URL(t.upload_url);
   requireThat(u.protocol==='https:'&&u.hostname==='files.slack.com'&&!u.port&&!u.username&&!u.password&&!u.hash&&u.pathname.startsWith('/upload/v1/'),'Unexpected upload endpoint');
   // Never normalize the signed URL, follow redirects or retry this mutation.
