@@ -28,7 +28,8 @@ export function readNativeReceipt(invocation,{bytes,sourceTs,config}){
  const result=invocation.result;
  requireThat(result&&!result.isError&&Array.isArray(result.content)&&result.content.length===1&&result.content[0].type==="text","Incomplete native tool result");
  const body=JSON.parse(result.content[0].text);
- requireThat(body.pagination_info==="End of results - No more pages available.\n"&&typeof body.results==="string"&&Buffer.byteLength(body.results)<=MAX_NOTICE_COMMAND+4096,"Incomplete or oversized native receipt search");
+ const finished=["End of results - No more pages available.\n","End of results - No more pages available.\\n"];
+ requireThat(finished.includes(body.pagination_info)&&typeof body.results==="string"&&Buffer.byteLength(body.results)<=MAX_NOTICE_COMMAND+4096,"Incomplete or oversized native receipt search");
  const match=/^# Search Results for: [^\n]*\n\n## Messages \(1 results\)\n### Result 1 of 1\nChannel: #[^\n]+ \(ID: ([CG][A-Z0-9]+)\)\nFrom: [^\n]+ \(ID: (U[A-Z0-9]+)\)  \[BOT\]\nTime: [^\n]+\nMessage_ts: (\d{10}\.\d{6})\nPermalink: \[link\]\((https:\/\/[^\n]+)\)\nText: \n!ai-notice receipt ([^\n]+)\n\n---\n\n$/.exec(body.results);
  requireThat(match&&match[1]===config.channel_id&&match[2]===config.bot_user_id&&match[3]>sourceTs,"Untrusted native receipt envelope");
  const url=new URL(match[4]);
