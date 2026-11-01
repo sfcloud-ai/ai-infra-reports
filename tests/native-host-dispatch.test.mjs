@@ -3,6 +3,15 @@ import assert from 'node:assert/strict';
 import {driveNativeHost} from '../scripts/native-host-dispatch.mjs';
 import {NATIVE_TOOLS} from '../scripts/native-scheduled-host.mjs';
 const line=x=>JSON.stringify(x)+'\n';
+test('dispatcher does not invoke a tool or send a tick after its budget expires',async()=>{
+ for(const mode of ['tool','wait']){
+  let time=1000,calls=0,writes=0;
+  const tools={exec_command:async()=>{if(mode==='tool')time=2000;return {session_id:17,output:line(mode==='tool'?{type:'tool',id:1,tool:NATIVE_TOOLS.complete,arguments:{}}:{type:'ready',not_before:new Date(9000).toISOString()})};},
+   write_stdin:async()=>{writes++;return {session_id:17,output:line({type:'pending'})};},[NATIVE_TOOLS.complete]:async()=>{calls++;}};
+  await assert.rejects(()=>driveNativeHost({tools,start:{cmd:'fixed'},now:()=>time,budgetMs:1000,sleep:async()=>{time=2000;}}),/budget expired/);
+  assert.equal(calls,0);assert.equal(writes,mode==='tool'?0:1);
+ }
+});
 test('scheduled dispatcher forwards the actual tool result once and does not claim WeCom delivery',async()=>{
  const actual={content:[{type:'text',text:'{"file_id":"F123"}'}]},writes=[],calls=[];
  const outputs=[{type:'tool',id:1,tool:NATIVE_TOOLS.ticket,arguments:{filename:'poster.png',content_length:10}},{type:'state',phase:'sender_reported'}];

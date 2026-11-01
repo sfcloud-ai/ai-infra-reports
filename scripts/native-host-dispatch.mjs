@@ -22,6 +22,7 @@ export async function driveNativeHost({tools,start,now=Date.now,sleep=ms=>new Pr
   let reply;
   if(message.type==='tool'){
    if(!allowed.has(message.tool)||!Number.isSafeInteger(message.id)||seen.has(message.id)||typeof tools[message.tool]!=='function')throw Error('Unexpected or repeated tool request; do not dispatch');
+   if(now()>=end)throw Error('Host budget expired before tool dispatch; reconcile existing operations');
    seen.add(message.id);
    // A thrown mutation outcome stops the driver. Never repeat a tool call.
    reply={type:'tool_result',id:message.id,result:await tools[message.tool](message.arguments)};
@@ -36,6 +37,7 @@ export async function driveNativeHost({tools,start,now=Date.now,sleep=ms=>new Pr
    }
    reply={type:'tick'};
   }
+  if(reply.type==='tick'&&now()>=end)throw Error('Host budget expired before tick; reconcile existing operations');
   result=await tools.write_stdin({session_id:session,chars:JSON.stringify(reply)+'\n',yield_time_ms:1000,max_output_tokens:4000});
  }
 }

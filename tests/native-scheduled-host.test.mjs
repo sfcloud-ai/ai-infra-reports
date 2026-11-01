@@ -17,6 +17,24 @@ const jsonResult=value=>({content:[{type:'text',text:JSON.stringify(value)}]});
 const bytes=await encodeBundle(FILES,ID,'a'.repeat(40),'b'.repeat(40)),bundle=await decodeBundle(bytes);
 const poster=bundle.files.get(bundle.report.path+bundle.report.poster),manifest=createNoticeManifest(bundle.files.get(bundle.report.path+'report.json'),MERGE);
 const empty=()=>jsonResult({results:'# Search Results for: \n\nNo results found.\n',pagination_info:'End of results - No more pages available.\\n'});
+
+test('control locator accepts only the pinned connector attribution or its stripped rendering',async()=>{
+ for(const suffix of [SCOPE.sender_attribution_text,'*Sent using* <@U999>']){
+  const r=await rig();try{r.modes.sourceAttribution=suffix;await r.host.step(ID);
+   if(suffix===SCOPE.sender_attribution_text){await r.host.step(ID);assert.equal(r.state.get(ID).phase,'native_begin');}
+   else await assert.rejects(()=>r.host.step(ID),/Control command text differs/);
+   assert.equal(r.counts.final,0);
+  }finally{r.close();}
+ }
+});
+test('slow preflight refreshes reads without consuming a completion intent or another begin',async()=>{
+ const r=await rig();try{
+  await r.arm();r.clock.now=TARGET;r.modes.slowPreflight=true;
+  await assert.rejects(()=>r.host.step(ID),ReadPending);
+  assert.equal(r.state.get(ID).phase,'final_ready');assert.equal(r.state.op(ID,'final_complete'),null);assert.equal(r.counts.begin,1);assert.equal(r.counts.final,0);
+  await r.host.step(ID);assert.equal(r.counts.begin,1);assert.equal(r.counts.final,1);
+ }finally{r.close();}
+});
 function rendered({text,ts,channel='C123',author='U123',thread,bot=false}){
  const url=`https://${workspace}/archives/${channel}/p${ts.replace('.','')}`+(thread?`?thread_ts=${thread}&cid=${channel}`:'');
  return jsonResult({results:`# Search Results for: \n\n## Messages (1 results)\n### Result 1 of 1\nChannel: ${channel.startsWith('D')?'DM':'#control'} (ID: ${channel})\nFrom: ${bot?'Publisher':'Sender'} (ID: ${author}) ${bot?' [BOT]':''}\nTime: fixture\nMessage_ts: ${ts}\nPermalink: [link](${url})\nText: \n${text}\n\n---\n\n`,pagination_info:'End of results - No more pages available.\\n'});
@@ -43,7 +61,7 @@ async function rig({filename=':memory:',start=TARGET-600000,allowFinal=true}={})
    assert.equal(args.channel_id,'C123');counts.control++;
    if(modes.controlMissing)throw Error('unknown control completion');
    const c=JSON.parse(file.bytes),ts=next();if(c.action==='begin')counts.begin++;if(c.action==='check')counts.check++;
-   sources.set(c.command_id,{text:args.initial_comment,ts});
+   sources.set(c.command_id,{text:args.initial_comment+(modes.sourceAttribution?' '+modes.sourceAttribution:''),ts});
    outbox.admit({request_id:c.command_id,hash:digest(file.bytes),source_ts:ts},file.bytes);
    await advanceNotice(outbox,c.command_id,{verify:async()=>proof,receipt:async(thread,text)=>{const reply={thread,text,ts:next(),bot:true,author:'U456'};replies.set(c.command_id,reply);return reply.ts;},checkNotice:async()=>modes.checkerNegative?{slack_status:'not_verified'}:{slack_status:'verified',wecom_status:'not_checked',publication_status:'not_checked',receipt:{channel:'D123',ts:final.ts,relay_request_id:'auto:'+final.ts,file_id:final.file_id,transport_sha256:digest(poster),transport_bytes:poster.length},observed_publication_commit:MERGE,messages_sent:0,state_changed:false}});
    if(modes.controlTimeout)throw Error('lost control acknowledgment');return jsonResult({file_id:args.file_id});
@@ -61,7 +79,7 @@ async function rig({filename=':memory:',start=TARGET-600000,allowFinal=true}={})
   assert.equal(options.redirect,'error');const f=uploads.get(url.split('/').at(-1));assert.equal(Number(options.headers['content-length']),f.content_length);assert.equal(options.body.length,f.content_length);f.bytes=Buffer.from(options.body);return new Response('ok',{status:200});
  };
  const site=publicationSite({files:bundle.files,slug:'2026-11-01/r1',sourceCommit:MERGE});
- const fetchPublic=async(...args)=>{if(modes.pagesUnavailable)throw Error('pages unavailable');return site.fetcher(...args);};
+ const fetchPublic=async(...args)=>{if(modes.pagesUnavailable)throw Error('pages unavailable');if(modes.slowPreflight){clock.now+=61000;modes.slowPreflight=false;}return site.fetcher(...args);};
  const transport=new NativeSlackTransport(callTool,{uploadFetch});
  const makeHost=(s=state)=>new NativeScheduledHost(s,transport,{allowFinal,now:()=>clock.now,fetchPublic});
  return {state,publisher,outbox,host:makeHost(),makeHost,clock,modes,counts,uploads,async arm(){for(let i=0;i<3;i++)await this.host.step(ID);assert.equal(state.get(ID).phase,'final_ready');},close(){state.close();publisher.close();}};

@@ -21,7 +21,7 @@ function searchArgs(config,keywords,channel=config.channel_id){
 }
 // This is a bounded message locator, not raw Slack identity or file proof. The
 // Publisher authenticates command bytes; check validates the final DM separately.
-export function nativeMessageLocator(result,{config,channel,expectedText}){
+export function nativeMessageLocator(result,{config,channel,expectedText,expectedAttribution}){
  const b=toolJson(result);
  requireThat(['End of results - No more pages available.\n','End of results - No more pages available.\\n'].includes(b.pagination_info)&&typeof b.results==='string'&&Buffer.byteLength(b.results)<32768,'Incomplete native message search');
  if(/^# Search Results for: [^\n]*\n\nNo results found\.\n$/.test(b.results))return null;
@@ -31,7 +31,7 @@ export function nativeMessageLocator(result,{config,channel,expectedText}){
  requireThat(u.hostname===config.workspace_host&&!u.port&&!u.username&&!u.password&&!u.hash&&u.pathname===`/archives/${channel}/p${m[3].replace('.','')}`,'Native source workspace/path mismatch');
  const keys=[...u.searchParams.keys()].sort().join();
  requireThat(keys===''||(keys==='cid,thread_ts'&&u.searchParams.get('cid')===channel&&u.searchParams.get('thread_ts')===m[3]),'Source must be a top-level message');
- if(expectedText!==undefined)requireThat(m[5]===expectedText,'Control command text differs');
+ if(expectedText!==undefined)requireThat(m[5]===expectedText||(expectedAttribution&&m[5]===expectedText+' '+expectedAttribution),'Control command text differs');
  return {source_ts:m[3]};
 }
 export class NativeSlackTransport{
@@ -49,7 +49,7 @@ export class NativeSlackTransport{
  async complete(args){const r=await this.callTool(NATIVE_TOOLS.complete,args);requireThat(r&&!r.isError,'Completion outcome unconfirmed');return null;}
  async source(bytes,config){
   const c=JSON.parse(bytes),comment=`!ai-notice submit ${c.command_id} ${digest(bytes)}`;
-  return nativeMessageLocator(await this.callTool(NATIVE_TOOLS.search,searchArgs(config,['"!ai-notice submit"',`"${c.command_id}"`])),{config,channel:config.channel_id,expectedText:comment});
+  return nativeMessageLocator(await this.callTool(NATIVE_TOOLS.search,searchArgs(config,['"!ai-notice submit"',`"${c.command_id}"`])),{config,channel:config.channel_id,expectedText:comment,expectedAttribution:config.sender_attribution_text});
  }
  async receipt(bytes,sourceTs,config){
   const args=nativeReceiptSearch(bytes,config),result=await this.callTool(NATIVE_TOOLS.search,args),body=toolJson(result);
@@ -141,7 +141,11 @@ export class NativeScheduledHost{
     await verifyReportPublication(job.detail.report_commit,b,this.fetchPublic);
     cached={at,r};this.#cache.set(id,cached);
    }
-   const args=()=>nativeCompletionArguments(cached.r.invocation,{bytes:cached.r.bytes,sourceTs:cached.r.sourceTs,config,reportJson:b.files.get(b.report.path+'report.json'),poster,checkedAt:cached.at,now:this.now()});
+   const args=()=>{
+    const current=this.now();requireThat(Number.isSafeInteger(current)&&current>0,'Host clock unavailable');
+    if(current<cached.at||current-cached.at>60000){this.#cache.delete(id);throw new ReadPending('Preflight expired before completion; refresh reads without a new begin');}
+    return nativeCompletionArguments(cached.r.invocation,{bytes:cached.r.bytes,sourceTs:cached.r.sourceTs,config,reportJson:b.files.get(b.report.path+'report.json'),poster,checkedAt:cached.at,now:current});
+   };
    if(this.now()<Date.parse(job.detail.not_before))throw new ReadPending('Awaiting 08:00 Asia/Shanghai');
    // The transaction repeats the freshness/time check after acquiring the lock.
    const input=args();
