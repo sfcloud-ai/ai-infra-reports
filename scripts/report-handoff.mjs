@@ -2,7 +2,7 @@
 import {pathToFileURL} from "node:url";
 import {readReports,digest,REPOSITORY} from "./archive.mjs";
 import {validateRasters} from "./rasters.mjs";
-import {verifyPublication} from "./verify-publication.mjs";
+import {verifyPublication,verifyPublicationUnchanged} from "./verify-publication.mjs";
 export const MAX_BUNDLE=8*1024*1024;
 export const SHA=/^[a-f0-9]{40}$/;
 const HASH=/^[a-f0-9]{64}$/;
@@ -96,15 +96,9 @@ export async function boundedBytes(response,limit){
  return Buffer.concat(chunks);
 }
 export async function verifyReportPublication(commit,bundle,fetcher=fetch){
- const {report:r}=bundle,proof=await verifyPublication(commit,r.date,r.revision,fetcher);
+ const {report:r}=bundle,proof=await verifyPublication(commit,r.date,r.revision,fetcher,bundle.files);
  const slug=`${r.date}/r${r.revision}`,origin="https://sfcloud-ai.github.io/ai-infra-reports";
  const get=url=>fetcher(url,{redirect:"error",cache:"no-store",signal:AbortSignal.timeout(15000)});
- for(const a of r.articles){
-  const response=await get(`${origin}/${slug}/${a.id}/`);
-  requireThat(response.headers.get("content-type")?.includes("text/html"),"Article content type");
-  const html=(await boundedBytes(response,2*1024*1024)).toString("utf8");
-  requireThat(html.includes(`data-report-id="${slug}/${a.id}"`)&&html.includes("data-report-sources"),"Article identity/evidence missing");
- }
  for(const i of r.images){
   const response=await get(origin+"/"+r.path+i.path);
   const type=i.path.endsWith(".png")?"image/png":"image/jpeg";
@@ -112,7 +106,7 @@ export async function verifyReportPublication(commit,bundle,fetcher=fetch){
   requireThat(digest(await boundedBytes(response,2*1024*1024))===i.sha256,"Published image hash mismatch");
  }
  // Check again after all reads: do not accept a deployment changing mid-verification.
- await verifyPublication(commit,r.date,r.revision,fetcher);
+ await verifyPublicationUnchanged(proof,fetcher);
  return {...proof,request_id:bundle.data.request_id,bundle_sha256:bundle.hash,edition:slug,poster_sha256:r.images.find(i=>i.path===r.poster).sha256,checked_at:new Date().toISOString()};
 }
 if(import.meta.url===pathToFileURL(process.argv[1]||"").href){

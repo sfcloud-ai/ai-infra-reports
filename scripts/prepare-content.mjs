@@ -1,6 +1,7 @@
 import {dailyBody,articleBody,articleEvidence} from "./content-text.mjs";
 import {latestNoticeEdition,noticeManifestForBuild} from "./notice-manifest.mjs";
 import {validateRasters} from "./rasters.mjs";
+import {editionSources} from "./publication-content.mjs";
 import {readFile,writeFile,mkdir,rm} from "node:fs/promises";
 import path from "node:path";
 import {readReports,validateArchive,json,BASE} from "./archive.mjs";
@@ -14,9 +15,10 @@ const commit=process.env.REPORT_COMMIT||"local-preview";
 const newest=latestNoticeEdition(reports);
 const docs=path.join(root,"generated/docs"),assets=path.join(root,"public/reports");
 for(const p of [docs,assets]) {if(!p.startsWith(root+path.sep))throw Error("generated path");await rm(p,{recursive:true,force:true});await mkdir(p,{recursive:true});}
-const pages=[],assetsManifest=[],articleDirs={};
+const pages=[],assetsManifest=[],articleDirs={},publicationSources={};
 for(const r of [...reports].reverse()) {
   const slug=r.date+"/r"+r.revision, source=slug+"/index";
+  publicationSources[slug]=editionSources(files,slug);
   const description=r.subtitle;
   const body=dailyBody(r,preview);
   const common={date:r.date,revision:r.revision,group:r.date+" · 第 "+r.revision+" 版",commit:"main",origin:r.path+"report.json"};
@@ -47,7 +49,7 @@ for(const r of [...reports].reverse()) {
   }
 }
 await mkdir(path.join(root,"generated"),{recursive:true});
-await writeFile(path.join(root,"generated/manifest.json"),json({preview,pages,assets:assetsManifest,articleDirs}));
+await writeFile(path.join(root,"generated/manifest.json"),json({preview,pages,assets:assetsManifest,articleDirs,publicationSources}));
 console.log("Prepared "+reports.length+" reports, "+pages.length+" pages"+(preview?" (synthetic preview)":""));
 
 await writeFile(path.join(root,"public/publication.json"),json({schema_version:"1.0",commit,preview,reports:reports.map(r=>r.date+"/r"+r.revision)}));

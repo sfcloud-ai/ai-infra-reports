@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import {readReports,digest,REPOSITORY} from "../scripts/archive.mjs";
 import {encodeBundle,decodeBundle,acceptMessage,boundedBytes,verifyReportPublication,MAX_BUNDLE} from "../scripts/report-handoff.mjs";
+import {publicationSite} from "./helpers/publication-site.mjs";
 import {HandoffState} from "../scripts/handoff-state.mjs";
 import {advanceHandoff} from "../scripts/handoff-worker.mjs";
 import {SlackHandoff,publicGitHub,publicMergeCommit} from "../scripts/slack-handoff.mjs";
@@ -236,14 +237,14 @@ test("publication failure remains retryable without re-proposing or sending earl
   await assert.rejects(()=>advanceHandoff(state,request,io));assert.equal(state.get(request).phase,"verified");assert.equal(counts().receipts,0);assert.equal(counts().proposals,1);
  }finally{state.close();}
 });
-function site(kind){return async url=>{
- if(url.endsWith("publication.json"))return Response.json({schema_version:"1.0",commit:kind==="stale"?base:merge,preview:false,reports:["2026-10-31/r1"]});
- if(url.endsWith(".png"))return new Response(kind==="image"?Buffer.from("corrupt"):png,{headers:{"content-type":"image/png"}});
- const id=url.split("/ai-infra-reports/")[1].replace(/\/$/,"");
- return new Response(`<main data-report-id="${kind==="article"&&id.includes("kv-cache")?"wrong":id}"><section data-report-sources></section></main>`,{headers:{"content-type":"text/html"}});
-};}
-test("public verification covers every article and asset, exact deployment, and never asserts notification delivery",async()=>{
- const result=await verifyReportPublication(merge,bundle,site());assert.equal(result.delivery_allowed,false);assert.equal(result.poster_sha256,digest(png));
+function site(kind){
+ const s=publicationSite({files:bundle.files,slug:"2026-10-31/r1",sourceCommit:merge,deploymentCommit:kind==="stale"?base:kind==="later"?head:merge});
+ if(kind==="stale")s.comparison.status="behind";
+ if(kind==="article")s.pages.set("2026-10-31/r1/kv-cache","<main>wrong body</main>");
+ return async(url,options)=>kind==="image"&&url.endsWith(".png")?new Response("corrupt",{headers:{"content-type":"image/png"}}):s.fetcher(url,options);
+}
+test("public verification covers each article and asset across later deployments without claiming delivery",async()=>{
+ for(const kind of [undefined,"later"]){const result=await verifyReportPublication(merge,bundle,site(kind));assert.equal(result.delivery_allowed,false);assert.equal(result.poster_sha256,digest(png));assert.equal(result.commit,merge);assert.equal(result.deployment_commit,kind==="later"?head:merge);}
  for(const kind of ["stale","article","image"])await assert.rejects(()=>verifyReportPublication(merge,bundle,site(kind)));
  await assert.rejects(()=>boundedBytes(new Response("too much"),3),/byte limit/);
 });
