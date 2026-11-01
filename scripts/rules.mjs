@@ -10,6 +10,13 @@ const attested=s=>structuredClone({...publicRuleset(s),bypass_actors:s.bypass_ac
 export function publicRuleset(s) {
  return {id:s.id,source:s.source,source_type:s.source_type,target:s.target,enforcement:s.enforcement,updated_at:s.updated_at,conditions:s.conditions,rules:s.rules};
 }
+function comparableRuleset(s) {
+ // GitHub can return the same instant with an offset or Z. Preserve millisecond
+ // precision, and reject unsupported/malformed timestamps instead of rounding.
+ const value=s.updated_at;
+ if(typeof value!=="string"||!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3})?(?:Z|[+-]\d\d:\d\d)$/.test(value)||!Number.isFinite(Date.parse(value)))throw Error("Invalid ruleset timestamp");
+ return {...publicRuleset(s),updated_at:new Date(value).toISOString()};
+}
 function active(s,now){
  if(!positive(s?.id)||s.source!==REPOSITORY||s.source_type!=="Repository"||s.target!=="branch"||s.enforcement!=="active"||!Array.isArray(s.bypass_actors)||!Array.isArray(s.rules))throw Error("Complete active repository ruleset required");
  const time=Date.parse(s.updated_at);if(!Number.isFinite(time)||now-time<5000)throw Error("Ruleset must remain unchanged for five seconds before verification");
@@ -73,7 +80,7 @@ export async function verifyRules(api,actionsAppId,policy,identity) {
  const normalized=mergerPolicy(...policy.rulesets,actionsAppId,policy.producer_app_id,policy.merger_app_id);
  for(const expected of normalized.rulesets){
   const live=await api.request("GET",PREFIX+"/rulesets/"+expected.id);
-  if(!live||stable(publicRuleset(live))!==stable(publicRuleset(expected)))throw Error("Ruleset changed since owner verification");
+  if(!live||stable(comparableRuleset(live))!==stable(comparableRuleset(expected)))throw Error("Ruleset changed since owner verification");
   if(live.bypass_actors!==undefined&&stable(live.bypass_actors)!==stable(expected.bypass_actors))throw Error("Ruleset bypass changed");
  }
  return true;

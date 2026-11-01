@@ -79,6 +79,26 @@ test("ruleset object key order is semantically irrelevant",async()=>{
  const reversed=s.map(reverse);assert.doesNotThrow(()=>policyFor(reversed));
  await verifyRules({request:async(_,route)=>reversed[Number(route.split("/").at(-1))-1]},99,policy,identity);
 });
+
+test("timezone rendering of the same ruleset update does not constitute drift",async()=>{
+ const source=sets();for(const s of source)s.updated_at="2026-11-01T01:41:36.451+08:00";
+ const policy=policyFor(source);
+ for(const stamp of ["2026-10-31T17:41:36.451Z","2026-10-31T12:41:36.451-05:00"]){
+  await verifyRules({request:async(_,route)=>{const s=structuredClone(source[Number(route.split("/").at(-1))-1]);s.updated_at=stamp;delete s.bypass_actors;return s;}},99,policy,identity);
+ }
+ for(const stamp of ["2026-10-31T17:41:36.452Z","2026-10-31T17:41:36.450Z"]){
+  await assert.rejects(()=>verifyRules({request:async(_,route)=>({...source[Number(route.split("/").at(-1))-1],updated_at:stamp})},99,policy,identity),/changed/);
+ }
+ const mutated=structuredClone(source);mutated[0].enforcement="disabled";
+ await assert.rejects(()=>verifyRules({request:async(_,route)=>({...mutated[Number(route.split("/").at(-1))-1],updated_at:"2026-10-31T17:41:36.451Z"})},99,policy,identity),/changed/);
+});
+
+test("ruleset timestamp normalization rejects missing zone and excess precision",async()=>{
+ const source=sets(),policy=policyFor(source);
+ for(const stamp of [undefined,null,"garbage","2026-10-30T00:00:00","2026-10-30T00:00:00.0001Z"]){
+  await assert.rejects(()=>verifyRules({request:async(_,route)=>({...source[Number(route.split("/").at(-1))-1],updated_at:stamp})},99,policy,identity),/timestamp/);
+ }
+});
 test("producer cannot bypass main updates and merger cannot bypass quality checks",()=>{
  for(const change of [
  s=>s[2].bypass_actors.push({actor_type:"Integration",actor_id:101,bypass_mode:"always"}),
