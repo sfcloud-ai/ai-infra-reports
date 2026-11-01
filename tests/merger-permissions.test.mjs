@@ -9,6 +9,7 @@ import {PREFIX} from "../scripts/github.mjs";
 import {sets} from "./helpers/policy.mjs";
 
 const main="a".repeat(40),head="b".repeat(40);
+const review=(id,state,second=id)=>({id,state,user:{id:4,login:"reviewer"},submitted_at:`2026-10-31T00:00:${String(second).padStart(2,"0")}Z`});
 const empty=new Map([["reports/index.json",Buffer.from(json({schema_version:"1.0",reports:[],entries:[]}))]]);
 const report=new Map([...await readReports("tests/fixtures/archive")].filter(([p])=>p.startsWith("reports/2026-10-31/")));
 report.set("reports/index.json",Buffer.from(json(validateArchive(report,{checkIndex:false}).index)));
@@ -33,6 +34,8 @@ function mergerFixture(){
   if(path==="/actions/runs/3")return run;
   if(path==="/actions/workflows/validate.yml")return {id:7,path:".github/workflows/validate.yml"};
   if(path==="/pulls/1")return pr;
+  if(path==="/pulls/1/reviews?per_page=100")return [];
+  if(path==="/collaborators/reviewer/permission")return {user:{id:4},permission:api.reviewPermission??"write"};
   if(path==="/git/ref/heads/main")return {object:{sha:main}};
   if(path==="/contents/.github/CODEOWNERS?ref="+main)return {type:"file",encoding:"base64",content:Buffer.from(CODEOWNERS).toString("base64")};
   if(path==="/codeowners/errors?ref="+main)return {errors:[]};
@@ -124,11 +127,77 @@ test("creation drift at initial validation or final recheck blocks the sole merg
  }
 });
 
-test("blocked review or failed CI cannot use the creation policy to authorize a merge",async()=>{
+test("Request changes or failed CI cannot use a blocked update exemption to authorize a merge",async()=>{
  for(const kind of ["review","CI"]){
+  const {api,options,pr}=mergerFixture(),request=api.request;pr.mergeable_state="blocked";
+  api.request=async(method,route,body)=>{const value=await request(method,route,body);if(kind==="review"&&route.includes("/reviews?"))return [review(1,"CHANGES_REQUESTED")];if(kind==="CI"&&route.endsWith("/actions/runs/3"))return {...value,conclusion:"failure"};return value;};
+  await assert.rejects(()=>mergeReport(api,3,options),kind==="review"?/Request changes/:/Exact-head/);assert(!api.calls.some(c=>c.method!=="GET"));
+ }
+});
+
+test("protected update state uses one normal merge with no admin override",async()=>{
+ const {api,options,pr}=mergerFixture();pr.mergeable_state="blocked";
+ assert.equal((await mergeReport(api,3,options)).merged,true);
+ assert.equal(api.calls.filter(c=>c.method!=="GET").length,1);
+ assert.equal(api.calls.filter(c=>c.route.includes("/reviews?")).length,2);
+});
+
+test("GitHub protection rejection is reconciled read-only and never retried or bypassed",async()=>{
+ for(const status of [403,405,409]){
+  const {api,options,pr}=mergerFixture(),request=api.request;pr.mergeable_state="blocked";
+  api.request=async(method,route,body)=>{const result=await request(method,route,body);if(method==="PUT")throw Error("GitHub merge rejected "+status);return result;};
+  await assert.rejects(()=>mergeReport(api,3,options),/GitHub merge rejected/);
+  assert.equal(api.calls.filter(c=>c.method!=="GET").length,1);
+  assert.equal(api.calls.at(-1).route,PREFIX+"/pulls/1");
+ }
+});
+
+test("review recheck blocks new changes requests; comments do not clear a veto",async()=>{
+ for(const finalOnly of [false,true]){
+  const {api,options,pr}=mergerFixture(),request=api.request;pr.mergeable_state="blocked";let reads=0;
+  api.request=async(method,route,body)=>{const result=await request(method,route,body);if(route.includes("/reviews?")&&++reads>Number(finalOnly))return [review(2,"COMMENTED"),review(1,"CHANGES_REQUESTED")];return result;};
+  await assert.rejects(()=>mergeReport(api,3,options),/Request changes/);
+  assert(!api.calls.some(c=>c.method!=="GET"));
+ }
+});
+
+test("the latest substantive review is used regardless of response order",async()=>{
+ for(const state of ["APPROVED","DISMISSED"]){
+  const {api,options,pr}=mergerFixture(),request=api.request;pr.mergeable_state="blocked";
+  api.request=async(method,route,body)=>{const result=await request(method,route,body);return route.includes("/reviews?")?[review(2,state),review(1,"CHANGES_REQUESTED")]:result;};
+  assert.equal((await mergeReport(api,3,options)).merged,true);
+ }
+});
+
+test("only current writers veto; permission lookup failure never implies read-only",async()=>{
+ for(const permission of ["write","admin","read","none","unknown"]){
+  const {api,options}=mergerFixture(),request=api.request;api.reviewPermission=permission;
+  api.request=async(method,route,body)=>{const result=await request(method,route,body);return route.includes("/reviews?")?[review(1,"CHANGES_REQUESTED")]:result;};
+  if(["read","none"].includes(permission))assert.equal((await mergeReport(api,3,options)).merged,true);
+  else{await assert.rejects(()=>mergeReport(api,3,options),/Request changes|permissions/);assert(!api.calls.some(c=>c.method!=="GET"));}
+ }
+ for(const evidence of [null,{permission:"read",user:{id:5}}]){
   const {api,options}=mergerFixture(),request=api.request;
-  api.request=async(method,route,body)=>{const value=await request(method,route,body);if(kind==="review"&&route.endsWith("/pulls/1"))return {...value,mergeable_state:"blocked"};if(kind==="CI"&&route.endsWith("/actions/runs/3"))return {...value,conclusion:"failure"};return value;};
-  await assert.rejects(()=>mergeReport(api,3,options),kind==="review"?/mergeability/:/Exact-head/);assert(!api.calls.some(c=>c.method!=="GET"));
+  api.request=async(method,route,body)=>{const result=await request(method,route,body);return route.includes("/reviews?")?[review(1,"CHANGES_REQUESTED")]:route.endsWith("/permission")?evidence:result;};
+  await assert.rejects(()=>mergeReport(api,3,options),/permissions/);assert(!api.calls.some(c=>c.method!=="GET"));
+ }
+});
+
+test("late draft submission and simultaneous decisions retain writer changes requests",async()=>{
+ for(const second of [2,3]){
+  const {api,options}=mergerFixture(),request=api.request;
+  api.request=async(method,route,body)=>{const result=await request(method,route,body);return route.includes("/reviews?")?[review(1,"CHANGES_REQUESTED",second),review(2,"APPROVED",2)]:result;};
+  await assert.rejects(()=>mergeReport(api,3,options),/Request changes/);assert(!api.calls.some(c=>c.method!=="GET"));
+ }
+});
+
+test("incomplete review evidence and quality bypass drift fail before merge",async()=>{
+ for(const kind of ["missing","bounded","invalid","bypass"]){
+  const {api,options,pr}=mergerFixture(),request=api.request;pr.mergeable_state="blocked";
+  if(kind==="bypass")options.policy.rulesets[0].bypass_actors=[{actor_type:"Integration",actor_id:102,bypass_mode:"always"}];
+  api.request=async(method,route,body)=>{const result=await request(method,route,body);if(route.includes("/reviews?"))return kind==="missing"?null:kind==="bounded"?Array(100).fill({}):[{}];return result;};
+  await assert.rejects(()=>mergeReport(api,3,options),/review|no bypass/i);
+  assert(!api.calls.some(c=>c.method!=="GET"));
  }
 });
 

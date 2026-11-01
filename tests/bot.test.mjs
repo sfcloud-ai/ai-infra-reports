@@ -12,7 +12,7 @@ test("fork, spoofed identity, draft, stale head and ambiguous CI rejected",()=>{
  for(const mutate of [
  f=>f.pr.head.repo.full_name="elsewhere/reports",f=>f.pr.user.id=18,f=>f.pr.user.type="User",f=>f.pr.draft=true,
  f=>f.pr.base.sha=b,f=>f.run.head_sha=a,f=>f.run.workflow_id=8,f=>f.run.event="push",f=>f.run.conclusion="failure",
- f=>f.run.pull_requests=[],f=>f.run.pull_requests[0].base.ref="other",f=>f.run.pull_requests[0].base.sha=b,f=>f.run.pull_requests[0].head.sha=a,f=>f.pr.commits=2,f=>f.pr.mergeable=null,f=>f.pr.mergeable_state="blocked"
+ f=>f.run.pull_requests=[],f=>f.run.pull_requests[0].base.ref="other",f=>f.run.pull_requests[0].base.sha=b,f=>f.run.pull_requests[0].head.sha=a,f=>f.pr.commits=2,f=>f.pr.mergeable=null,...["unknown","behind","dirty","unstable",null].map(state=>f=>f.pr.mergeable_state=state)
  ]){const f=facts();mutate(f);assert.throws(()=>gateFacts(f));}
 });
 test("disabled merge has no API effects",async()=>{let calls=0;const r=await mergeReport({request:()=>{calls++;throw Error();}},1,{enabled:false});assert.equal(calls,0);assert.equal(r.reason,"disabled");});
