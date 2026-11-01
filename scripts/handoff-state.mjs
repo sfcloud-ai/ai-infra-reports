@@ -1,14 +1,21 @@
 import {DatabaseSync} from "node:sqlite";
 import {digest} from "./archive.mjs";
 import {requireThat} from "./report-handoff.mjs";
+export function handoffScope(config){
+ const {slack_token_file,producer_key_file,state_dir,notification_destination,notification_not_before,...scope}=config;
+ return scope;
+}
+export function scopeDigest(scope){
+ const canonical=Object.fromEntries(Object.keys(scope).sort().map(key=>[key,scope[key]]));
+ return digest(JSON.stringify(canonical));
+}
 // The production adapter checks the owner-only directory before opening this database.
 export class HandoffState{
  constructor(filename,scope){
   this.db=new DatabaseSync(filename);
   try{
   this.db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS scope (id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, hash TEXT NOT NULL, source_ts TEXT UNIQUE NOT NULL, bytes BLOB NOT NULL, phase TEXT NOT NULL, detail TEXT NOT NULL);");
-  const canonical=Object.fromEntries(Object.keys(scope).sort().map(key=>[key,scope[key]]));
-  const value=digest(JSON.stringify(canonical));this.db.prepare("INSERT OR IGNORE INTO scope VALUES (1, ?)").run(value);
+  const value=scopeDigest(scope);this.db.prepare("INSERT OR IGNORE INTO scope VALUES (1, ?)").run(value);
   requireThat(this.db.prepare("SELECT value FROM scope WHERE id=1").get().value===value,"State identity changed; reconcile first");
   }catch(error){this.db.close();throw error;}
  }

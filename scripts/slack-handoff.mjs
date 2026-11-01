@@ -24,21 +24,32 @@ export class SlackHandoff{
   requireThat(Array.isArray(data.messages)&&!data.has_more&&!data.response_metadata?.next_cursor,"Incomplete control history; inspect backlog before continuing");
   return data.messages.slice().reverse();
  }
- async download(event){
+ async download(event,{name="ai-brief-bundle.json",limit=MAX_BUNDLE}={}){
   const {data:{file:f}}=await this.call("files.info",{file:event.file_id});
   const userApp=this.config.sender_user_app_id!==undefined;
-  requireThat(f?.id===event.file_id&&f.user===this.config.sender_user_id&&f.name==="ai-brief-bundle.json"&&(f.mode==="hosted"||(userApp&&f.mode==="snippet"))&&(!userApp||f.user_team===this.config.team_id)&&!f.is_external&&Number.isSafeInteger(f.size)&&f.size>0&&f.size<=MAX_BUNDLE,"Unexpected Slack file metadata");
+  requireThat(f?.id===event.file_id&&f.user===this.config.sender_user_id&&f.name===name&&(f.mode==="hosted"||(userApp&&f.mode==="snippet"))&&(!userApp||f.user_team===this.config.team_id)&&!f.is_external&&Number.isSafeInteger(f.size)&&f.size>0&&f.size<=limit,"Unexpected Slack file metadata");
   requireThat(f.shares?.private?.[this.config.channel_id]?.some(s=>s.ts===event.source_ts),"File is not shared in the command message");
   const url=new URL(f.url_private_download);
   requireThat(url.protocol==="https:"&&url.hostname==="files.slack.com"&&!url.port&&!url.username&&!url.password&&!url.search&&!url.hash&&url.pathname.startsWith(`/files-pri/${this.config.team_id}-${event.file_id}/`),"Unexpected Slack download origin/path");
-  const bytes=await boundedBytes(await this.fetcher(url.href,{headers:{authorization:"Bearer "+this.token},redirect:"error",signal:AbortSignal.timeout(30000)}),MAX_BUNDLE);
+  const bytes=await boundedBytes(await this.fetcher(url.href,{headers:{authorization:"Bearer "+this.token},redirect:"error",signal:AbortSignal.timeout(30000)}),limit);
   requireThat(bytes.length===f.size,"Slack file size mismatch");return bytes;
  }
  async receipt(thread,proof){
-  const text="!ai-report receipt "+JSON.stringify(proof);
+  return this.controlReceipt(thread,"!ai-report receipt "+JSON.stringify(proof));
+ }
+ async controlReceipt(thread,text){
   const {data}=await this.call("chat.postMessage",{channel:this.config.channel_id,thread_ts:thread,text,parse:"none",mrkdwn:false,unfurl_links:false,unfurl_media:false},true);
   requireThat(data.channel===this.config.channel_id&&data.message?.thread_ts===thread&&data.message?.bot_id===this.config.bot_id&&data.message?.user===this.config.bot_user_id&&data.message?.text===text,"Slack receipt identity mismatch");
   return data.ts;
+ }
+ async findControlReceipt(thread,text){
+  const {data}=await this.call("conversations.replies",{channel:this.config.channel_id,ts:thread,limit:15});
+  requireThat(Array.isArray(data.messages)&&!data.has_more&&!data.response_metadata?.next_cursor,"Incomplete receipt thread; no automatic resend");
+  const matches=data.messages.filter(m=>m.thread_ts===thread&&m.text===text);
+  requireThat(matches.length===1,"Receipt absent or ambiguous; no automatic resend");
+  const m=matches[0],c=this.config;
+  requireThat(m.type==="message"&&(!m.subtype||m.subtype==="bot_message")&&m.user===c.bot_user_id&&m.bot_id===c.bot_id&&!m.edited&&!m.hidden&&(!m.channel||m.channel===c.channel_id)&&(!m.team||m.team===c.team_id)&&typeof m.ts==="string"&&/^\d{10}\.\d{6}$/.test(m.ts)&&m.ts>thread,"Receipt identity changed");
+  return m.ts;
  }
 }
 // Public reads only. No long-lived token is minted while waiting for a merge.
