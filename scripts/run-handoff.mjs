@@ -10,6 +10,7 @@ import {SlackHandoff,publicGitHub,publicMergeCommit} from "./slack-handoff.mjs";
 import {acceptMessage,decodeBundle,requireThat,verifyReportPublication} from "./report-handoff.mjs";
 import {advanceHandoff} from "./handoff-worker.mjs";
 import {proposeWithApp} from "./propose-with-app.mjs";
+import {validateCheckerConfig,runNoticeChecker} from "./notice-checker.mjs";
 export async function privateDirectory(dir){
  requireThat(path.isAbsolute(dir)&&await realpath(dir)===path.resolve(dir),"Private directory must be absolute and not symlinked");
  const s=await lstat(dir);requireThat(s.isDirectory()&&s.uid===process.getuid()&&(s.mode&0o077)===0,"Private directory must be owner-only");
@@ -28,6 +29,10 @@ export function validateConfig(c){
  if(c&&(Object.hasOwn(c,"notification_destination")||Object.hasOwn(c,"notification_not_before"))){
   keys.push("notification_destination","notification_not_before");
   requireThat(typeof c.notification_destination==="string"&&/^D[A-Z0-9]+$/.test(c.notification_destination)&&typeof c.notification_not_before==="string"&&/^\d{10}\.\d{6}$/.test(c.notification_not_before),"Explicit final DM destination and fixed activation boundary required");
+ }
+ if(c&&Object.hasOwn(c,"notification_checker")){
+  keys.push("notification_checker");validateCheckerConfig(c.notification_checker);
+  requireThat(Object.hasOwn(c,"notification_destination")&&Object.hasOwn(c,"notification_not_before"),"Checker requires configured notices");
  }
  requireThat(c&&Object.keys(c).sort().join()===keys.sort().join(),"Unexpected publisher config");
  for(const [key,prefix]of [["team_id","T"],["channel_id","[CG]"],["sender_user_id","U"],["bot_user_id","U"],["bot_id","B"]])requireThat(new RegExp("^"+prefix+"[A-Z0-9]+$").test(c[key]),"Publisher identity config");
@@ -70,7 +75,7 @@ export async function handoffTick(state,config,slack,io){
    commandId=candidate;
   }
   if(commandId){
-   await advanceNotice(notices,commandId,{verify:io.verify,receipt:(thread,text)=>slack.controlReceipt(thread,text),findReceipt:(thread,text)=>slack.findControlReceipt(thread,text)});
+   await advanceNotice(notices,commandId,{verify:io.verify,checkNotice:io.checkNotice,receipt:(thread,text)=>slack.controlReceipt(thread,text),findReceipt:(thread,text)=>slack.findControlReceipt(thread,text)});
    noticeResult={command_id:commandId,phase:notices.command(commandId).phase};
   }
   if(id){await advanceHandoff(state,id,io);return {request_id:id,phase:state.get(id).phase,...(noticeResult?{notice:noticeResult}:{})};}
@@ -91,6 +96,7 @@ export async function runHandoff(configFile){
   readPR:n=>publicGitHub("/pulls/"+n),readMergeCommit:publicMergeCommit,readCommit:sha=>publicGitHub("/git/commits/"+sha),
   verify:verifyReportPublication,receipt:(thread,proof)=>slack.receipt(thread,proof)
  };
+ if(config.notification_checker)io.checkNotice=request=>runNoticeChecker(config.notification_checker,request);
  try{return await handoffTick(state,config,slack,io);}finally{state.close();}
 }
 if(import.meta.url===pathToFileURL(process.argv[1]||"").href){
