@@ -53,6 +53,59 @@
       ],
       "poster": "assets/service-boundaries.png",
       "path": "reports/2026-11-01/r1/"
+    },
+    {
+      "schema_version": "1.0",
+      "date": "2026-11-01",
+      "revision": 2,
+      "title": "AI Infra 晨报 · 2026-11-01",
+      "subtitle": "固定六大板块重写版；事件截止 11 月 1 日 08:00（北京时间），含标注的 7 日补充",
+      "articles": [
+        {
+          "id": "model-serving-gpu",
+          "title": "模型服务与 GPU 超配｜HAMi 统一配额单位",
+          "summary": "HAMi 对齐上限与用量单位；本轮未取得超配容量增加的证据。",
+          "sha256": "d0e903d7e469ce21a8f408f98381d78d5ef2628785f96fbc27e241a98ad73789",
+          "path": "reports/2026-11-01/r2/articles/model-serving-gpu.md"
+        },
+        {
+          "id": "hardware-status",
+          "title": "重点硬件｜本轮无合格新进展",
+          "summary": "保留 H100、H200、Pro5500 关注栏，不将静态产品页面当作新发布。",
+          "sha256": "bbae5b9954cee78182fd524e00c0cbce1e4cf0d1c145a4be54394e26bef1fee4",
+          "path": "reports/2026-11-01/r2/articles/hardware-status.md"
+        },
+        {
+          "id": "model-architecture-status",
+          "title": "模型与新架构｜本轮无合格新进展",
+          "summary": "本轮没有核实到满足条件的新架构事件；引擎适配修复统一归入引擎栏目。",
+          "sha256": "9f77c6394eed184ad01e3128bf311e7390e0118f5336bdb5776206cd4527f34f",
+          "path": "reports/2026-11-01/r2/articles/model-architecture-status.md"
+        },
+        {
+          "id": "embodied-training",
+          "title": "制造业具身训练｜RynnVLA-Latent 与 GR00T",
+          "summary": "7 日补充：视频潜在动作训练方法与动作填充掩码的一致性边界。",
+          "sha256": "616901db4e3047f2d95fe05488523b2c10fbb13d6c8d2f2bf5ef68a96668e2a8",
+          "path": "reports/2026-11-01/r2/articles/embodied-training.md"
+        },
+        {
+          "id": "small-model-status",
+          "title": "前沿小模型｜本轮无合格新进展",
+          "summary": "本轮没有新增合格条目；Rynn 骨干规模不重复作为本栏新闻。",
+          "sha256": "4d694666d161b4591acc397e1db98938d5d32a7f2f6be66f8130d8608c086e28",
+          "path": "reports/2026-11-01/r2/articles/small-model-status.md"
+        },
+        {
+          "id": "inference-engines",
+          "title": "推理引擎日报｜vLLM、SGLang 与 DeepInfer",
+          "summary": "同项目归组呈现显存、解析、热更新与 PD 正确性变化；DeepInfer 只保留状态。",
+          "sha256": "07545cb0f658c84d576feffc27684f6074b6cb3db92605ba737831cc3126be60",
+          "path": "reports/2026-11-01/r2/articles/inference-engines.md"
+        }
+      ],
+      "poster": "assets/overview.png",
+      "path": "reports/2026-11-01/r2/"
     }
   ],
   "entries": [
@@ -157,6 +210,194 @@
       "fingerprint": "8c8c43d60707489905324a8617497adc48fe6c01aa3ab11c4a67cbeb542568b6",
       "date": "2026-11-01",
       "revision": 1
+    },
+    {
+      "id": "2026-11-01-r2-hami-pr-3339",
+      "event_key": "hami-pr-3339",
+      "title": "HAMi 对齐显存配额指标单位",
+      "summary": "HAMi 对齐上限与用量单位；本轮未取得超配容量增加的证据。",
+      "source_urls": [
+        "https://github.com/Project-HAMi/HAMi/pull/3339"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "2cc485da7b7a40e1202ba6f0bc3e14e51d3a21e263951208c88c52dce402d7a6",
+      "date": "2026-11-01",
+      "revision": 2
+    },
+    {
+      "id": "2026-11-01-r2-hardware-status-r2",
+      "event_key": "hardware-status-r2",
+      "title": "重点硬件核验范围记录",
+      "summary": "保留 H100、H200、Pro5500 关注栏，不将静态产品页面当作新发布。",
+      "source_urls": [
+        "https://www.nvidia.com/en-us/products/workstations/professional-desktop-gpus/rtx-pro-5500/"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status",
+      "fingerprint": "61522af5be1683f5b116c023288a27d28a20c8a9c74f3538f2d57048ae8d9b9e",
+      "date": "2026-11-01",
+      "revision": 2
+    },
+    {
+      "id": "2026-11-01-r2-model-architecture-status-r2",
+      "event_key": "model-architecture-status-r2",
+      "title": "模型架构核验范围记录",
+      "summary": "本栏未新增已核实事件；引用仅是已归入推理引擎的交叉来源，不代表新架构发布。",
+      "source_urls": [
+        "https://github.com/sgl-project/sglang/pull/47577",
+        "https://github.com/vllm-project/vllm/pull/64675"
+      ],
+      "update_of": null,
+      "article_id": "model-architecture-status",
+      "fingerprint": "1ceb17fb65216601af521e9dc1769ec0e03e353497f12a0ec86f310291e0399a",
+      "date": "2026-11-01",
+      "revision": 2
+    },
+    {
+      "id": "2026-11-01-r2-rynnvla-latent-v1",
+      "event_key": "rynnvla-latent-v1",
+      "title": "RynnVLA-Latent 视频训练方法",
+      "summary": "7 日补充；2B/4B 权重是第一阶段初始化，仍需目标机器人适配。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.34356v1",
+        "https://github.com/alibaba-damo-academy/RynnVLA-Latent/tree/c67e6ff4f299f59459c5deb1c6f86b2451f5eec4"
+      ],
+      "update_of": null,
+      "article_id": "embodied-training",
+      "fingerprint": "d8112bfa9e0d36694d5d0198e934e576ee8c657faf1bee646d8767879c300eb0",
+      "date": "2026-11-01",
+      "revision": 2
+    },
+    {
+      "id": "2026-11-01-r2-groot-action-padding-c56f541",
+      "event_key": "groot-action-padding-c56f541",
+      "title": "GR00T 动作填充隔离",
+      "summary": "7 日补充；训练与推理需要一致掩码，TensorRT 动作头存在兼容边界。",
+      "source_urls": [
+        "https://github.com/NVIDIA/Isaac-GR00T/commit/c56f54128d92f743889b7e4cecfc1ceafd88739e"
+      ],
+      "update_of": null,
+      "article_id": "embodied-training",
+      "fingerprint": "b19a0dc18a6141075a91f08aad7e6b1f81a960b369bc3d840f94df5f1741084f",
+      "date": "2026-11-01",
+      "revision": 2
+    },
+    {
+      "id": "2026-11-01-r2-small-model-status-r2",
+      "event_key": "small-model-status-r2",
+      "title": "小模型核验范围记录",
+      "summary": "本轮没有新增合格条目；Rynn 骨干规模不重复作为本栏新闻。",
+      "source_urls": [
+        "https://github.com/alibaba-damo-academy/RynnVLA-Latent/tree/c67e6ff4f299f59459c5deb1c6f86b2451f5eec4"
+      ],
+      "update_of": null,
+      "article_id": "small-model-status",
+      "fingerprint": "8dd251b5dcf9e23526daca69edc2e0237a60efc959eecfdc921080960d4d5273",
+      "date": "2026-11-01",
+      "revision": 2
+    },
+    {
+      "id": "2026-11-01-r2-vllm-pr-64841",
+      "event_key": "vllm-pr-64841",
+      "title": "vLLM 将分块 logprobs 的重复结果驻留移出峰值",
+      "summary": "临时结果也要计入显存预算：分块结果预分配避免最终拼接副本，但跨调度步驻留仍未解决。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/64841"
+      ],
+      "update_of": "2026-11-01-vllm-pr-64841",
+      "article_id": "inference-engines",
+      "fingerprint": "b93d6a1ad23f180241671ce091f9cfe48a1952836e1885dd487ab7d8e82b70cf",
+      "date": "2026-11-01",
+      "revision": 2
+    },
+    {
+      "id": "2026-11-01-r2-vllm-pr-64675",
+      "event_key": "vllm-pr-64675",
+      "title": "vLLM 降低工具解析对健康检查的影响",
+      "summary": "单 H200 的强制参数循环案例显示，CPU 解析会拖垮健康检查；缓存已闭合参数缓解退化路径，不代表普遍推理提速。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/64675"
+      ],
+      "update_of": "2026-11-01-vllm-pr-64675",
+      "article_id": "inference-engines",
+      "fingerprint": "e33bf6adeb7339b9a3aa6821d59fed1513b07abf6d535dd538c56f17617cd2e3",
+      "date": "2026-11-01",
+      "revision": 2
+    },
+    {
+      "id": "2026-11-01-r2-sglang-pr-47577",
+      "event_key": "sglang-pr-47577",
+      "title": "SGLang 先扣持久缓冲 再给 KV cache 定容",
+      "summary": "DeepSeek MegaMoE 把持久缓冲提前分配，KV 池相应缩小以避免漏算；GB300 证据不能外推到 H100/H200。",
+      "source_urls": [
+        "https://github.com/sgl-project/sglang/pull/47577"
+      ],
+      "update_of": "2026-11-01-sglang-pr-47577",
+      "article_id": "inference-engines",
+      "fingerprint": "7b852a281e0626e78b8b9ca077320a1baa48416b23139ffa758ff3bfdc3adffe",
+      "date": "2026-11-01",
+      "revision": 2
+    },
+    {
+      "id": "2026-11-01-r2-sglang-pr-47638",
+      "event_key": "sglang-pr-47638",
+      "title": "SGLang #47638：PD 注册协议升级边界",
+      "summary": "PD 注册帧布局变化，新旧 P/D 构建不能混跑，升级须保持两端同版。",
+      "source_urls": [
+        "https://github.com/sgl-project/sglang/pull/47638"
+      ],
+      "update_of": "2026-11-01-sglang-47638",
+      "article_id": "inference-engines",
+      "fingerprint": "5ab7e47d19525c499869830a92f11887e98102afe14f0ac41723d1c711634f36",
+      "date": "2026-11-01",
+      "revision": 2
+    },
+    {
+      "id": "2026-11-01-r2-sglang-pr-47652",
+      "event_key": "sglang-pr-47652",
+      "title": "SGLang #47652：迟到 staging 请求修复",
+      "summary": "通过保留 CHUNK_SCATTERED 状态忽略迟到申请，避免重新分配孤儿 ring slot。",
+      "source_urls": [
+        "https://github.com/sgl-project/sglang/pull/47652"
+      ],
+      "update_of": "2026-11-01-sglang-47652",
+      "article_id": "inference-engines",
+      "fingerprint": "55e271e9451e5c2ef9543efdcf75d263e0adcdb1b3a641d4b0a9283254a21c2d",
+      "date": "2026-11-01",
+      "revision": 2
+    },
+    {
+      "id": "2026-11-01-r2-vllm-pr-64336",
+      "event_key": "vllm-pr-64336",
+      "title": "vLLM direct reload 已合并但不宜默认开启",
+      "summary": "原地更新节约副本不能凌驾于正确性：失败更新可能以错误布局继续服务，默认 layerwise 仍应保留。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/64336"
+      ],
+      "update_of": "2026-11-01-vllm-pr-64336",
+      "article_id": "inference-engines",
+      "fingerprint": "6d71457b6f56a7bf4a20d6be25a234550211b2fb546b8e626ff703ed17bafffc",
+      "date": "2026-11-01",
+      "revision": 2
+    },
+    {
+      "id": "2026-11-01-r2-deepinfer-status-2026-11-01",
+      "event_key": "deepinfer-status-2026-11-01",
+      "title": "DeepInfer 持续跟踪 不补凑新闻",
+      "summary": "DeepInfer 主线近72小时无新提交；记录离线硬件边界，并给出本期按正确性、资源账和服务行为排序的验证清单。",
+      "source_urls": [
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/commits?per_page=10",
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/releases?per_page=10",
+        "https://github.com/deepseek-ai/DeepInfer/blob/553741557a57df44a46fb3ab72b6aafeaf945337/README.md",
+        "https://github.com/sgl-project/sglang/releases",
+        "https://github.com/vllm-project/vllm/releases"
+      ],
+      "update_of": "2026-11-01-deepinfer-status-2026-11-01",
+      "article_id": "inference-engines",
+      "fingerprint": "b3fbb263b2f867c7ac6b24e09e2bbc48dae9fd0b0a5864641798d4f69b5925a0",
+      "date": "2026-11-01",
+      "revision": 2
     }
   ]
 }
