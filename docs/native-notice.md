@@ -1,6 +1,6 @@
 # 原生 Slack 工具接线
 
-此桥接复用已授权的私有控制频道、Publisher 账本和原生 Slack 工具身份。`native-notice-cli.mjs` 只生成数据和核验真实工具结果，不创建凭据，也不调用 Slack。需要具备原生工具与代码执行能力的定时宿主按下列顺序执行；仓库 CI 通过不等于该宿主已接线。
+此桥接复用已授权的私有控制频道、Publisher 账本和原生 Slack 工具身份。`native-notice-cli.mjs` 只生成数据和核验真实工具结果，不创建凭据，也不调用 Slack。新增的[定时宿主实现](native-scheduled-host.md)串联这些步骤与原生工具，默认在 `begin` 前停止；它尚未接入实际定时任务。需要具备原生工具与代码执行能力的定时宿主按下列顺序执行；仓库 CI 通过不等于该宿主已接线。
 
 1. 固定本次仓库及 Prompt 提交，完成报告包提交、自动合入和各页面/原图验证。随后从保存的同一 `report.json` 生成通知，标题及 URL 顺序完全一致，正文不加摘要。
 2. 提前调用 `slack_get_file_upload_url`，按原生工具返回的签名 URL 原样 POST 最终海报字节。使用这次返回的 `file_id`；此时不调用 `slack_complete_file_upload`。已验证原生上传可保留约 15 分钟，宿主应在发送前约十分钟准备；保留更长时间尚未验证。
