@@ -1,0 +1,15 @@
+[Unit]
+Description=Verify and update the AI report publisher
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+ConditionPathExists=/etc/ai-report-publisher-cd.json
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I -B /usr/local/lib/ai-report-publisher-cd/publisher_cd.py tick
+UMask=0077
+TimeoutStartSec=40min
+Restart=no
+StandardOutput=journal
+StandardError=journal
