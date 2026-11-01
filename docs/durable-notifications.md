@@ -117,9 +117,11 @@ Example claim data:
 3. Read the original control thread with the authorized cloud connector.
    `verifyNoticeGrant` checks authenticated read context, publisher user/bot,
    thread, command digest, attempt, file, destination and reservation. Only the
-   original uninterrupted execution may consume its **new** grant once. The
-   verifier always returns `resume_send_allowed: false`. A copied/quoted reply,
-   status reply or another attempt is not permission.
+   bound first attempt may consume its grant once. The verifier always returns
+   `resume_send_allowed: false`: the grant alone never authorizes recovery or a
+   second completion. A copied/quoted reply, status reply or another attempt is
+   not permission. A sender with a durable journal established before every
+   mutation may recover a provably unstarted first completion as described below.
 4. Recheck publication and the final-format contract before completing the
    original native upload once to the pinned DM. Use only that granted file ID,
    the exact article-list text from `createNoticeManifest` (date header, every
@@ -157,13 +159,25 @@ Example claim data:
    delivery receipt. The existing relay's text/image acknowledgments remain
    separately required before claiming WeCom success.
 
-An execution that resumes after a crash must use `status` and read the DM using
-the bound file ID. It must **not** consume an old grant, complete an upload again,
-replace the file, create another attempt or reuse an edition with a new command
-ID to resend. If an exact message is found, verify and record it. Otherwise submit
-`unknown` or leave the reservation unresolved and require operator reconciliation.
-There is no expiry, automatic release, reset or force-retry operation. This trades
-automatic retry availability for avoiding uncertain duplicate sends.
+After a crash, a sender without durable proof that completion was never started
+must use `status` and read the DM using the bound file ID. It must **not** use an
+old grant to complete an upload again, replace the file, create another attempt
+or reuse an edition with a new command ID. If an exact message is found, verify
+and record it. Otherwise submit `unknown` or leave the reservation unresolved.
+
+A durable sender journal established before any mutation can distinguish an
+unstarted first completion from an unknown one. Only the former may recover:
+all consumers must share that journal, reread and authenticate the original
+claim/grant, recheck publication and transport, then atomically reserve the unique
+completion intent before calling Slack. A process-local flag or absence of a DM
+message is not sufficient. Any existing completion intent remains reconciliation
+only, even after a crash before the actual API call. Legacy reservations without
+this journal cannot acquire new permission through migration. See
+[the offline sender](cloud-sender-orchestration.md) for the implemented boundary
+and outstanding host/transport integration.
+
+There is no expiry, automatic release, reset or force-retry operation. Recovery
+never grants a second attempt or retries an uncertain write.
 
 Control replies also have durable `response_ready`, `response_sending`,
 `response_unknown` and `response_sent` phases. Before a write the worker commits
