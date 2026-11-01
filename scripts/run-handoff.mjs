@@ -70,7 +70,7 @@ export async function handoffTick(state,config,slack,io){
    if(["response_sending","response_unknown"].includes(operation.phase)){commandId=candidate;break;}
    if(commandId)continue;
    const command=operation.phase==="received"?decodeNoticeCommand(operation.bytes):null;
-   const job=["claim","prepare","begin","asset"].includes(command?.action)?state.get(command.report_request_id):null;
+   const job=["claim","prepare","prepare_bundle","begin","asset"].includes(command?.action)?state.get(command.report_request_id):null;
    if(job&&job.phase!=="receipt_sent")continue;
    commandId=candidate;
   }

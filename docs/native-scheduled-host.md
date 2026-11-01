@@ -50,8 +50,14 @@ earlier than ten minutes before the report date's 08:00 Asia/Shanghai deadline.
 The existing roughly fifteen-minute retention observation is not a Slack SLA;
 an expired or unknown upload is never replaced automatically.
 
-The sequence is pre-upload → `prepare` → `begin` → recent publication check →
-due-time completion → final-message locator → independent T4 `check` → `record`.
+New runs use `native_bundle_v1`: pre-upload the exact JSON report bundle as
+`ai-brief-bundle.json` → `prepare_bundle` → `begin` → recent publication check →
+due-time completion → final-message locator → independent T4 `check` → `record_bundle`.
+The final message text is still only article titles and their URLs. The receiver
+extracts the original poster bytes from the bundle before its WeCom text/image
+writes. It never strips provenance chunks or substitutes a transformed image.
+Existing durable `native_v1` runs keep their PNG transport and original
+`prepare`/`record` actions; a run cannot change transport after admission.
 The completion transaction repeats the time/freshness gate after acquiring the
 existing journal lock. A restart before `begin` keeps the original reservation.
 A restart after a begin command was allocated can only reconcile; it cannot reuse
@@ -63,7 +69,12 @@ workspace, channel and exact command text. The existing native receipt verifier
 then checks the Publisher, command hash and original thread. Rendered locators
 are not fabricated raw bot/App metadata. The final message locator is only an
 input to the real T4 checker; neither a search hit nor upload acknowledgment
-establishes image-byte identity. T4 must verify the actual final original image.
+establishes image-byte identity. T4 must verify the complete raw bundle hash and
+length against the immutable Publisher job, plus the extracted poster hash and
+length against the published report. `transport_sha256`/`transport_bytes` always
+describe the actual Slack file; bundle receipts add `poster_sha256`/`poster_bytes`.
+The receiver also verifies every declared bundle file, the exact report metadata
+hash and the independently read publication manifest before any WeCom write.
 
 Read polling reuses a command whose outcome is unknown. A completed negative
 checker result permits a fresh read-only check of the **same** original message
@@ -87,8 +98,10 @@ Before enabling the existing daily automation:
    laptop, and can access the exact local bundle bytes. Current local tool
    availability does not prove the cloud automation has those capabilities.
 3. Check the real ticket/result envelope against the strict adapter and qualify
-   the final normalized PNG transport. Existing PNG evidence is not automatically
-   evidence for every image or a guaranteed retention period.
+   the final JSON bundle transport. A control-channel JSON read preserving original
+   PNG bytes does not prove final-DM rendering or a guaranteed pre-upload retention
+   period. Deploy the compatible receiver and independent checker before using
+   the new mode; an old checker rejects its request rather than weakening checks.
 4. Perform an isolated rehearsal with test report/attempt IDs and a separate
    state directory. At the relay's final HTTP boundary capture the exact text and
    image payload; do not complete a formal DM or consume a real report's intent.
