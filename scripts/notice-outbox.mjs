@@ -1,4 +1,5 @@
 // Optional control-channel outbox. It never sends a final DM or reads relay secrets.
+import {createNoticeManifest} from "./notice-manifest.mjs";
 import {digest} from "./archive.mjs";
 import {scopeDigest,handoffScope} from "./handoff-state.mjs";
 import {acceptDataCommand,decodeBundle,requireThat,REQUEST} from "./report-handoff.mjs";
@@ -54,9 +55,10 @@ export class NoticeOutbox{
     const edition=`${bundle.report.date}/r${bundle.report.revision}`;
     if(notice||this.db.prepare("SELECT 1 FROM notices WHERE edition=? OR attempt_id=? OR file_id=?").get(edition,c.attempt_id,c.file_id))reason="already_reserved";
     else{
-     const text=`AI Infra 晨报 · ${bundle.report.date} · ${bundle.report.subtitle}\n\n${proof.url}`;
-     requireThat(!/[\r\n<>]/.test(bundle.report.subtitle)&&Buffer.byteLength(bundle.report.subtitle)<=180&&Buffer.byteLength(text)<=1900,"Notice subtitle contract");
-     const detail={bundle_sha256:job.hash,report_merge_sha:job.detail.commit,url:proof.url,poster_original_sha256:proof.poster_sha256,text_sha256:digest(Buffer.from(text)),destination:this.destination};
+     const manifest=createNoticeManifest(bundle.files.get(bundle.report.path+"report.json"),job.detail.commit);
+     requireThat(manifest.index_url===proof.url&&manifest.poster.sha256===proof.poster_sha256,"Notice manifest differs from publication proof");
+     const text=manifest.text;
+     const detail={poster_policy:"original_bytes_v1",bundle_sha256:job.hash,report_merge_sha:job.detail.commit,url:proof.url,poster_original_sha256:proof.poster_sha256,text_sha256:digest(Buffer.from(text)),destination:this.destination};
      this.db.prepare("INSERT INTO notices VALUES (?,?,?,?,'reserved',?)").run(edition,job.id,c.attempt_id,c.file_id,JSON.stringify(detail));authorized=true;
     }
    }else if(c.action!=="status"){
@@ -65,10 +67,14 @@ export class NoticeOutbox{
      requireThat(notice.phase!=="sender_reported","Reported send cannot be downgraded");
      this.db.prepare("UPDATE notices SET phase='send_unknown' WHERE report_id=?").run(job.id);
     }else{
+     requireThat(!Object.hasOwn(notice.detail,"poster_policy")||notice.detail.poster_policy==="original_bytes_v1","Unknown persisted poster policy");
      requireThat(c.text_sha256===notice.detail.text_sha256,"Reported text differs from plan");
      const receipt={message_ts:c.message_ts,file_id:c.file_id,text_sha256:c.text_sha256,transport_sha256:c.transport_sha256,transport_bytes:c.transport_bytes};
      if(notice.phase==="sender_reported")requireThat(JSON.stringify(notice.detail.sender_receipt)===JSON.stringify(receipt),"Conflicting reported receipt");
-     else this.db.prepare("UPDATE notices SET phase='sender_reported',detail=? WHERE report_id=?").run(JSON.stringify({...notice.detail,sender_receipt:receipt}),job.id);
+     else {
+      if(notice.detail.poster_policy==="original_bytes_v1")requireThat(c.transport_sha256===notice.detail.poster_original_sha256,"Reported poster bytes differ from the original");
+      this.db.prepare("UPDATE notices SET phase='sender_reported',detail=? WHERE report_id=?").run(JSON.stringify({...notice.detail,sender_receipt:receipt}),job.id);
+     }
     }
    }
    notice=this.notice(c.report_request_id);
