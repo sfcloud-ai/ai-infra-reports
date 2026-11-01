@@ -225,10 +225,16 @@ The scheduled cloud task still needs a separately authorized prompt update:
    reconcile, never post a fresh message blindly. WeCom remains separately
    verified by the relay receipt.
 
-The worker does not own a durable final-notification outbox. If the cloud run
-ends before the publication receipt arrives, manual continuation is required;
-unattended recovery needs an additional approved task/outbox integration.
-Consequently this adapter alone is not a guarantee of automatic morning delivery.
+The optional [durable notification protocol](durable-notifications.md) reserves
+each edition and recovers uncertain control replies without reposting. It is
+disabled unless a destination and fixed activation boundary are explicitly
+configured. The cloud sender still must adopt that protocol, verify its actual
+DM, and reconcile unknown sends without retrying. It does not establish WeCom
+delivery from a sender's assertion, change a schedule, or guarantee 08:00 delivery.
+
+The same guide provides a readiness migration that stages a verified copy of a
+quiescent database, preserving completed reports and deduplication. It never
+changes the active config or deletes the source state.
 
 ## Activation checks requiring separate decisions
 

@@ -67,8 +67,8 @@ function connectorCommand(message,config){
  requireThat(Array.isArray(context)&&context.length===1&&context[0]?.type==="mrkdwn"&&context[0].text===footer&&context[0].verbatim===false&&Object.keys(context[0]).sort().join()==="text,type,verbatim","Connector visible attribution mismatch");
  return command;
 }
-export function acceptMessage(message,config,now=Date.now()){
- if(!message?.text?.startsWith("!ai-report "))return null;
+export function acceptDataCommand(message,config,prefix,pattern,now=Date.now()){
+ if(!message?.text?.startsWith(prefix))return null;
  const appSender=config.sender_bot_id!==undefined||config.sender_app_id!==undefined;
  const userAppSender=config.sender_user_app_id!==undefined;
  const identity=message.user===config.sender_user_id&&(userAppSender
@@ -80,9 +80,12 @@ export function acceptMessage(message,config,now=Date.now()){
  requireThat(message.type==="message"&&nativeShare&&!message.edited&&!message.hidden&&(!message.thread_ts||message.thread_ts===message.ts)&&identity&&(message.attachments===undefined||(Array.isArray(message.attachments)&&message.attachments.length===0)),"Untrusted report message");
  requireThat(/^\d{10}\.\d{6}$/.test(message.ts)&&Number(message.ts)*1000<=now+30000&&Number(message.ts)*1000>=now-15*60000,"Report message outside intake window");
  const command=userAppSender?connectorCommand(message,config):message.text;
- const match=/^!ai-report publish ([a-z0-9][a-z0-9-]{7,79}) ([a-f0-9]{64})$/.exec(command);
+ const match=pattern.exec(command);
  requireThat(match&&message.files?.length===1&&/^F[A-Z0-9]+$/.test(message.files[0].id),"Report command/file format");
  return {request_id:match[1],hash:match[2],source_ts:message.ts,file_id:message.files[0].id};
+}
+export function acceptMessage(message,config,now=Date.now()){
+ return acceptDataCommand(message,config,"!ai-report ",/^!ai-report publish ([a-z0-9][a-z0-9-]{7,79}) ([a-f0-9]{64})$/,now);
 }
 export async function boundedBytes(response,limit){
  requireThat(response.ok,"Remote read failed");
