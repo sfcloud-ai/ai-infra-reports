@@ -1,0 +1,11 @@
+[Unit]
+Description=Check for a validated report publisher release
+
+[Timer]
+OnBootSec=3min
+OnUnitInactiveSec=5min
+AccuracySec=30s
+Unit=publisher-cd.service
+
+[Install]
+WantedBy=timers.target
