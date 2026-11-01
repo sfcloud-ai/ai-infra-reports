@@ -11,6 +11,7 @@ import {NoticeOutbox,notificationScope,decodeNoticeCommand,acceptNoticeCommand,a
 import {encodeNoticeCommand,verifyNoticeGrant} from "../scripts/notice-command.mjs";
 import {SlackHandoff} from "../scripts/slack-handoff.mjs";
 import {validateConfig,handoffTick} from "../scripts/run-handoff.mjs";
+import {createNoticeManifest} from "../scripts/notice-manifest.mjs";
 const request="morning-2030-01-01",merge="d".repeat(40),ts="1793448000.000001";
 const config={team_id:"T123",channel_id:"C123",sender_user_id:"U123",bot_user_id:"U456",bot_id:"B456",producer_app_id:10,merger_app_id:11,slack_token_file:path.resolve("slack-token"),producer_key_file:path.resolve("producer-key"),state_dir:path.resolve("state"),ready_for_review:false,notification_destination:"D123",notification_not_before:"1793447000.000001"};
 const dir="reports/2026-10-31/r1/",files=new Map([...await readReports("tests/fixtures/archive")].filter(([p])=>p.startsWith(dir)));
@@ -30,6 +31,64 @@ function rig(filename=":memory:"){
 function admit(r,c,source="1793448100.000001"){
  const data=encodeNoticeCommand(c);r.outbox.admit({request_id:c.command_id,hash:digest(data),source_ts:source},data);return data;
 }
+const checkCommand=(c=claim(),id="checker-command-01")=>({...c,command_id:id,action:"check",message_ts:"1793448700.000001"});
+function checkerResult(request){return {slack_status:"verified",wecom_status:"not_checked",publication_status:"not_checked",receipt:{channel:config.notification_destination,ts:request.message_ts,relay_request_id:"auto:"+request.message_ts,file_id:request.file_id,transport_sha256:digest(png),transport_bytes:png.length},observed_publication_commit:"e".repeat(40),messages_sent:0,state_changed:false};}
+
+test("control check derives expectations from the saved bundle and never grants or records a send",async()=>{
+ const r=rig();try{
+  const c=claim();admit(r,c);await advanceNotice(r.outbox,c.command_id,r.io);
+  const before=r.outbox.notice(request),job=r.state.get(request),check=checkCommand(c);admit(r,check,"1793448800.000001");let reads=0;
+  const io={...r.io,checkNotice:async input=>{reads++;assert.deepEqual(input,{message_ts:check.message_ts,file_id:c.file_id,notice_manifest:createNoticeManifest(files.get(dir+"report.json"),merge)});return checkerResult(input);}};
+  await advanceNotice(r.outbox,check.command_id,io);await advanceNotice(r.outbox,check.command_id,io);
+  const response=r.outbox.command(check.command_id).response;
+  assert.equal(reads,1);assert.equal(response.send_authorized,false);assert.equal(response.slack_status,"not_checked");assert.equal(response.verification.slack_status,"verified");assert.equal(response.verification.wecom_status,"not_checked");
+  assert.deepEqual(r.outbox.notice(request),before);assert.deepEqual(r.state.get(request),job);
+  for(const patch of [{notice_manifest:{}},{slack_status:"verified"},{destination:"DOTHER"},{message_ts:"bad"}])assert.throws(()=>encodeNoticeCommand({...check,...patch}));
+ }finally{r.state.close();}
+});
+test("a check cannot change reservation ownership or downgrade a sender-reported result",async()=>{
+ for(const patch of [{file_id:"FOTHER"},{attempt_id:"other-attempt-01"},{message_ts:"1793447999.000001"},{message_ts:"1793448900.000001"}]){
+  const r=rig();try{const c=claim();admit(r,c);await advanceNotice(r.outbox,c.command_id,r.io);const before=r.outbox.notice(request),check={...checkCommand(c),...patch};admit(r,check,"1793448800.000001");await assert.rejects(()=>advanceNotice(r.outbox,check.command_id,{...r.io,checkNotice:async()=>assert.fail("unowned or invalid timestamp") }));assert.deepEqual(r.outbox.notice(request),before);}finally{r.state.close();}
+ }
+ const r=rig();try{
+  const c=claim();admit(r,c);await advanceNotice(r.outbox,c.command_id,r.io);
+  const record={...c,action:"record",command_id:"record-command-01",message_ts:"1793448700.000001",text_sha256:r.outbox.notice(request).detail.text_sha256,transport_sha256:digest(png),transport_bytes:png.length};
+  admit(r,record,"1793448800.000001");await advanceNotice(r.outbox,record.command_id,r.io);const before=r.outbox.notice(request);
+  const check=checkCommand(c);admit(r,check,"1793448801.000001");await advanceNotice(r.outbox,check.command_id,{...r.io,checkNotice:async()=>{throw Error("read unavailable");}});
+  assert.equal(r.outbox.command(check.command_id).response.verification.slack_status,"not_verified");assert.deepEqual(r.outbox.notice(request),before);
+ }finally{r.state.close();}
+});
+test("missing checker produces a negative receipt without blocking subsequent status commands",async()=>{
+ const r=rig();try{
+  const c=claim();admit(r,c);await advanceNotice(r.outbox,c.command_id,r.io);const check=checkCommand(c);admit(r,check,"1793448800.000001");
+  const slack={history:async()=>[],controlReceipt:r.io.receipt};
+  assert.equal((await handoffTick(r.state,config,slack,r.io)).phase,"response_sent");
+  assert.equal(r.outbox.command(check.command_id).response.verification.slack_status,"not_verified");
+  const status={schema_version:"1.0",command_id:"status-command-01",action:"status",report_request_id:request,bundle_sha256:bundle.hash};admit(r,status,"1793448801.000001");
+  assert.equal((await handoffTick(r.state,config,slack,r.io)).phase,"response_sent");assert.equal(r.outbox.notice(request).phase,"reserved");
+ }finally{r.state.close();}
+});
+test("unknown checker reply survives restart and only reconciles the original thread",async()=>{
+ const tmp=await mkdtemp(path.join(os.tmpdir(),"notice-check-recovery-")),filename=path.join(tmp,"state.sqlite");let r=rig(filename),text;
+ try{
+  const c=claim();admit(r,c);await advanceNotice(r.outbox,c.command_id,r.io);const check=checkCommand(c);admit(r,check,"1793448800.000001");
+  await assert.rejects(()=>advanceNotice(r.outbox,check.command_id,{...r.io,checkNotice:async input=>checkerResult(input),receipt:async(t,b)=>{text=b;throw Error("unknown reply");}}),/unknown/);
+  r.state.close();r=rig(filename);
+  await advanceNotice(r.outbox,check.command_id,{checkNotice:()=>assert.fail("do not recheck or overwrite the stored result"),receipt:()=>assert.fail("do not resend"),findReceipt:async(t,b)=>{assert.equal(t,"1793448800.000001");assert.equal(b,text);return "1793448900.000001";}});
+  assert.equal(r.outbox.command(check.command_id).phase,"response_sent");assert.equal(r.outbox.notice(request).phase,"reserved");
+ }finally{r.state.close();await rm(tmp,{recursive:true,force:true});}
+});
+test("checker receipt mismatch and a concurrent reservation change cannot produce verification",async()=>{
+ for(const mode of ["bad-result","changed-notice"]){
+  const r=rig();try{
+   const c=claim();admit(r,c);await advanceNotice(r.outbox,c.command_id,r.io);const check=checkCommand(c);admit(r,check,"1793448800.000001");
+   await assert.rejects(()=>handoffTick(r.state,config,{history:async()=>[],controlReceipt:()=>assert.fail("no positive or changed reply")},{...r.io,checkNotice:async input=>{
+    const result=checkerResult(input);if(mode==="bad-result")result.receipt.transport_sha256="f".repeat(64);else r.state.db.prepare("UPDATE notices SET phase='send_unknown' WHERE report_id=?").run(request);return result;
+   }}));
+   assert.equal(r.outbox.command(check.command_id).phase,"received");
+  }finally{r.state.close();}
+ }
+});
 test("outbox is opt-in, destination is independently bound, and old report scope stays stable",()=>{
  const {notification_destination,notification_not_before,...old}=config;
  assert.deepEqual(handoffScope(validateConfig(config)),handoffScope(validateConfig(old)));

@@ -2,7 +2,7 @@ import {DatabaseSync} from "node:sqlite";
 import {digest} from "./archive.mjs";
 import {requireThat} from "./report-handoff.mjs";
 export function handoffScope(config){
- const {slack_token_file,producer_key_file,state_dir,notification_destination,notification_not_before,...scope}=config;
+ const {slack_token_file,producer_key_file,state_dir,notification_destination,notification_not_before,notification_checker,...scope}=config;
  return scope;
 }
 export function scopeDigest(scope){
