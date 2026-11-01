@@ -22,10 +22,32 @@ export function gateFacts({pr,run,workflow,main,botId,botLogin}) {
  if(pr.state!=="open"||pr.draft||pr.merged||pr.base.ref!=="main"||pr.base.repo.full_name!==REPOSITORY||pr.head.repo.full_name!==REPOSITORY)throw Error("PR state/repository mismatch");
  if(pr.user.type!=="Bot"||pr.user.id!==botId||pr.user.login!==botLogin)throw Error("Untrusted author");
  if(!/^report\/[a-f0-9]{12}-[a-f0-9]{24}$/.test(pr.head.ref)||pr.commits!==1||pr.base.sha!==main)throw Error("Stale base or unexpected branch/history");
- if(pr.mergeable!==true||pr.mergeable_state!=="clean")throw Error("PR mergeability is not confirmed");
+ // A protected-ref update restriction can report blocked even to its allowed
+ // Merger. Only the SHA-conditional merge endpoint decides whether that actor
+ // may merge; verified quality rules have no bypass, and remain enforced there.
+ if(pr.mergeable!==true||!["clean","blocked"].includes(pr.mergeable_state))throw Error("PR mergeability is not confirmed");
  if(workflow.path!==".github/workflows/validate.yml"||run.workflow_id!==workflow.id||run.event!=="pull_request"||run.conclusion!=="success"||run.status!=="completed"||run.head_sha!==pr.head.sha||run.head_repository.full_name!==REPOSITORY)throw Error("Exact-head trusted CI required");
  if(run.pull_requests.length!==1||run.pull_requests[0].number!==pr.number||run.pull_requests[0].base?.ref!=="main"||run.pull_requests[0].base?.sha!==main||run.pull_requests[0].head?.sha!==pr.head.sha)throw Error("CI/PR association mismatch");
  return pr.head.sha;
+}
+async function verifyReviews(api,number){
+ const reviews=await api.request("GET",PREFIX+"/pulls/"+number+"/reviews?per_page=100");
+ if(!Array.isArray(reviews)||reviews.length>=100)throw Error("Complete bounded review history required");
+ const latest=new Map();
+ for(const review of reviews){
+  if(!Number.isSafeInteger(review.id)||review.id<=0||!Number.isSafeInteger(review.user?.id)||review.user.id<=0||!["APPROVED","CHANGES_REQUESTED","DISMISSED","COMMENTED","PENDING"].includes(review.state))throw Error("Invalid review evidence");
+  if(["COMMENTED","PENDING"].includes(review.state))continue;
+  const at=Date.parse(review.submitted_at),previous=latest.get(review.user.id);
+  if(typeof review.submitted_at!=="string"||!Number.isFinite(at)||typeof review.user.login!=="string"||!review.user.login)throw Error("Invalid submitted review evidence");
+  // Draft review IDs are assigned before submission. Ambiguous simultaneous
+  // decisions retain a changes request rather than accidentally clearing it.
+  if(!previous||previous.at<at||(previous.at===at&&review.state==="CHANGES_REQUESTED"))latest.set(review.user.id,{...review,at});
+ }
+ for(const review of latest.values())if(review.state==="CHANGES_REQUESTED"){
+  const access=await api.request("GET",PREFIX+"/collaborators/"+encodeURIComponent(review.user.login)+"/permission");
+  if(access?.user?.id!==review.user.id||!["admin","write","read","none"].includes(access?.permission))throw Error("Reviewer permissions unconfirmed");
+  if(["admin","write"].includes(access.permission))throw Error("Unresolved Request changes");
+ }
 }
 export async function mergeReport(api,runId,{enabled,botId,botLogin,trustedSha,policy,producerAppId,mergerAppId}){
  if(enabled!==true)return {merged:false,reason:"disabled"};
@@ -49,6 +71,7 @@ export async function mergeReport(api,runId,{enabled,botId,botLogin,trustedSha,p
  const suite=await api.request("GET",PREFIX+"/check-suites/"+run.check_suite_id);
  if(suite?.app?.slug!=="github-actions"||!Number.isSafeInteger(suite.app.id))throw Error("Trusted Actions suite required");
  await verifyRules(api,suite.app.id,policy,{producerAppId,mergerAppId});
+ await verifyReviews(api,number);
  const [base,head]=await Promise.all([snapshot(api,main),snapshot(api,sha)]);
  if(head.commit.parents.length!==1||head.commit.parents[0].sha!==main)throw Error("Head must have the validated main parent");
  assertReportOnly(base,head);validateChange(base.files,head.files);await validateRasters(head.files);
@@ -56,6 +79,7 @@ export async function mergeReport(api,runId,{enabled,botId,botLogin,trustedSha,p
  const latest=(await api.request("GET",PREFIX+"/git/ref/heads/main")).object.sha;
  if(latest!==main||gateFacts({pr:now,run,workflow,main:latest,botId,botLogin})!==sha)throw Error("PR/main changed during validation");
  await verifyRules(api,suite.app.id,policy,{producerAppId,mergerAppId});
+ await verifyReviews(api,number);
  try {
   const result=await api.request("PUT",PREFIX+"/pulls/"+number+"/merge",{sha,merge_method:"squash",commit_title:"docs(report): publish validated report"});
   if(!result?.merged)throw Error("GitHub did not merge the PR");
