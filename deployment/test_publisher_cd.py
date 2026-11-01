@@ -298,6 +298,31 @@ class StagingTests(unittest.TestCase):
         self.work = self.root / "work"
         self.work.mkdir()
 
+    def test_failed_validation_keeps_bounded_private_diagnostics_before_cutover(self):
+        for phase in ('dependencies', 'validation'):
+            operation = self.root / phase
+            operation.mkdir()
+            failure = cd.CommandFailure(137, b'x' * (129 * 1024))
+            sequence = [failure] if phase == 'dependencies' else ['installed', failure]
+            files = {'package.json': (b'{}', False)}
+            config = {'base': str(self.root), 'validation_uid': 65534}
+            with patch.object(cd, 'require_same_filesystem'), patch.object(cd, 'fetch', return_value=b'archive'), \
+                    patch.object(cd, 'archive_files', return_value=files), patch.object(os, 'chown', create=True), \
+                    patch.object(cd, 'container', side_effect=sequence), \
+                    patch.object(cd, 'atomic', side_effect=lambda p,d,**kw: p.write_bytes(d)), \
+                    patch.object(cd.shutil, 'disk_usage', return_value=type('Disk', (), {'free': 4 * 1024**3})()):
+                with self.assertRaisesRegex(cd.CommandFailure, '^bounded_command_failed$'):
+                    cd.stage(config, {'commit': 'a' * 40}, operation)
+            log = (operation / 'stage-failed.log').read_bytes()
+            record = json.loads((operation / 'stage-failed.json').read_text())
+            self.assertEqual(len(log), 128 * 1024)
+            self.assertEqual(record['phase'], phase)
+            self.assertEqual(record['exit_code'], 137)
+            self.assertEqual(record['log_sha256'], cd.digest(operation / 'stage-failed.log'))
+            self.assertFalse(record['production_credentials_mounted'])
+            self.assertFalse((operation / 'release').exists())
+            self.assertFalse((operation / 'staged.json').exists())
+
     def test_dependency_root_link_is_rejected_before_traversal(self):
         with patch.object(Path, "is_symlink", return_value=True), patch.object(os, "walk") as walk:
             with self.assertRaisesRegex(ValueError, "unsafe_dependency_root"):

@@ -31,6 +31,15 @@ class Deferred(Exception):
     """只读条件尚未满足，本轮不切换服务。"""
 
 
+class CommandFailure(ValueError):
+    """隔离命令的有限诊断，只保存到本轮 root 私有操作目录。"""
+
+    def __init__(self, code, output):
+        super().__init__("bounded_command_failed")
+        self.code = code
+        self.output = output[-128 * 1024:]
+
+
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -203,7 +212,7 @@ def run(arguments, timeout=30, cwd=None):
     result = subprocess.run(arguments, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                             timeout=timeout, env={"PATH": "/usr/bin:/bin", "HOME": "/root"})
     if result.returncode:
-        raise ValueError("bounded_command_failed")
+        raise CommandFailure(result.returncode, result.stdout)
     return result.stdout.decode().strip()
 
 
@@ -334,8 +343,17 @@ def stage(config, candidate, operation):
         for name in names:
             os.chown(Path(base) / name, config["validation_uid"], config["validation_uid"])
     npm = ["/node/bin/node", "/node/lib/node_modules/npm/bin/npm-cli.js"]
-    container(config, work, npm + ["ci", "--ignore-scripts", "--no-audit", "--no-fund"], network="bridge")
-    log = container(config, work, npm + ["run", "check"])
+    phase = "dependencies"
+    try:
+        container(config, work, npm + ["ci", "--ignore-scripts", "--no-audit", "--no-fund"], network="bridge")
+        phase = "validation"
+        log = container(config, work, npm + ["run", "check"])
+    except CommandFailure as failure:
+        atomic(operation / "stage-failed.log", failure.output)
+        save(operation / "stage-failed.json", {"commit": commit, "phase": phase,
+             "exit_code": failure.code, "log_sha256": hashlib.sha256(failure.output).hexdigest(),
+             "production_credentials_mounted": False})
+        raise
     atomic(operation / "validation.log", log.encode())
     for name, (data, _) in files.items():
         path = work / name
@@ -435,6 +453,10 @@ def _tick(config):
         raise Deferred("current_service_not_healthy")
     snapshot(Path(config["state"]) / "handoff.sqlite")
     candidate = select_candidate(current)
+    expected = os.environ.get("REPORT_CD_EXPECTED_SHA")
+    if expected is not None and (not SHA.fullmatch(expected)
+            or (candidate["commit"] if candidate else current) != expected):
+        raise Deferred("controller_candidate_superseded")
     if candidate is None:
         return {"status": "current", "commit": current}
     blocked = control / "blocked.json"
