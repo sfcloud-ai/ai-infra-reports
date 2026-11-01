@@ -41,3 +41,13 @@ test('strict checker receipt binding rejects false authority and changed files o
   const bad=structuredClone(result);change(bad);assert.throws(()=>checkedNoticeResult(bad,expected));
  }
 });
+test('bundle check requires independent exact transport and extracted-poster evidence',()=>{
+ const req={...request,transport:'report_bundle_v1',bundle_sha256:'c'.repeat(64),bundle_bytes:2000};
+ const value={...result,receipt:{...result.receipt,transport_sha256:req.bundle_sha256,transport_bytes:req.bundle_bytes,poster_sha256:request.notice_manifest.poster.sha256,poster_bytes:100}};
+ const expected={request:req,destination:'D123',posterBytes:100};
+ assert.equal(checkedNoticeResult(value,expected).slack_status,'verified');
+ for(const mutate of [v=>delete v.receipt.poster_sha256,v=>v.receipt.poster_sha256=req.bundle_sha256,v=>v.receipt.poster_bytes=101,v=>v.receipt.transport_sha256=request.notice_manifest.poster.sha256,v=>v.receipt.transport_bytes=100]){
+  const bad=structuredClone(value);mutate(bad);assert.throws(()=>checkedNoticeResult(bad,expected));
+ }
+ assert.throws(()=>checkedNoticeResult(value,{request,destination:'D123',posterBytes:100}));
+});

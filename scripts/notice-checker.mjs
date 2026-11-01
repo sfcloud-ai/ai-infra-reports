@@ -35,7 +35,9 @@ export function checkedNoticeResult(result,{request,destination,posterBytes}){
  if(result?.slack_status!=='verified')return invalid;
  const exact=(v,keys)=>v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).sort().join()===keys.sort().join();
  const r=result.receipt;
+ const bundled=request.transport==='report_bundle_v1',keys=['channel','ts','relay_request_id','file_id','transport_sha256','transport_bytes'];
+ if(bundled)keys.push('poster_sha256','poster_bytes');
  requireThat(exact(result,['slack_status','wecom_status','publication_status','receipt','observed_publication_commit','messages_sent','state_changed'])&&result.wecom_status==='not_checked'&&result.publication_status==='not_checked'&&result.messages_sent===0&&result.state_changed===false&&typeof result.observed_publication_commit==='string'&&/^[a-f0-9]{40}$/.test(result.observed_publication_commit),'Unexpected checker authority/result');
- requireThat(exact(r,['channel','ts','relay_request_id','file_id','transport_sha256','transport_bytes'])&&r.channel===destination&&r.ts===request.message_ts&&r.relay_request_id==='auto:'+request.message_ts&&r.file_id===request.file_id&&r.transport_sha256===request.notice_manifest.poster.sha256&&r.transport_bytes===posterBytes,'Checker receipt differs from reserved notice');
+ requireThat(exact(r,keys)&&r.channel===destination&&r.ts===request.message_ts&&r.relay_request_id==='auto:'+request.message_ts&&r.file_id===request.file_id&&r.transport_sha256===(bundled?request.bundle_sha256:request.notice_manifest.poster.sha256)&&r.transport_bytes===(bundled?request.bundle_bytes:posterBytes)&&(!bundled||(r.poster_sha256===request.notice_manifest.poster.sha256&&r.poster_bytes===posterBytes)),'Checker receipt differs from reserved notice');
  return {slack_status:'verified',wecom_status:'not_checked',publication_status:'not_checked',receipt:{...r},observed_publication_commit:result.observed_publication_commit};
 }

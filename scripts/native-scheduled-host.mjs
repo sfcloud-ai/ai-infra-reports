@@ -74,10 +74,12 @@ export class NativeSlackTransport{
   return nativeMessageLocator(await this.callTool(NATIVE_TOOLS.search,args),{config,channel:config.notification_destination});
  }
 }
-export async function prepareNativeRun(state,{bundleBytes,reportCommit,workspaceHost}){
+export async function prepareNativeRun(state,{bundleBytes,reportCommit,workspaceHost,deliveryMode}){
  const b=await decodeBundle(bundleBytes);
  requireThat(/^[a-f0-9]{40}$/.test(reportCommit)&&/^[a-z0-9-]+\.slack\.com$/.test(workspaceHost),'Pinned publication and workspace required');
- const detail={mode:'native_v1',report_commit:reportCommit,workspace_host:workspaceHost,bundle_sha256:b.hash,not_before:b.report.date+'T00:00:00.000Z'};
+ const mode=deliveryMode??state.get(b.data.request_id)?.detail.mode??'native_bundle_v1';
+ requireThat(['native_v1','native_bundle_v1'].includes(mode),'Unsupported persisted native transport');
+ const detail={mode,report_commit:reportCommit,workspace_host:workspaceHost,bundle_sha256:b.hash,not_before:b.report.date+'T00:00:00.000Z'};
  return state.admit(b.data.request_id,`${b.report.date}/r${b.report.revision}`,bundleBytes,detail,'native_prepared',detail);
 }
 export class NativeScheduledHost{
@@ -116,11 +118,12 @@ export class NativeScheduledHost{
  }
  boundNotice(job,b,receipt,phase){
   const n=receipt.notice,m=createNoticeManifest(b.files.get(b.report.path+'report.json'),job.detail.report_commit);
-  requireThat(n&&n.report_id===job.id&&n.edition===job.edition&&n.attempt_id===job.detail.attempt_id&&n.file_id===job.detail.file_id&&(!phase||n.phase===phase)&&n.detail.bundle_sha256===b.hash&&n.detail.report_merge_sha===job.detail.report_commit&&n.detail.destination===this.state.scope.notification_destination&&n.detail.poster_original_sha256===m.poster.sha256&&n.detail.text_sha256===digest(Buffer.from(m.text))&&n.detail.url===m.index_url&&n.detail.delivery_mode==='native_v1'&&n.detail.not_before===job.detail.not_before,'Native reservation differs from the immutable plan');
+  requireThat(n&&n.report_id===job.id&&n.edition===job.edition&&n.attempt_id===job.detail.attempt_id&&n.file_id===job.detail.file_id&&(!phase||n.phase===phase)&&n.detail.bundle_sha256===b.hash&&n.detail.report_merge_sha===job.detail.report_commit&&n.detail.destination===this.state.scope.notification_destination&&n.detail.poster_original_sha256===m.poster.sha256&&n.detail.text_sha256===digest(Buffer.from(m.text))&&n.detail.url===m.index_url&&n.detail.delivery_mode===job.detail.mode&&n.detail.not_before===job.detail.not_before,'Native reservation differs from the immutable plan');
   return m;
  }
  async step(id){
-  const job=this.state.get(id);requireThat(job?.detail.mode==='native_v1','Not a native scheduled run');
+  const job=this.state.get(id);requireThat(['native_v1','native_bundle_v1'].includes(job?.detail.mode),'Not a native scheduled run');
+  const bundled=job.detail.mode==='native_bundle_v1';
   if(job.phase==='sender_reported')return job;
   const b=await decodeBundle(job.bundle),config=this.config(job),fields={attempt_id:job.detail.attempt_id,file_id:job.detail.file_id};
   const poster=b.files.get(b.report.path+b.report.poster);
@@ -128,11 +131,12 @@ export class NativeScheduledHost{
    requireThat(Number.isSafeInteger(this.now())&&this.now()>0,'Host clock unavailable');
    if(this.now()<Date.parse(job.detail.not_before)-600000)throw new ReadPending('Pre-upload window starts ten minutes before delivery');
    await verifyReportPublication(job.detail.report_commit,b,this.fetchPublic);
-   const op=await this.once(id,'native:poster',{sha256:digest(poster)},()=>this.transport.upload(poster,b.report.poster.split('/').at(-1)));
+   const attachment=bundled?job.bundle:poster;
+   const op=await this.once(id,'native:poster',{sha256:digest(attachment)},()=>this.transport.upload(attachment,bundled?'ai-brief-bundle.json':b.report.poster.split('/').at(-1)));
    if(op.phase!=='acknowledged')throw new ReconciliationRequired('Poster upload unknown; no replacement');
    this.state.move(id,job.phase,'native_reserve',{...job.detail,file_id:op.result.file_id,attempt_id:`native-${digest(id).slice(0,32)}`});
   }else if(job.phase==='native_reserve'){
-   const r=await this.control(job,'prepare',fields);this.boundNotice(job,b,r.receipt,'reserved');
+   const r=await this.control(job,bundled?'prepare_bundle':'prepare',fields);this.boundNotice(job,b,r.receipt,'reserved');
    requireThat(r.receipt.send_authorized===false&&['prepared_without_send_grant','already_reserved'].includes(r.receipt.reason),'Prepare must not grant sending');
    this.state.move(id,job.phase,'native_begin',job.detail);
   }else if(job.phase==='native_begin'){
@@ -156,7 +160,7 @@ export class NativeScheduledHost{
    const args=()=>{
     const current=this.now();requireThat(Number.isSafeInteger(current)&&current>0,'Host clock unavailable');
     if(current<cached.at||current-cached.at>60000){this.#cache.delete(id);throw new ReadPending('Preflight expired before completion; refresh reads without a new begin');}
-    return nativeCompletionArguments(cached.r.invocation,{bytes:cached.r.bytes,sourceTs:cached.r.sourceTs,config,reportJson:b.files.get(b.report.path+'report.json'),poster,checkedAt:cached.at,now:current});
+    return nativeCompletionArguments(cached.r.invocation,{bytes:cached.r.bytes,sourceTs:cached.r.sourceTs,config,reportJson:b.files.get(b.report.path+'report.json'),poster,bundleBytes:job.bundle,checkedAt:cached.at,now:current});
    };
    if(this.now()<Date.parse(job.detail.not_before))throw new ReadPending('Awaiting 08:00 Asia/Shanghai');
    // The transaction repeats the freshness/time check after acquiring the lock.
@@ -179,8 +183,8 @@ export class NativeScheduledHost{
     this.state.move(id,job.phase,job.phase,{...job.detail,check_generation:generation+1});
     throw new ReadPending('Independent check unavailable; next tick requests a fresh check of the same file');
    }
-   requireThat(!checked.receipt.send_authorized&&v?.slack_status==='verified'&&v.wecom_status==='not_checked'&&v.publication_status==='not_checked'&&v.receipt?.channel===config.notification_destination&&v.receipt.ts===source.source_ts&&v.receipt.file_id===fields.file_id&&v.receipt.transport_sha256===digest(poster)&&v.receipt.transport_bytes===poster.length,'Independent checker did not verify the original final image/message');
-   const record=await this.control(job,'record',{...fields,message_ts:source.source_ts,text_sha256:digest(Buffer.from(manifest.text)),transport_sha256:v.receipt.transport_sha256,transport_bytes:v.receipt.transport_bytes});
+   requireThat(!checked.receipt.send_authorized&&v?.slack_status==='verified'&&v.wecom_status==='not_checked'&&v.publication_status==='not_checked'&&v.receipt?.channel===config.notification_destination&&v.receipt.ts===source.source_ts&&v.receipt.file_id===fields.file_id&&v.receipt.transport_sha256===(bundled?b.hash:digest(poster))&&v.receipt.transport_bytes===(bundled?job.bundle.length:poster.length)&&(!bundled||(v.receipt.poster_sha256===digest(poster)&&v.receipt.poster_bytes===poster.length)),'Independent checker did not verify the original final image/message');
+   const record=await this.control(job,bundled?'record_bundle':'record',{...fields,message_ts:source.source_ts,text_sha256:digest(Buffer.from(manifest.text)),transport_sha256:v.receipt.transport_sha256,transport_bytes:v.receipt.transport_bytes,...(bundled?{poster_sha256:v.receipt.poster_sha256,poster_bytes:v.receipt.poster_bytes}:{})});
    this.boundNotice(job,b,record.receipt,'sender_reported');requireThat(!record.receipt.send_authorized&&record.receipt.slack_status==='sender_reported','Sender record not acknowledged');
    this.state.move(id,job.phase,'sender_reported',{...job.detail,slack_status:'verified',wecom_status:'not_checked',receipt:v.receipt});
   }else throw new ReconciliationRequired('Unknown native host phase');

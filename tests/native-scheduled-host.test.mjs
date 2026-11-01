@@ -40,11 +40,12 @@ function rendered({text,ts,channel='C123',author='U123',thread,bot=false}){
  const url=`https://${workspace}/archives/${channel}/p${ts.replace('.','')}`+(thread?`?thread_ts=${thread}&cid=${channel}`:'');
  return jsonResult({results:`# Search Results for: \n\n## Messages (1 results)\n### Result 1 of 1\nChannel: ${channel.startsWith('D')?'DM':'#control'} (ID: ${channel})\nFrom: ${bot?'Publisher':'Sender'} (ID: ${author}) ${bot?' [BOT]':''}\nTime: fixture\nMessage_ts: ${ts}\nPermalink: [link](${url})\nText: \n${text}\n\n---\n\n`,pagination_info:'End of results - No more pages available.\\n'});
 }
-async function rig({filename=':memory:',start=TARGET-600000,allowFinal=true}={}){
+async function rig({filename=':memory:',start=TARGET-600000,allowFinal=true,deliveryMode='native_v1'}={}){
  const clock={now:start},modes={},counts={ticket:0,post:0,control:0,final:0,begin:0,check:0},uploads=new Map(),sources=new Map(),replies=new Map();let serial=1,final;
  const next=()=>`${Math.floor(clock.now/1000)}.${String(serial++).padStart(6,'0')}`;
  const state=new CloudRunState(filename,SCOPE);
- await prepareNativeRun(state,{bundleBytes:bytes,reportCommit:MERGE,workspaceHost:workspace});
+ await prepareNativeRun(state,{bundleBytes:bytes,reportCommit:MERGE,workspaceHost:workspace,deliveryMode});
+ const bundled=state.get(ID).detail.mode==='native_bundle_v1';
  const pc={...SCOPE,ready_for_review:true,producer_app_id:1,merger_app_id:2,notification_not_before:'1793400000.000001'};
  const publisher=new HandoffState(':memory:',pc);
  publisher.admit({request_id:ID,hash:bundle.hash,source_ts:'1793400010.000001'},bytes);publisher.move(ID,'received','receipt_sent',{commit:MERGE});
@@ -55,7 +56,7 @@ async function rig({filename=':memory:',start=TARGET-600000,allowFinal=true}={})
   if(tool===NATIVE_TOOLS.complete){
    const file=uploads.get(args.file_id);assert(file?.bytes);
    if(args.channel_id==='D123'){
-    counts.final++;assert.equal(args.initial_comment,manifest.text);assert.equal(args.thread_ts,undefined);assert.deepEqual(file.bytes,poster);
+    counts.final++;assert.equal(args.initial_comment,manifest.text);assert.equal(args.thread_ts,undefined);assert.deepEqual(file.bytes,bundled?bytes:poster);assert.equal(args.title,bundled?'ai-brief-bundle.json':bundle.report.poster.split('/').at(-1));
     if(!modes.finalMissing)final={ts:next(),text:args.initial_comment,file_id:args.file_id};
     if(modes.finalTimeout)throw Error('unknown final completion');return jsonResult({file_id:args.file_id});
    }
@@ -64,7 +65,9 @@ async function rig({filename=':memory:',start=TARGET-600000,allowFinal=true}={})
    const c=JSON.parse(file.bytes),ts=next();if(c.action==='begin')counts.begin++;if(c.action==='check')counts.check++;
    sources.set(c.command_id,{text:args.initial_comment+(modes.sourceAttribution?' '+modes.sourceAttribution:''),ts});
    outbox.admit({request_id:c.command_id,hash:digest(file.bytes),source_ts:ts},file.bytes);
-   await advanceNotice(outbox,c.command_id,{verify:async()=>proof,receipt:async(thread,text)=>{const reply={thread,text,ts:next(),bot:true,author:'U456'};replies.set(c.command_id,reply);return reply.ts;},checkNotice:async()=>modes.checkerNegative?{slack_status:'not_verified'}:{slack_status:'verified',wecom_status:'not_checked',publication_status:'not_checked',receipt:{channel:'D123',ts:final.ts,relay_request_id:'auto:'+final.ts,file_id:final.file_id,transport_sha256:digest(poster),transport_bytes:poster.length},observed_publication_commit:MERGE,messages_sent:0,state_changed:false}});
+   await advanceNotice(outbox,c.command_id,{verify:async()=>proof,receipt:async(thread,text)=>{const reply={thread,text,ts:next(),bot:true,author:'U456'};replies.set(c.command_id,reply);return reply.ts;},checkNotice:async request=>{
+    if(bundled){assert.equal(request.transport,'report_bundle_v1');assert.equal(request.bundle_sha256,digest(bytes));assert.equal(request.bundle_bytes,bytes.length);}
+    return modes.checkerNegative?{slack_status:'not_verified'}:{slack_status:'verified',wecom_status:'not_checked',publication_status:'not_checked',receipt:{channel:'D123',ts:final.ts,relay_request_id:'auto:'+final.ts,file_id:final.file_id,transport_sha256:digest(bundled?bytes:poster),transport_bytes:bundled?bytes.length:poster.length,...(bundled?{poster_sha256:modes.badPoster?'0'.repeat(64):digest(poster),poster_bytes:poster.length}:{})},observed_publication_commit:MERGE,messages_sent:0,state_changed:false};}});
    if(modes.controlTimeout)throw Error('lost control acknowledgment');return jsonResult({file_id:args.file_id});
   }
   assert.equal(tool,NATIVE_TOOLS.search);
@@ -95,6 +98,48 @@ test('native host prepares early, gates the single completion at 08:00 and recor
   assert.equal(r.state.get(ID).detail.wecom_status,'not_checked');await r.host.step(ID);assert.equal(r.counts.final,1);
   assert(!JSON.stringify(r.state.get(ID)).includes('summary'));
  }finally{r.close();}
+});
+test('new native runs carry the exact bundle and record separate transport and original-poster proofs',async()=>{
+ const r=await rig({deliveryMode:undefined});try{
+  // An omitted deliveryMode in the public API defaults to bundle, while the
+  // legacy harness remains explicit for old durable runs.
+  const state=new CloudRunState(':memory:',SCOPE);try{await prepareNativeRun(state,{bundleBytes:bytes,reportCommit:MERGE,workspaceHost:workspace});assert.equal(state.get(ID).detail.mode,'native_bundle_v1');}finally{state.close();}
+ }finally{r.close();}
+ const b=await rig({deliveryMode:'native_bundle_v1'});try{
+  await b.arm();await assert.rejects(()=>b.host.step(ID),ReadPending);assert.equal(b.counts.final,0);
+  b.clock.now=TARGET;await b.host.step(ID);await b.host.step(ID);await b.host.step(ID);
+  assert.equal(b.state.get(ID).phase,'sender_reported');assert.equal(b.counts.final,1);
+  const receipt=b.outbox.notice(ID).detail.sender_receipt;
+  assert.equal(receipt.transport_sha256,digest(bytes));assert.equal(receipt.transport_bytes,bytes.length);
+  assert.equal(receipt.poster_sha256,digest(poster));assert.equal(receipt.poster_bytes,poster.length);
+  assert.equal(b.state.get(ID).detail.wecom_status,'not_checked');
+ }finally{b.close();}
+});
+test('bundle mode keeps unknown completion and restart recovery read-only, with no second upload',async()=>{
+ for(const missing of [false,true]){
+  const r=await rig({deliveryMode:'native_bundle_v1'});try{
+   await r.arm();r.clock.now=TARGET;r.modes.finalTimeout=true;r.modes.finalMissing=missing;await r.host.step(ID);
+   r.host=r.makeHost();
+   if(missing){await assert.rejects(()=>r.host.step(ID),ReadPending);await assert.rejects(()=>r.host.step(ID),ReadPending);}
+   else{await r.host.step(ID);assert.equal(r.state.get(ID).phase,'sender_reported');}
+   assert.equal(r.counts.final,1);assert.equal(r.counts.begin,1);
+  }finally{r.close();}
+ }
+});
+test('bundle checker cannot replace original-poster proof with only a correct JSON digest',async()=>{
+ const r=await rig({deliveryMode:'native_bundle_v1'});try{
+  await r.arm();r.clock.now=TARGET;await r.host.step(ID);r.modes.badPoster=true;
+  await assert.rejects(()=>r.host.step(ID),ReadPending);
+  assert.equal(r.outbox.notice(ID).phase,'completion_intent');assert.equal(r.counts.final,1);
+ }finally{r.close();}
+});
+test('existing native run keeps its transport across prepare and rejects a changed mode',async()=>{
+ for(const deliveryMode of ['native_v1','native_bundle_v1']){
+  const r=await rig({deliveryMode});try{
+   await prepareNativeRun(r.state,{bundleBytes:bytes,reportCommit:MERGE,workspaceHost:workspace});assert.equal(r.state.get(ID).detail.mode,deliveryMode);
+   await assert.rejects(()=>prepareNativeRun(r.state,{bundleBytes:bytes,reportCommit:MERGE,workspaceHost:workspace,deliveryMode:deliveryMode==='native_v1'?'native_bundle_v1':'native_v1'}));
+  }finally{r.close();}
+ }
 });
 test('default host stops before begin and never consumes a live completion intent',async()=>{
  const r=await rig({allowFinal:false});try{await r.host.step(ID);await r.host.step(ID);await assert.rejects(()=>r.host.step(ID),/disabled/);assert.equal(r.outbox.notice(ID).phase,'reserved');assert.equal(r.counts.begin,0);assert.equal(r.counts.final,0);}finally{r.close();}
