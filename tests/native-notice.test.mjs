@@ -32,6 +32,17 @@ test("native adapter fails closed on unfiltered, partial, wrong-author, wrong-wo
  ];
  for(const change of changes){const f=fixture(),v=f.build();change(v);assert.throws(()=>readNativeReceipt(v,f.options));}
 });
+test("native pagination accepts the observed escaped newline but rejects incomplete or augmented markers",()=>{
+ const f=fixture();
+ for(const marker of ["End of results - No more pages available.\n","End of results - No more pages available.\\n",
+  "End of results - No more pages available.","End of results - No more pages available.\\nextra",
+  "End of results - No more pages available.\nMore pages available."]){
+  const v=f.build(),body=JSON.parse(v.result.content[0].text);body.pagination_info=marker;
+  v.result.content[0].text=JSON.stringify(body);
+  if(marker.endsWith("available.\n")||marker.endsWith("available.\\n"))assert.deepEqual(readNativeReceipt(v,f.options),f.receipt);
+  else assert.throws(()=>readNativeReceipt(v,f.options));
+ }
+});
 test("a prior command receipt, denied completion, changed destination or image cannot authorize final native upload",()=>{
  for(const change of [r=>r.command_sha256="f".repeat(64),r=>r.send_authorized=false,r=>r.notice.phase="reserved",r=>r.notice.detail.destination="DOTHER",r=>r.notice.detail.completion_command_id="old-command-01",r=>r.notice.detail.text_sha256="f".repeat(64),r=>r.notice.detail.poster_original_sha256="f".repeat(64),r=>r.notice.detail.not_before="2026-10-30T00:00:00.000Z"]){
   const f=fixture();change(f.receipt);assert.throws(()=>nativeCompletionArguments(f.build(),f.options));
