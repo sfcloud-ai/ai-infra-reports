@@ -34,4 +34,4 @@ AI 基础设施报告的独立公开档案。每天一个索引，每个主题�
 
 高权限流程只运行默认分支代码，通过 Git 对象 API 把 PR 内容当作数据校验，不 checkout 或执行 PR 脚本，不下载 PR artifacts。报告写入方不持有 Pages 部署权限。
 
-Pages 成功后还需 `node scripts/verify-publication.mjs EXPECTED_COMMIT YYYY-MM-DD REVISION` 核对实际可访问页面。它不发送通知，也不能证明 Slack/企微送达。发布失败、页面版本不符或请求结果未知时，停止推送并核对状态，不自动补发历史消息。
+Pages 成功后还需 `node scripts/verify-publication.mjs REPORT_MERGE_COMMIT YYYY-MM-DD REVISION` 核对实际可访问页面。参数是该期报告原始合入提交；后续部署只有继承该提交、保留相同源文件并通过页面内容证明时才被接受。它不发送通知，也不能证明 Slack/企微送达。发布失败、页面版本不符或请求结果未知时，停止推送并核对状态，不自动补发历史消息。

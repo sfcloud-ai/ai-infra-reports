@@ -4,6 +4,7 @@ import {gateFacts,mergeReport} from "../scripts/merge-report.mjs";
 import {assertReportOnly,snapshot,PREFIX} from "../scripts/github.mjs";
 import {verifyPublication} from "../scripts/verify-publication.mjs";
 import {REPOSITORY} from "../scripts/archive.mjs";
+import {publicationSite} from "./helpers/publication-site.mjs";
 const a="a".repeat(40),b="b".repeat(40);
 function facts(){return {main:a,botId:17,botLogin:"reports-example[bot]",workflow:{id:7,path:".github/workflows/validate.yml"},pr:{number:1,state:"open",draft:false,merged:false,base:{sha:a,ref:"main",repo:{full_name:REPOSITORY}},head:{sha:b,ref:"report/"+a.slice(0,12)+"-"+"c".repeat(24),repo:{full_name:REPOSITORY}},user:{type:"Bot",id:17,login:"reports-example[bot]"},commits:1,mergeable:true,mergeable_state:"clean"},run:{workflow_id:7,event:"pull_request",conclusion:"success",status:"completed",head_sha:b,head_repository:{full_name:REPOSITORY},pull_requests:[{number:1,base:{ref:"main",sha:a},head:{sha:b}}]}};}
 test("exact bot/head/base/run facts accepted",()=>assert.equal(gateFacts(facts()),b));
@@ -24,17 +25,15 @@ test("report subtree cannot hide workflow, executable or deleted file changes",(
 test("truncated Git tree fails without reading or executing blob contents",async()=>{
  let n=0;await assert.rejects(()=>snapshot({request:async()=>++n===1?{sha:a,tree:{sha:b}}:{truncated:true,tree:[]}},a),/Incomplete/);assert.equal(n,2);
 });
-test("publication gate refuses stale, missing, redirect and wrong article",async()=>{
- const good={schema_version:"1.0",commit:a,preview:false,reports:["2026-10-31/r1"]};
- for(const change of [m=>m.commit=b,m=>m.preview=true,m=>m.reports=[]]){
- const m=structuredClone(good);change(m);
- await assert.rejects(()=>verifyPublication(a,"2026-10-31",1,async()=>({ok:true,json:async()=>m})),/stale/);
+const publication=()=>publicationSite({files:new Map([["reports/2026-10-31/r1/report.json",Buffer.from("{}")]]),slug:"2026-10-31/r1",sourceCommit:a});
+test("publication gate refuses stale, missing and changed pages",async()=>{
+ for(const change of [s=>s.root.preview=true,s=>s.root.reports=[],s=>s.pages.set("2026-10-31/r1","<h1>wrong</h1>")]){
+  const s=publication();change(s);await assert.rejects(()=>verifyPublication(a,"2026-10-31",1,s.fetcher));
  }
- await assert.rejects(()=>verifyPublication(a,"2026-10-31",1,async()=>({ok:false})),/unavailable/);
- let calls=0;
- await assert.rejects(()=>verifyPublication(a,"2026-10-31",1,async()=>++calls===1?{ok:true,json:async()=>good}:{ok:true,headers:new Headers({"content-type":"text/html"}),text:async()=>"<h1>wrong</h1>"}),/Unexpected/);
+ await assert.rejects(()=>verifyPublication(a,"2026-10-31",1,async()=>new Response("unavailable",{status:503})),/unavailable/);
 });
 test("verified page still cannot claim a Slack/WeCom delivery",async()=>{
- let n=0;const r=await verifyPublication(a,"2026-10-31",1,async(url,options)=>{assert.equal(options.redirect,"error");return ++n===1?{ok:true,json:async()=>({schema_version:"1.0",commit:a,preview:false,reports:["2026-10-31/r1"]})}:{ok:true,headers:new Headers({"content-type":"text/html"}),text:async()=>'<main data-report-id="2026-10-31/r1">'};});
+ const s=publication(),r=await verifyPublication(a,"2026-10-31",1,s.fetcher);
+ assert(s.calls.every(c=>c.options.redirect==="error"&&c.options.cache==="no-store"));
  assert.equal(r.publication_status,"verified");assert.equal(r.delivery_allowed,false);
 });

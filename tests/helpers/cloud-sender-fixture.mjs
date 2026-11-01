@@ -7,6 +7,7 @@ import {HandoffState} from '../../scripts/handoff-state.mjs';
 import {NoticeOutbox,advanceNotice,notificationScope} from '../../scripts/notice-outbox.mjs';
 import {createNoticeManifest} from '../../scripts/notice-manifest.mjs';
 import {CloudRunState,CloudSender,prepareCloudRun} from '../../scripts/cloud-sender.mjs';
+import {publicationSite} from './publication-site.mjs';
 export const TARGET=1793491200000, DAY='2026-11-01', ID='report-cloud-rebuilt', BASE='a'.repeat(40), MERGE='c'.repeat(40);
 export const SCOPE={team_id:'T123',channel_id:'C123',notification_destination:'D123',sender_user_id:'U123',sender_user_app_id:'A123',sender_attribution_text:'*Sent using* <@U789>',bot_user_id:'U456',bot_id:'B456',transport_profile:{adapter:'offline-fixture',version:'v1',evidence_id:'not-production-evidence'}};
 export const PROMPTS={commit:'b'.repeat(40),prompts:Object.fromEntries(['research.md','editor.md'].map(name=>{const b=Buffer.from('offline prompt '+name);return [name,{sha256:digest(b),base64:b.toString('base64')}];}))};
@@ -18,6 +19,7 @@ export async function rig({filename=':memory:',start=TARGET,target=TARGET,scope=
  const state=new CloudRunState(filename,scope);
  await prepareCloudRun(state,{id:ID,files:FILES,base:BASE,prompts:PROMPTS,not_before:new Date(target).toISOString()});
  const bundle=await decodeBundle(state.get(ID).bundle),poster=bundle.files.get(dir+bundle.report.poster),manifest=createNoticeManifest(bundle.files.get(dir+'report.json'),MERGE);
+ const site=publicationSite({files:bundle.files,slug:`${DAY}/r1`,sourceCommit:MERGE});
  const publisherConfig={...scope,ready_for_review:true,producer_app_id:1,merger_app_id:2,notification_not_before:'1793480000.000001'};
  const publisher=new HandoffState(':memory:',publisherConfig),outbox=new NoticeOutbox(publisher,notificationScope(publisherConfig));
  const next=()=>`${Math.floor(clock.utc/1000)}.${String(serial++).padStart(6,'0')}`;
@@ -43,7 +45,7 @@ export async function rig({filename=':memory:',start=TARGET,target=TARGET,scope=
   // Native message parsing belongs to the external brief checker. This fixture
   // only asserts this adapter receives the original data; it is not its oracle.
   checkFinalNotice:async ({scope:context,manifest:planned,file_id,evidence})=>{assert.equal(context.notification_destination,scope.notification_destination);assert.equal(planned.text,manifest.text);assert.equal(file_id,evidence.file_id);if(modes.checkerError)throw Error('native notice rejected');return {slack_status:'verified',wecom_status:'not_checked',receipt:{channel:scope.notification_destination,ts:evidence.ts,file_id,transport_sha256:modes.posterMismatch?'0'.repeat(64):digest(evidence.poster),transport_bytes:evidence.poster.length}};},
-  fetchPublic:async url=>{if(modes.pagesUnavailable)throw Error('public Pages unavailable');if(url.endsWith('/publication.json'))return Response.json({schema_version:'1.0',commit:MERGE,preview:false,reports:[`${DAY}/r1`]});if(url===manifest.index_url)return new Response(`<main data-report-id="${DAY}/r1">`,{headers:{'content-type':'text/html'}});const article=manifest.articles.find(a=>a.url===url);if(article)return new Response(`<main data-report-id="${DAY}/r1/${article.id}" data-report-sources>`,{headers:{'content-type':'text/html'}});const image=bundle.report.images.find(i=>url.endsWith('/'+dir+i.path));if(image)return new Response(bundle.files.get(dir+image.path),{headers:{'content-type':image.path.endsWith('.png')?'image/png':'image/jpeg'}});throw Error('Unexpected public URL '+url);},
+  fetchPublic:async (url,options)=>{if(modes.pagesUnavailable)throw Error('public Pages unavailable');return site.fetcher(url,options);},
  };
  for(const [name,method] of Object.entries(io))io[name]=async(...args)=>{calls.push({name,utc:clock.utc,wall:clock.wall});return method(...args);};
  const makeSender=s=>new CloudSender(s??state,io,{now:()=>clock.wall});

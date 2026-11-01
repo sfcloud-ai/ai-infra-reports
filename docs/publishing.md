@@ -60,7 +60,9 @@ REPORT_PAGES_ENABLED 默认缺省/false。启用前需由仓库所有者配置 G
 
 Merger App 合并会正常触发 main push 发布，也保留手动触发。只保留这条 push 链，不叠加 workflow_run 造成重复发布。发布任务串行构建最新 main，publication.json 记录真正构建的 commit。
 
-发布后查询 publication.json 与本期索引 HTML，要求提交相同、preview=false、日期/版本存在且页面返回正确标识，方能使用报告 URL。核验失败不声称站点可用。
+随后校验 publication.json、独立的 reports/YYYY-MM-DD/rN/publication-proof.json 与本期所有 HTML。报告原始合入提交与整站部署提交分开记录：部署须等于原提交或由 GitHub compare 证明是其后继；期次源文件的 Git blob 哈希须与 GitHub 不可变提交树完全一致，交接调用还核对原始报告包。构建后生成的期次证明绑定部署提交及最终 HTML 的 SHA-256，页面标识和证据区仍须存在；读取结束后重新核对清单及证明，拒绝混合部署。图片继续逐一校验原始 SHA-256。这样后续代码或其他期次部署不会误拒完整旧报告，但更早、分叉、内容改变或无法证明的部署仍失败。
+
+根 publication.json 和 notice.json 的既有结构不变，通知清单继续绑定当前部署，兼容现有严格读取器。新校验器要求新构建生成的独立证明，缺失时等待重新部署，不回退到只看页面标识；GitHub 公共只读 API 不可用或限流时也保持未验证。证明依赖受信任的 Pages 构建，不是对恶意托管端的签名证明，也不代表 Slack/企微送达。
 
 之后才准备符合 ai-infra-brief 格式契约的顶层图文：日期标识、每篇子标题及对应子文章 URL、一张横版分区 PNG/JPEG 总海报，不加各篇摘要。内容复用 articles，并核对同源 notice.json 的完整顺序与版本；原机器人使用 file_share，固定连接器允许已验证的缺省 subtype。当前仓库不改变生产定时任务，不发送 Slack 或企微消息。发送者、可见 blocks、文件读取权限、真实 Slack 回读、企微回执和去重仍由通知链路负责。
 
