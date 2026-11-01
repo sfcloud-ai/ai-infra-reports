@@ -195,3 +195,86 @@ test("unknown control writes remain barriers even when an earlier waiting claim 
   }finally{r.state.close();}
  }
 });
+test("new reservations bind every article title and URL with no summaries",async()=>{
+ const r=rig();try{
+  const c=claim();admit(r,c);await advanceNotice(r.outbox,c.command_id,r.io);
+  const text=`AI Infra 晨报 · ${report.date}\n\n`+report.articles.map(a=>`${a.title}\n${proof.url}${a.id}/`).join("\n\n");
+  assert.equal(r.outbox.notice(request).detail.text_sha256,digest(Buffer.from(text)));
+  assert.notEqual(r.outbox.notice(request).detail.text_sha256,digest(Buffer.from(`AI Infra 晨报 · ${report.date} · ${report.subtitle}\n\n${proof.url}`)));
+ }finally{r.state.close();}
+});
+test("pre-upgrade reservations retain their exact digest and never gain another send grant",async()=>{
+ const r=rig();try{
+  const old={bundle_sha256:bundle.hash,report_merge_sha:merge,url:proof.url,poster_original_sha256:proof.poster_sha256,text_sha256:digest(Buffer.from(`AI Infra 晨报 · ${report.date} · ${report.subtitle}\n\n${proof.url}`)),destination:config.notification_destination};
+  r.state.db.prepare("INSERT INTO notices VALUES (?,?,?,?,'reserved',?)").run("2026-10-31/r1",request,"legacy-attempt-01","FOLD",JSON.stringify(old));
+  const c=claim();admit(r,c);await advanceNotice(r.outbox,c.command_id,r.io);
+  const response=r.outbox.command(c.command_id).response;
+  assert.equal(response.send_authorized,false);assert.equal(response.reason,"already_reserved");
+  assert.deepEqual(r.outbox.notice(request).detail,old);
+  const record={schema_version:"1.0",command_id:"legacy-record-01",action:"record",report_request_id:request,bundle_sha256:bundle.hash,attempt_id:"legacy-attempt-01",file_id:"FOLD",message_ts:"1793448700.000001",text_sha256:old.text_sha256,transport_sha256:digest(png),transport_bytes:png.length};
+  admit(r,record,"1793448102.000001");await advanceNotice(r.outbox,record.command_id,r.io);
+  assert.equal(r.outbox.notice(request).phase,"sender_reported");assert.equal(r.outbox.notice(request).detail.text_sha256,old.text_sha256);
+ }finally{r.state.close();}
+});
+test("new sender records reject changed poster bytes even if a sender claims equivalent pixels",async()=>{
+ const r=rig();try{
+  const c=claim();admit(r,c);await advanceNotice(r.outbox,c.command_id,r.io);
+  const before=r.outbox.notice(request);
+  const record={...c,command_id:"altered-record-01",action:"record",message_ts:"1793448700.000001",text_sha256:before.detail.text_sha256,transport_sha256:"f".repeat(64),transport_bytes:png.length};
+  admit(r,record,"1793448101.000001");await assert.rejects(()=>advanceNotice(r.outbox,record.command_id,r.io),/poster bytes/);
+  assert.deepEqual(r.outbox.notice(request),before);assert.equal(r.outbox.command(record.command_id).phase,"received");
+ }finally{r.state.close();}
+});
+test("legacy sender-reported transformed-image receipts stay immutable and grant no permission",async()=>{
+ const r=rig();try{
+  const c=claim();admit(r,c);await advanceNotice(r.outbox,c.command_id,r.io);
+  const before=r.outbox.notice(request),receipt={message_ts:"1793448700.000001",file_id:c.file_id,text_sha256:before.detail.text_sha256,transport_sha256:"f".repeat(64),transport_bytes:png.length};
+  const detail={...before.detail,sender_receipt:receipt};delete detail.poster_policy;
+  r.state.db.prepare("UPDATE notices SET phase='sender_reported',detail=? WHERE report_id=?").run(JSON.stringify(detail),request);
+  const old=r.outbox.notice(request),record={...c,command_id:"legacy-image-record",action:"record",...receipt};
+  admit(r,record,"1793448101.000001");await advanceNotice(r.outbox,record.command_id,r.io);
+  assert.deepEqual(r.outbox.notice(request),old);assert.equal(r.outbox.command(record.command_id).response.send_authorized,false);
+  const conflict={...record,command_id:"legacy-image-conflict",transport_sha256:digest(png)};
+  admit(r,conflict,"1793448102.000001");await assert.rejects(()=>advanceNotice(r.outbox,conflict.command_id,r.io),/Conflicting/);
+  assert.deepEqual(r.outbox.notice(request),old);
+  const another=claim("legacy-image-newclaim","legacy-image-newattempt","FNEW");
+  admit(r,another,"1793448103.000001");await advanceNotice(r.outbox,another.command_id,r.io);
+  assert.equal(r.outbox.command(another.command_id).response.send_authorized,false);assert.deepEqual(r.outbox.notice(request),old);
+ }finally{r.state.close();}
+});
+test("legacy pending reservations reconcile transformed bytes after restart without another send grant",async()=>{
+ for(const phase of ["reserved","send_unknown"]){
+  const tmp=await mkdtemp(path.join(os.tmpdir(),"legacy-notice-")),filename=path.join(tmp,"state.sqlite");let r=rig(filename);
+  try{
+   const detail={bundle_sha256:bundle.hash,report_merge_sha:merge,url:proof.url,poster_original_sha256:proof.poster_sha256,text_sha256:digest(Buffer.from("immutable old text")),destination:config.notification_destination};
+   r.state.db.prepare("INSERT INTO notices VALUES (?,?,?,?,?,?)").run("2026-10-31/r1",request,"legacy-attempt-01","FOLD",phase,JSON.stringify(detail));
+   r.state.close();r=rig(filename);
+   const c=claim();admit(r,c);await advanceNotice(r.outbox,c.command_id,r.io);
+   assert.equal(r.outbox.command(c.command_id).response.send_authorized,false);
+   const record={schema_version:"1.0",command_id:"legacy-record-01",action:"record",report_request_id:request,bundle_sha256:bundle.hash,attempt_id:"legacy-attempt-01",file_id:"FOLD",message_ts:"1793448700.000001",text_sha256:detail.text_sha256,transport_sha256:"f".repeat(64),transport_bytes:png.length};
+   admit(r,record,"1793448101.000001");await advanceNotice(r.outbox,record.command_id,r.io);
+   const notice=r.outbox.notice(request);assert.equal(notice.phase,"sender_reported");
+   assert.equal(notice.detail.text_sha256,detail.text_sha256);assert.equal(notice.detail.sender_receipt.transport_sha256,record.transport_sha256);
+   assert.equal(Object.hasOwn(notice.detail,"poster_policy"),false);assert.equal(r.outbox.command(record.command_id).response.send_authorized,false);
+  }finally{r.state.close();await rm(tmp,{recursive:true,force:true});}
+ }
+});
+test("new grants require persisted byte policy and commands cannot choose legacy behavior",async()=>{
+ const r=rig();try{
+  const c=claim(),data=admit(r,c);await advanceNotice(r.outbox,c.command_id,r.io);
+  const response=r.outbox.command(c.command_id).response;
+  assert.equal(response.notice.detail.poster_policy,"original_bytes_v1");
+  const message={type:"message",user:"U456",bot_id:"B456",ts:"1793448500.000001",thread_ts:"1793448100.000001"};
+  const options={bytes:data,sourceTs:message.thread_ts,readContext:{team_id:"T123",channel_id:"C123"},config};
+  for(const value of [undefined,null,"legacy","original_bytes_v2"]){
+   const old=structuredClone(response);if(value===undefined)delete old.notice.detail.poster_policy;else old.notice.detail.poster_policy=value;
+   assert.throws(()=>verifyNoticeGrant({...message,text:noticeResponseText(old)},options),/proof/);
+  }
+  assert.throws(()=>encodeNoticeCommand({...c,poster_policy:"legacy"}),/fields/);
+  const notice=r.outbox.notice(request);notice.detail.poster_policy="unknown_future_policy";
+  r.state.db.prepare("UPDATE notices SET detail=? WHERE report_id=?").run(JSON.stringify(notice.detail),request);
+  const record={...c,command_id:"unknown-policy-record",action:"record",message_ts:"1793448700.000001",text_sha256:notice.detail.text_sha256,transport_sha256:digest(png),transport_bytes:png.length};
+  admit(r,record,"1793448101.000001");await assert.rejects(()=>advanceNotice(r.outbox,record.command_id,r.io),/Unknown persisted/);
+  assert.equal(r.outbox.notice(request).phase,"reserved");
+ }finally{r.state.close();}
+});

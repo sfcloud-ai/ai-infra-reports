@@ -122,7 +122,11 @@ Example claim data:
    status reply or another attempt is not permission.
 4. Recheck publication and the final-format contract before completing the
    original native upload once to the pinned DM. Use only that granted file ID,
-   the report subtitle plus full edition URL, and the original poster. Slack
+   the exact article-list text from `createNoticeManifest` (date header, every
+   article title and its canonical article URL, no numbering or summary text),
+   and the original single landscape poster. Check its text digest against the grant.
+   Only new reservations use this rendering; existing reservations keep their
+   stored text digest and never gain new send permission after an upgrade. Slack
    [documents upload completion as a one-time operation](https://docs.slack.dev/reference/methods/files.completeUploadExternal/).
    The outbox supplies a durable intent and deduplication boundary, not a promise
    of a distributed exactly-once transaction. It does not verify an unshared file
@@ -130,8 +134,22 @@ Example claim data:
 5. Read the actual final message and run the brief project's
    `check_received_notice` with its authenticated read context. Bind the returned
    timestamp and **actual new** file ID. Preserve the original poster hash and
-   actual transport hash separately. If Slack changes PNG metadata, verify full
-   decoded dimensions and sRGB RGBA pixel equality; never loosen report/archive
+   actual transport hash separately. The downloaded Slack attachment bytes must
+   have exactly the original poster SHA-256. Pixel equivalence or metadata-only
+   rewrites are not exceptions. Use only a byte-preserving upload path verified
+   end to end; the production upload path for this new contract has not yet been
+   verified. Establish byte preservation before production upload completion;
+   a tool that rewrites the bytes is unsupported, not successful delivery.
+   Post-send byte checking is reconciliation only, never permission to upload
+   a new file ID or resend after mismatch.
+   New reservations persist `poster_policy: original_bytes_v1` and reject a
+   different transport hash. New grant verification requires that exact policy.
+   Legacy reservations without the policy in the trusted local database retain
+   their original receipt-recording rules, including reconciliation of already
+   sent `reserved`/`send_unknown` attempts after restart. This exception is never
+   selected by command payload, never alters the stored text digest and never
+   grants send/retry permission. Unknown policy values fail closed. Previously
+   sender-reported receipts remain immutable and only repeat identically. Never loosen report/archive
    byte hashes. Submit `record` only after this check.
 6. A record is explicitly `slack_status: sender_reported`,
    `wecom_status: not_checked`. The control bot cannot read the final DM or verify

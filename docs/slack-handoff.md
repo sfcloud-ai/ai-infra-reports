@@ -215,12 +215,14 @@ The scheduled cloud task still needs a separately authorized prompt update:
 2. Read the actual control thread. Authenticate the pinned publisher bot's
    identity and match **all** receipt identities, including poster digest and
    exact edition URL. Never trust a quoted JSON receipt or arbitrary URL.
-3. Recheck Pages before notifying. Send the existing delivery format (title,
-   verified day URL and native poster attachment) through the existing cloud
+3. Recheck Pages before notifying. Send the article-list delivery format (date header, every article title and its
+   verified article URL, no summary text, and one native landscape poster attachment) through the existing cloud
    Slack identity to its already approved final destination. This preserves the
    relay's sender filter. Do not redirect delivery to a channel based on its name.
 4. Validate the actual returned Slack message with the existing brief project's
-   `check_received_notice` contract. Keep its timestamp with the report version,
+   `prepare_article_notice_preview` / `check_received_notice` contract and the
+   generated `/reports/YYYY-MM-DD/rN/notice.json`. The manifest binds the complete
+   ordered title/URL list, raw report hash, poster hash and publication commit. Keep its timestamp with the report version,
    commit, URL, poster digest and destination. A send timeout means read and
    reconcile, never post a fresh message blindly. WeCom remains separately
    verified by the relay receipt.

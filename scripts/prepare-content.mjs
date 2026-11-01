@@ -1,4 +1,5 @@
 import {dailyBody,articleBody,articleEvidence} from "./content-text.mjs";
+import {latestNoticeEdition,noticeManifestForBuild} from "./notice-manifest.mjs";
 import {validateRasters} from "./rasters.mjs";
 import {readFile,writeFile,mkdir,rm} from "node:fs/promises";
 import path from "node:path";
@@ -9,6 +10,8 @@ const source=preview?path.join(root,"tests/fixtures/archive"):root;
 const files=await readReports(source);
 const {reports}=validateArchive(files);
 await validateRasters(files);
+const commit=process.env.REPORT_COMMIT||"local-preview";
+const newest=latestNoticeEdition(reports);
 const docs=path.join(root,"generated/docs"),assets=path.join(root,"public/reports");
 for(const p of [docs,assets]) {if(!p.startsWith(root+path.sep))throw Error("generated path");await rm(p,{recursive:true,force:true});await mkdir(p,{recursive:true});}
 const pages=[],assetsManifest=[],articleDirs={};
@@ -33,9 +36,18 @@ for(const r of [...reports].reverse()) {
     const rel=r.path.slice("reports/".length)+i.path,p=path.join(assets,rel);
     await mkdir(path.dirname(p),{recursive:true});await writeFile(p,files.get(r.path+i.path));
   }
+  // Historical and preview fixtures may not have a notification poster. They
+  // remain readable, but never acquire a fabricated normal-delivery manifest.
+  if(r.articles.length&&r.poster) {
+    const notice=noticeManifestForBuild(files.get(r.path+"report.json"),commit,{historical:slug!==newest});
+    if(notice) {
+      const filename=path.join(assets,slug,"notice.json");
+      await mkdir(path.dirname(filename),{recursive:true});await writeFile(filename,json(notice));
+    } else console.warn("No notification manifest for historical format-incompatible edition "+slug);
+  }
 }
 await mkdir(path.join(root,"generated"),{recursive:true});
 await writeFile(path.join(root,"generated/manifest.json"),json({preview,pages,assets:assetsManifest,articleDirs}));
 console.log("Prepared "+reports.length+" reports, "+pages.length+" pages"+(preview?" (synthetic preview)":""));
 
-await writeFile(path.join(root,"public/publication.json"),json({schema_version:"1.0",commit:process.env.REPORT_COMMIT||"local-preview",preview,reports:reports.map(r=>r.date+"/r"+r.revision)}));
+await writeFile(path.join(root,"public/publication.json"),json({schema_version:"1.0",commit,preview,reports:reports.map(r=>r.date+"/r"+r.revision)}));
