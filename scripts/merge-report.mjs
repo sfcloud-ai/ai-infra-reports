@@ -6,8 +6,19 @@ import {pathToFileURL} from "node:url";
 import {GitHub,PREFIX,snapshot,assertReportOnly} from "./github.mjs";
 import {verifyRules} from "./rules.mjs";
 import {REPOSITORY,validateChange} from "./archive.mjs";
+function requireBotIdentity(botId,botLogin){
+ if(!Number.isSafeInteger(botId)||botId<=0||typeof botLogin!=="string"||!botLogin.endsWith("[bot]"))throw Error("Pinned App bot identity required");
+}
+function isProducer(pr,botId,botLogin){
+ const user=pr?.user;
+ if(!user||!Number.isSafeInteger(user.id)||user.id<=0||typeof user.login!=="string"||!user.login||!["Bot","User"].includes(user.type))throw Error("PR author identity required");
+ if(user.id!==botId&&user.login!==botLogin)return false;
+ // A partial identity match is suspicious, not an unrelated engineering PR.
+ if(user.type!=="Bot"||user.id!==botId||user.login!==botLogin)throw Error("Untrusted author");
+ return true;
+}
 export function gateFacts({pr,run,workflow,main,botId,botLogin}) {
- if(!Number.isSafeInteger(botId)||botId<=0||!botLogin?.endsWith("[bot]"))throw Error("Pinned App bot identity required");
+ requireBotIdentity(botId,botLogin);
  if(pr.state!=="open"||pr.draft||pr.merged||pr.base.ref!=="main"||pr.base.repo.full_name!==REPOSITORY||pr.head.repo.full_name!==REPOSITORY)throw Error("PR state/repository mismatch");
  if(pr.user.type!=="Bot"||pr.user.id!==botId||pr.user.login!==botLogin)throw Error("Untrusted author");
  if(!/^report\/[a-f0-9]{12}-[a-f0-9]{24}$/.test(pr.head.ref)||pr.commits!==1||pr.base.sha!==main)throw Error("Stale base or unexpected branch/history");
@@ -19,10 +30,17 @@ export function gateFacts({pr,run,workflow,main,botId,botLogin}) {
 export async function mergeReport(api,runId,{enabled,botId,botLogin,trustedSha,policy,producerAppId,mergerAppId}){
  if(enabled!==true)return {merged:false,reason:"disabled"};
  if(!Number.isSafeInteger(runId)||runId<=0||!/^[a-f0-9]{40}$/.test(trustedSha))throw Error("Trusted execution context required");
+ requireBotIdentity(botId,botLogin);
  const run=await api.request("GET",PREFIX+"/actions/runs/"+runId);
  if(run?.pull_requests?.length!==1)throw Error("One associated PR required");
- const number=run.pull_requests[0].number,workflow=await api.request("GET",PREFIX+"/actions/workflows/validate.yml");
+ const number=run.pull_requests[0].number;
+ if(!Number.isSafeInteger(number)||number<=0)throw Error("Associated PR number required");
  const pr=await api.request("GET",PREFIX+"/pulls/"+number);
+ if(pr?.number!==number)throw Error("CI/PR association mismatch");
+ // workflow_run also fires for ordinary PRs. Route on fresh API author facts,
+ // never on the run actor (which may be a maintainer rerunning Producer CI).
+ if(!isProducer(pr,botId,botLogin))return {merged:false,reason:"non_producer_pr",number};
+ const workflow=await api.request("GET",PREFIX+"/actions/workflows/validate.yml");
  const main=(await api.request("GET",PREFIX+"/git/ref/heads/main")).object.sha;
  if(main!==trustedSha)throw Error("Default branch moved since trusted checkout");
  await verifyCodeowners(api,main);

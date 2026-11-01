@@ -42,8 +42,65 @@ function mergerFixture(){
   if(path.startsWith("/git/trees/"))return {truncated:false,tree:trees[path.includes("c".repeat(40))?0:1]};
   throw Error("Unexpected API request "+method+" "+path);
  }};
- return {api,options,rules};
+ return {api,options,rules,pr,run};
 }
+
+test("ordinary human and unrelated bot PRs are explicit read-only no-ops",async()=>{
+ for(const type of ["User","Bot"])for(const reportBranch of [false,true]){
+  const {api,options,pr}=mergerFixture();
+  pr.user={type,id:99,login:type==="User"?"maintainer":"other-app[bot]"};
+  if(!reportBranch)pr.head.ref="fix/engineering-change";
+  // Main can have advanced since the workflow checkout; an unrelated PR is
+  // still a no-op and must not enter report-specific quality/protection gates.
+  options.trustedSha="e".repeat(40);
+  assert.deepEqual(await mergeReport(api,3,options),{merged:false,reason:"non_producer_pr",number:1});
+  assert.deepEqual(api.calls,[{method:"GET",route:PREFIX+"/actions/runs/3",body:undefined},{method:"GET",route:PREFIX+"/pulls/1",body:undefined}]);
+ }
+});
+
+test("partial Producer matches and missing author facts fail closed without writes",async()=>{
+ for(const user of [
+  {type:"Bot",id:18,login:"reports-example[bot]"},
+  {type:"Bot",id:17,login:"other-app[bot]"},
+  {type:"User",id:17,login:"reports-example[bot]"},
+  null,{type:"Bot",login:"other-app[bot]"},{type:"Bot",id:18},
+  {type:"Unknown",id:18,login:"other-app[bot]"}
+ ]){
+  const {api,options,pr}=mergerFixture();pr.user=user;
+  await assert.rejects(()=>mergeReport(api,3,options),/author/);
+  assert(!api.calls.some(c=>c.method!=="GET"));
+ }
+});
+
+test("invalid pinned identity cannot silently skip ordinary PRs",async()=>{
+ for(const identity of [{botId:0},{botId:NaN},{botLogin:""},{botLogin:17},{botLogin:"maintainer"}]){
+  const {api,options,pr}=mergerFixture();pr.user={type:"User",id:99,login:"maintainer"};
+  await assert.rejects(()=>mergeReport(api,3,{...options,...identity}),/Pinned App bot identity/);
+  assert.equal(api.calls.length,0);
+ }
+});
+
+test("Producer routing ignores the CI rerun actor and keeps the exact merge gate",async()=>{
+ const {api,options,run}=mergerFixture();run.actor={type:"User",id:99,login:"maintainer"};
+ assert.equal((await mergeReport(api,3,options)).merged,true);
+ assert.equal(api.calls.filter(c=>c.method!=="GET").length,1);
+});
+
+test("Producer origin, branch, head and final author changes remain errors",async()=>{
+ for(const kind of ["fork","branch","head","final-author"]){
+  const {api,options,pr,run}=mergerFixture(),request=api.request;let reads=0;
+  if(kind==="fork")pr.head.repo.full_name="elsewhere/reports";
+  if(kind==="branch")pr.head.ref="fix/engineering-change";
+  if(kind==="head")run.head_sha=main;
+  api.request=async(method,route,body)=>{
+   const value=await request(method,route,body);
+   if(route.endsWith("/pulls/1")&&++reads===2&&kind==="final-author")return {...value,user:{type:"User",id:99,login:"maintainer"}};
+   return value;
+  };
+  await assert.rejects(()=>mergeReport(api,3,options),/mismatch|branch|Exact-head|Untrusted author/);
+  assert(!api.calls.some(c=>c.method!=="GET"));
+ }
+});
 
 test("workflow requests PR read while preserving the separate merger permissions",async()=>{
  const workflow=await readFile(".github/workflows/merge-report.yml","utf8");
