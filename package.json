@@ -11,7 +11,7 @@
     "prebuild": "npm run prepare:content && astro sync --force",
     "build": "astro build && pagefind --site dist && node scripts/check-output.mjs dist",
     "preview": "astro preview --host 127.0.0.1",
-    "test": "node --test tests/*.test.mjs",
+    "test": "node --test --test-concurrency=2 tests/*.test.mjs",
     "fixtures": "node scripts/make-fixtures.mjs",
     "validate": "node scripts/validate.mjs",
     "build:preview": "node scripts/build-preview.mjs",

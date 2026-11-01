@@ -18,17 +18,18 @@ export function decodeNoticeCommand(bytes){
  requireThat(Buffer.isBuffer(bytes)&&bytes.length>0&&bytes.length<=MAX_NOTICE_COMMAND,"Notice command byte limit");
  const c=JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(bytes));
  const common=["schema_version","command_id","action","report_request_id","bundle_sha256"];
- const fields={claim:["attempt_id","file_id"],status:[],unknown:["attempt_id","file_id"],check:["attempt_id","file_id","message_ts"],record:["attempt_id","file_id","message_ts","text_sha256","transport_sha256","transport_bytes"]};
+ const fields={claim:["attempt_id","file_id"],prepare:["attempt_id","file_id"],begin:["attempt_id","file_id"],status:[],asset:["file_id","message_ts"],unknown:["attempt_id","file_id"],check:["attempt_id","file_id","message_ts"],record:["attempt_id","file_id","message_ts","text_sha256","transport_sha256","transport_bytes"]};
  requireThat(c&&typeof c.action==="string"&&Object.hasOwn(fields,c.action),"Unsupported notice action");exact(c,[...common,...fields[c.action]]);
  requireThat(c.schema_version==="1.0"&&[c.command_id,c.report_request_id].every(v=>typeof v==="string"&&REQUEST.test(v))&&typeof c.bundle_sha256==="string"&&HASH.test(c.bundle_sha256),"Notice request identity");
- if(c.action!=="status")requireThat(typeof c.attempt_id==="string"&&REQUEST.test(c.attempt_id)&&typeof c.file_id==="string"&&FILE.test(c.file_id),"Notice attempt/file identity");
- if(c.action==="check")requireThat(typeof c.message_ts==="string"&&TS.test(c.message_ts),"Exact notice timestamp required");
+ if(c.action!=="status")requireThat(typeof c.file_id==="string"&&FILE.test(c.file_id),"Notice file identity");
+ if(!["status","asset"].includes(c.action))requireThat(typeof c.attempt_id==="string"&&REQUEST.test(c.attempt_id),"Notice attempt identity");
+ if(["check","asset"].includes(c.action))requireThat(typeof c.message_ts==="string"&&TS.test(c.message_ts),"Exact notice timestamp required");
  if(c.action==="record")requireThat(typeof c.message_ts==="string"&&TS.test(c.message_ts)&&[c.text_sha256,c.transport_sha256].every(v=>typeof v==="string"&&HASH.test(v))&&Number.isSafeInteger(c.transport_bytes)&&c.transport_bytes>0&&c.transport_bytes<=2000000,"Reported Slack receipt fields");
  return c;
 }
 export class NoticeOutbox{
  constructor(state,scope){
-  this.state=state;this.db=state.db;this.destination=scope.destination;this.notBefore=scope.not_before;
+  this.state=state;this.db=state.db;this.destination=scope.destination;this.notBefore=scope.not_before;this.controlChannel=scope.channel_id;
   requireThat(typeof this.destination==="string"&&/^D[A-Z0-9]+$/.test(this.destination)&&typeof this.notBefore==="string"&&TS.test(this.notBefore),"Pinned final DM destination and activation boundary required");
   this.db.exec(`CREATE TABLE IF NOT EXISTS notice_scope (id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS notices (edition TEXT PRIMARY KEY, report_id TEXT UNIQUE NOT NULL, attempt_id TEXT UNIQUE NOT NULL, file_id TEXT UNIQUE NOT NULL, phase TEXT NOT NULL, detail TEXT NOT NULL);
@@ -53,7 +54,7 @@ export class NoticeOutbox{
    const current=this.state.get(c.report_request_id);
    requireThat(current?.hash===job.hash&&current.phase===job.phase&&JSON.stringify(current.detail)===JSON.stringify(job.detail),"Report changed during notice validation");
    let notice=this.notice(c.report_request_id),authorized=false,reason;
-   if(c.action==="claim"){
+   if(["claim","prepare"].includes(c.action)){
     const edition=`${bundle.report.date}/r${bundle.report.revision}`;
     if(notice||this.db.prepare("SELECT 1 FROM notices WHERE edition=? OR attempt_id=? OR file_id=?").get(edition,c.attempt_id,c.file_id))reason="already_reserved";
     else{
@@ -61,16 +62,38 @@ export class NoticeOutbox{
      requireThat(manifest.index_url===proof.url&&manifest.poster.sha256===proof.poster_sha256,"Notice manifest differs from publication proof");
      const text=manifest.text;
      const detail={poster_policy:"original_bytes_v1",bundle_sha256:job.hash,report_merge_sha:job.detail.commit,url:proof.url,poster_original_sha256:proof.poster_sha256,text_sha256:digest(Buffer.from(text)),destination:this.destination};
-     this.db.prepare("INSERT INTO notices VALUES (?,?,?,?,'reserved',?)").run(edition,job.id,c.attempt_id,c.file_id,JSON.stringify(detail));authorized=true;
+     const native=c.action==="prepare";
+     if(native){detail.delivery_mode="native_v1";detail.not_before=bundle.report.date+"T00:00:00.000Z";}
+     this.db.prepare("INSERT INTO notices VALUES (?,?,?,?,?,?)").run(edition,job.id,c.attempt_id,c.file_id,"reserved",JSON.stringify(detail));
+     authorized=!native;if(native)reason="prepared_without_send_grant";
     }
+   }else if(c.action==="begin"){
+    requireThat(notice&&notice.attempt_id===c.attempt_id&&notice.file_id===c.file_id&&notice.detail.delivery_mode==="native_v1","Native attempt does not own this edition");
+    if(notice.phase!=="reserved")reason="completion_already_started";
+    else{
+     const manifest=createNoticeManifest(bundle.files.get(bundle.report.path+"report.json"),job.detail.commit);
+     requireThat(notice.detail.bundle_sha256===job.hash&&notice.detail.report_merge_sha===job.detail.commit&&notice.detail.poster_original_sha256===proof.poster_sha256&&notice.detail.text_sha256===digest(Buffer.from(manifest.text))&&notice.detail.destination===this.destination&&notice.detail.url===proof.url&&notice.detail.not_before===bundle.report.date+"T00:00:00.000Z","Prepared notice differs from verified publication");
+     const detail={...notice.detail,completion_command_id:id,completion_command_sha256:this.command(id).hash};
+     this.db.prepare("UPDATE notices SET phase='completion_intent',detail=? WHERE report_id=? AND phase='reserved'").run(JSON.stringify(detail),job.id);
+     authorized=true;reason="new_completion_intent";
+    }
+   }else if(c.action==="asset"){
+    requireThat(check?.asset,"Asset verification result required");reason="control_asset_checked";
    }else if(c.action==="check"){
     requireThat(check&&JSON.stringify(notice)===JSON.stringify(check.notice),"Reservation changed during notice check");
    }else if(c.action!=="status"){
     requireThat(notice&&notice.attempt_id===c.attempt_id&&notice.file_id===c.file_id,"Notice attempt does not own this edition");
+    if(notice.detail.delivery_mode==="native_v1"){
+     const d=notice.detail;
+     requireThat(typeof d.completion_command_id==="string"&&REQUEST.test(d.completion_command_id)&&typeof d.completion_command_sha256==="string"&&HASH.test(d.completion_command_sha256),"Native send has no persisted completion intent");
+     const intent=this.command(d.completion_command_id),begin=intent?decodeNoticeCommand(intent.bytes):null;
+     requireThat(intent&&intent.hash===d.completion_command_sha256&&digest(intent.bytes)===intent.hash&&begin.action==="begin"&&begin.report_request_id===job.id&&begin.bundle_sha256===job.hash&&begin.attempt_id===notice.attempt_id&&begin.file_id===notice.file_id&&intent.response?.send_authorized===true&&intent.response.reason==="new_completion_intent","Native completion command binding changed");
+    }
     if(c.action==="unknown"){
      requireThat(notice.phase!=="sender_reported","Reported send cannot be downgraded");
      this.db.prepare("UPDATE notices SET phase='send_unknown' WHERE report_id=?").run(job.id);
     }else{
+     requireThat(notice.detail.delivery_mode!=="native_v1"||["completion_intent","send_unknown","sender_reported"].includes(notice.phase),"Native send has no persisted completion intent");
      requireThat(!Object.hasOwn(notice.detail,"poster_policy")||notice.detail.poster_policy==="original_bytes_v1","Unknown persisted poster policy");
      requireThat(c.text_sha256===notice.detail.text_sha256,"Reported text differs from plan");
      const receipt={message_ts:c.message_ts,file_id:c.file_id,text_sha256:c.text_sha256,transport_sha256:c.transport_sha256,transport_bytes:c.transport_bytes};
@@ -84,6 +107,7 @@ export class NoticeOutbox{
    notice=this.notice(c.report_request_id);
    const response={schema_version:"1.0",command_id:id,command_sha256:this.command(id).hash,report_request_id:job.id,bundle_sha256:job.hash,send_authorized:authorized,reason:reason??(authorized?"new_reservation":"read_only_status"),notice:notice??null,slack_status:notice?.phase==="sender_reported"?"sender_reported":"not_checked",wecom_status:"not_checked"};
    if(c.action==="check")response.verification=check.result;
+   if(c.action==="asset")response.asset=check.asset;
    this.db.prepare("UPDATE notice_commands SET phase='response_ready',response=? WHERE id=? AND phase='received'").run(JSON.stringify(response),id);
    this.db.exec("COMMIT");
   }catch(e){this.db.exec("ROLLBACK");throw e;}
@@ -104,9 +128,9 @@ export async function advanceNotice(outbox,id,io){
   const c=decodeNoticeCommand(operation.bytes),job=outbox.state.get(c.report_request_id);
   requireThat(job&&job.hash===c.bundle_sha256,"Unknown report or bundle changed");
   let bundle,proof,check;
-  if(c.action==="claim"||c.action==="check"){
+  if(["claim","prepare","begin","check","asset"].includes(c.action)){
    requireThat(job.phase==="receipt_sent","Publication receipt must finish before notification claim");
-   if(c.action==="claim")requireThat(TS.test(job.source_ts)&&BigInt(job.source_ts.replace(".",""))>BigInt(outbox.notBefore.replace(".","")),"Pre-activation reports cannot receive a notification grant");
+   if(["claim","prepare","begin"].includes(c.action))requireThat(TS.test(job.source_ts)&&BigInt(job.source_ts.replace(".",""))>BigInt(outbox.notBefore.replace(".","")),"Pre-activation reports cannot receive a notification grant");
    bundle=await decodeBundle(job.bytes);proof=await io.verify(job.detail.commit,bundle);
    const edition=`${bundle.report.date}/r${bundle.report.revision}`;
    requireThat(proof.publication_status==="verified"&&proof.commit===job.detail.commit&&proof.bundle_sha256===job.hash&&proof.request_id===job.id&&proof.edition===edition&&proof.url===`https://sfcloud-ai.github.io/ai-infra-reports/${edition}/`&&proof.poster_sha256===digest(bundle.files.get(bundle.report.path+bundle.report.poster)),"Notice publication proof mismatch");
@@ -119,6 +143,12 @@ export async function advanceNotice(outbox,id,io){
     // An unavailable read produces a bounded negative receipt, never a send grant.
     try{observed=await io.checkNotice?.(request);}catch{}
     check={notice,result:checkedNoticeResult(observed,{request,destination:outbox.destination,posterBytes:bundle.files.get(bundle.report.path+bundle.report.poster).length})};
+   }else if(c.action==="asset"){
+    requireThat(c.message_ts>=job.source_ts&&c.message_ts<=operation.source_ts,"Asset must follow the report and precede its check request");
+    const expected={file_id:c.file_id,message_ts:c.message_ts,name:bundle.report.poster.split("/").at(-1),sha256:proof.poster_sha256,bytes:bundle.files.get(bundle.report.path+bundle.report.poster).length};
+    let observed;try{observed=await io.verifyAsset?.(expected);}catch{}
+    const ok=observed&&Object.keys(observed).sort().join()===["status","channel_id","message_ts","file_id","sha256","bytes","messages_sent"].sort().join()&&observed.status==="verified"&&observed.channel_id===outbox.controlChannel&&observed.message_ts===expected.message_ts&&observed.file_id===expected.file_id&&observed.sha256===expected.sha256&&observed.bytes===expected.bytes&&observed.messages_sent===0;
+    check={asset:ok?observed:{status:"not_verified",messages_sent:0}};
    }
   }
   outbox.prepare(id,c,job,bundle,proof,check);operation=outbox.command(id);

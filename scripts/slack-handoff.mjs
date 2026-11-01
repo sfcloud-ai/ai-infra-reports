@@ -1,5 +1,6 @@
 import {REPOSITORY} from "./archive.mjs";
-import {requireThat,boundedBytes,MAX_BUNDLE,SHA} from "./report-handoff.mjs";
+import {digest} from "./archive.mjs";
+import {requireThat,boundedBytes,MAX_BUNDLE,SHA,acceptControlFile} from "./report-handoff.mjs";
 export class SlackHandoff{
  constructor(config,token,fetcher=fetch){this.config=config;this.token=token;this.fetcher=fetcher;}
  async call(method,params={},write=false){
@@ -36,6 +37,16 @@ export class SlackHandoff{
  }
  async receipt(thread,proof){
   return this.controlReceipt(thread,"!ai-report receipt "+JSON.stringify(proof));
+ }
+ async controlAsset({message_ts,file_id,name,sha256,bytes},now=Date.now()){
+  const {data}=await this.call("conversations.history",{channel:this.config.channel_id,oldest:message_ts,latest:message_ts,inclusive:true,limit:2});
+  requireThat(Array.isArray(data.messages)&&data.messages.length===1&&!data.has_more&&!data.response_metadata?.next_cursor,"Exact complete asset history required");
+  const message=data.messages[0];
+  requireThat(message.ts===message_ts&&(!message.channel||message.channel===this.config.channel_id)&&(!message.team||message.team===this.config.team_id),"Asset channel/timestamp mismatch");
+  const event=acceptControlFile(message,this.config,now);requireThat(event.file_id===file_id,"Asset file binding changed");
+  const original=await this.download(event,{name,limit:2000000});
+  requireThat(original.length===bytes&&digest(original)===sha256,"Original poster bytes changed in Slack");
+  return {status:"verified",channel_id:this.config.channel_id,message_ts,file_id,sha256,bytes,messages_sent:0};
  }
  async controlReceipt(thread,text){
   const {data}=await this.call("chat.postMessage",{channel:this.config.channel_id,thread_ts:thread,text,parse:"none",mrkdwn:false,unfurl_links:false,unfurl_media:false},true);
