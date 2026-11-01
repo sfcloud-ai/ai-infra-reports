@@ -1,0 +1,144 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-11-02",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-11-02",
+  "subtitle": "训练环境先验收，在线服务守住退出与大池边界",
+  "articles": [
+    {
+      "id": "model-serving-gpu",
+      "title": "模型服务与 GPU 超配｜本次无合格新进展",
+      "summary": "候选已检索；实现、强基线与服务延迟证据尚不足。",
+      "sha256": "5c95c511afda3b60c412981219db5cede716dd9580516fff8efa9864902bd546"
+    },
+    {
+      "id": "hardware-status",
+      "title": "重点硬件｜本次无合格新进展",
+      "summary": "保留硬件核查结果，不把静态规格当新发布。",
+      "sha256": "f0c423c522c3e1ae75315b3e7129d52ff8f021c1653f6c056e66bf992e5ca8ca"
+    },
+    {
+      "id": "model-architecture-status",
+      "title": "模型与新架构｜本次无合格新进展",
+      "summary": "保留官方来源核查与候选取舍，不把开放权重当作架构进展。",
+      "sha256": "a7c6fab768b071cdc867d9db983a2815384f24244d3e7d76d44990716639504c"
+    },
+    {
+      "id": "embodied-training",
+      "title": "制造业具身训练｜先验收环境，再扩大训练",
+      "summary": "Gym-Anything 将生成、独立审查与修复分开；训练环境也需要可复现交付。",
+      "sha256": "6e9d47277b9ef7ea65ed79e8b8ca907a3f731c79a0f1f97ffda7109b2cf72d6e"
+    },
+    {
+      "id": "small-model-status",
+      "title": "前沿小模型｜本次无合格新进展",
+      "summary": "未取得满足任务质量、部署成本和实现条件的合格新增。",
+      "sha256": "f0edda53f3ff3efbe0af305c1f452a6fc72713a3278cc1b6793b537caac8a94f"
+    },
+    {
+      "id": "inference-engines",
+      "title": "推理引擎每日变动｜排空请求与大 KV 池正确性",
+      "summary": "vLLM 完善退出排空；SGLang 修复大池地址溢出；DeepInfer 保留核查状态。",
+      "sha256": "1ed806928cb39ec10dc7873b19ddeff3f1484353aa04b9950150bf59791ab7f3"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-11-02-gpu-screening-20261102",
+      "event_key": "gpu-screening-20261102",
+      "title": "GPU 超配候选核查记录",
+      "summary": "候选缺实现或强基线；此为空栏目检索记录，不计新技术入选。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.40305v1",
+        "https://developer.nvidia.com/blog/memory-enforced-gpu-sharing-in-kubernetes-with-nvidia-cuda-13-4/"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-11-02-hardware-screening-20261102",
+      "event_key": "hardware-screening-20261102",
+      "title": "重点硬件核查记录",
+      "summary": "本次未发现合格新增；静态产品页只作规格核查。",
+      "source_urls": [
+        "https://www.nvidia.com/en-us/data-center/h100/",
+        "https://www.nvidia.com/en-us/data-center/h200/",
+        "https://www.nvidia.com/en-us/products/workstations/professional-desktop-gpus/rtx-pro-5500/"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status"
+    },
+    {
+      "id": "2026-11-02-architecture-screening-20261102",
+      "event_key": "architecture-screening-20261102",
+      "title": "模型架构核查记录",
+      "summary": "本次未发现合格新增；候选仍有实现与目标硬件证据缺口。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.38210v1",
+        "https://huggingface.co/Qwen",
+        "https://huggingface.co/deepseek-ai",
+        "https://huggingface.co/zai-org"
+      ],
+      "update_of": null,
+      "article_id": "model-architecture-status"
+    },
+    {
+      "id": "2026-11-02-gym-anything-robotics-v1",
+      "event_key": "gym-anything-robotics-v1",
+      "title": "Gym-Anything：可验收的仿真训练环境",
+      "summary": "25 个仿真、200 个环境；独立审查与修复，有公开实现但 GPU/Isaac 测试与工厂迁移证据不足。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.40565v1",
+        "https://github.com/gym-anything/robotics/tree/febb260b0d34d9d3641bc2b3545acabeacf402bb"
+      ],
+      "update_of": null,
+      "article_id": "embodied-training"
+    },
+    {
+      "id": "2026-11-02-small-model-screening-20261102",
+      "event_key": "small-model-screening-20261102",
+      "title": "前沿小模型核查记录",
+      "summary": "本次未发现合格新增，不用模型索引或权重开放填充新闻。",
+      "source_urls": [
+        "https://ai.google.dev/gemma/docs",
+        "https://huggingface.co/microsoft/UserLM-2.0",
+        "https://huggingface.co/microsoft/Mage-VL-Cowork",
+        "https://huggingface.co/HuggingFaceTB"
+      ],
+      "update_of": null,
+      "article_id": "small-model-status"
+    },
+    {
+      "id": "2026-11-02-vllm-pr-62967",
+      "event_key": "vllm-pr-62967",
+      "title": "vLLM gRPC 优雅退出排空",
+      "summary": "先拒绝新请求，等待存量并保护待读取 NIXL KV；B300 复现只证明具体退出时序。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/62967",
+        "https://github.com/vllm-project/vllm/commit/5a233286c6318c6fa579d3aac02860f64fa28742"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    },
+    {
+      "id": "2026-11-02-sglang-pr-47029",
+      "event_key": "sglang-pr-47029",
+      "title": "SGLang 大 KV 池地址计算修复",
+      "summary": "将 slot 地址乘法提升到 int64；AMD 大池复现完成，收益是正确性而非加速。",
+      "source_urls": [
+        "https://github.com/sgl-project/sglang/pull/47029",
+        "https://github.com/sgl-project/sglang/commit/8d12b65e541ac6d4513a8fad03fed877557702ca"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    }
+  ],
+  "images": [
+    {
+      "path": "assets/overview.png",
+      "sha256": "a67c993eb9dfa69d344b6cc37e87ce83c015670c412170e9e66225cad16d81f8",
+      "alt": "横版六栏目海报：Gym-Anything 验收流程、vLLM 退出排空、SGLang 地址正确性；四个空栏保留。"
+    }
+  ],
+  "poster": "assets/overview.png"
+}
