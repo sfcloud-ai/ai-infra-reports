@@ -34,6 +34,104 @@ function admit(r,c,source="1793448100.000001"){
 const checkCommand=(c=claim(),id="checker-command-01")=>({...c,command_id:id,action:"check",message_ts:"1793448700.000001"});
 function checkerResult(request){return {slack_status:"verified",wecom_status:"not_checked",publication_status:"not_checked",receipt:{channel:config.notification_destination,ts:request.message_ts,relay_request_id:"auto:"+request.message_ts,file_id:request.file_id,transport_sha256:digest(png),transport_bytes:png.length},observed_publication_commit:"e".repeat(40),messages_sent:0,state_changed:false};}
 
+test("native preparation survives restart and only a unique persisted completion intent grants final upload",async()=>{
+ const tmp=await mkdtemp(path.join(os.tmpdir(),"native-notice-restart-")),filename=path.join(tmp,"state.sqlite");let r=rig(filename);
+ try{
+  const prepare={...claim("prepare-command-01"),action:"prepare"};admit(r,prepare);await advanceNotice(r.outbox,prepare.command_id,r.io);
+  assert.equal(r.outbox.command(prepare.command_id).response.send_authorized,false);
+  assert.equal(r.outbox.notice(request).phase,"reserved");
+  assert.equal(r.outbox.notice(request).detail.not_before,"2026-10-31T00:00:00.000Z");
+  r.state.close();r=rig(filename);
+  const begin={...prepare,action:"begin",command_id:"begin-command-01"};const encoded=admit(r,begin,"1793448200.000001");
+  await advanceNotice(r.outbox,begin.command_id,r.io);
+  const response=r.outbox.command(begin.command_id).response;
+  assert.equal(response.send_authorized,true);assert.equal(response.reason,"new_completion_intent");
+  assert.equal(response.notice.phase,"completion_intent");assert.equal(response.notice.detail.completion_command_sha256,digest(encoded));
+  r.state.close();r=rig(filename);
+  const again={...begin,command_id:"begin-command-02"};admit(r,again,"1793448300.000001");await advanceNotice(r.outbox,again.command_id,r.io);
+  assert.equal(r.outbox.command(again.command_id).response.send_authorized,false);
+  assert.equal(r.outbox.notice(request).detail.completion_command_id,begin.command_id);
+ }finally{r.state.close();await rm(tmp,{recursive:true,force:true});}
+});
+
+test("unknown native completion grant response only reconciles its original thread and never authorizes another command",async()=>{
+ const r=rig();try{
+  const prepare={...claim("prepare-command-01"),action:"prepare"};admit(r,prepare);await advanceNotice(r.outbox,prepare.command_id,r.io);
+  const begin={...prepare,action:"begin",command_id:"begin-command-01"};admit(r,begin,"1793448200.000001");let saved;
+  await assert.rejects(()=>advanceNotice(r.outbox,begin.command_id,{...r.io,receipt:async(t,text)=>{saved=text;throw Error("unknown");}}),/unknown/);
+  assert.equal(r.outbox.notice(request).phase,"completion_intent");
+  await advanceNotice(r.outbox,begin.command_id,{receipt:()=>assert.fail("no retry"),verify:()=>assert.fail("no new grant"),findReceipt:async(t,text)=>{assert.equal(t,"1793448200.000001");assert.equal(text,saved);return "1793448250.000001";}});
+  const again={...begin,command_id:"begin-command-02"};admit(r,again,"1793448300.000001");await advanceNotice(r.outbox,again.command_id,r.io);
+  assert.equal(r.outbox.command(again.command_id).response.send_authorized,false);
+ }finally{r.state.close();}
+});
+
+test("native final completion rejects absent preparation, wrong ownership, changed publication and premature receipt recording",async()=>{
+ for(const mode of ["missing","owner","proof","record"]){
+  const r=rig();try{
+   const prepare={...claim("prepare-command-01"),action:"prepare"};
+   if(mode!=="missing"){admit(r,prepare);await advanceNotice(r.outbox,prepare.command_id,r.io);}
+   let c={...prepare,action:"begin",command_id:"begin-command-01"};
+   if(mode==="owner")c.file_id="FOTHER";
+   if(mode==="record")c={...c,action:"record",message_ts:"1793448150.000001",text_sha256:r.outbox.notice(request).detail.text_sha256,transport_sha256:digest(png),transport_bytes:png.length};
+   admit(r,c,"1793448200.000001");
+   const before=r.outbox.notice(request);
+   await assert.rejects(()=>advanceNotice(r.outbox,c.command_id,mode==="proof"?{...r.io,verify:async()=>({...proof,poster_sha256:"f".repeat(64)})}:r.io));
+   assert.deepEqual(r.outbox.notice(request),before);
+  }finally{r.state.close();}
+ }
+});
+
+test("native unknown and record require the actual persisted begin command, including restart recovery",async()=>{
+ for(const mode of ["absent","forged-phase","changed-hash","wrong-command","valid"]){
+  const tmp=await mkdtemp(path.join(os.tmpdir(),"native-intent-binding-")),filename=path.join(tmp,"state.sqlite");let r=rig(filename);
+  try{
+   const prepare={...claim("prepare-command-01"),action:"prepare"};admit(r,prepare);await advanceNotice(r.outbox,prepare.command_id,r.io);
+   if(["changed-hash","wrong-command","valid"].includes(mode)){
+    const begin={...prepare,action:"begin",command_id:"begin-command-01"};admit(r,begin,"1793448150.000001");await advanceNotice(r.outbox,begin.command_id,r.io);
+   }
+   if(mode!=="valid"){
+    const n=r.outbox.notice(request);
+    if(mode==="changed-hash")n.detail.completion_command_sha256="f".repeat(64);
+    if(mode==="wrong-command"){n.detail.completion_command_id=prepare.command_id;n.detail.completion_command_sha256=r.outbox.command(prepare.command_id).hash;}
+    r.state.db.prepare("UPDATE notices SET phase=?,detail=? WHERE report_id=?").run(mode==="forged-phase"?"send_unknown":n.phase,JSON.stringify(n.detail),request);
+   }
+   const unknown={...prepare,action:"unknown",command_id:"unknown-command-01"};admit(r,unknown,"1793448200.000001");
+   const before=r.outbox.notice(request);
+   if(mode==="valid")await advanceNotice(r.outbox,unknown.command_id,r.io);
+   else{await assert.rejects(()=>advanceNotice(r.outbox,unknown.command_id,r.io),/completion/);assert.deepEqual(r.outbox.notice(request),before);}
+   r.state.close();r=rig(filename);
+   const record={...prepare,action:"record",command_id:"record-command-01",message_ts:"1793448250.000001",text_sha256:r.outbox.notice(request).detail.text_sha256,transport_sha256:digest(png),transport_bytes:png.length};admit(r,record,"1793448300.000001");
+   if(mode==="valid"){await advanceNotice(r.outbox,record.command_id,r.io);assert.equal(r.outbox.notice(request).phase,"sender_reported");assert.equal(r.outbox.command(record.command_id).response.send_authorized,false);}
+   else{await assert.rejects(()=>advanceNotice(r.outbox,record.command_id,r.io),/completion/);assert.deepEqual(r.outbox.notice(request),before);}
+  }finally{r.state.close();await rm(tmp,{recursive:true,force:true});}
+ }
+});
+
+test("a control poster check verifies saved original bytes without reserving a final send",async()=>{
+ const r=rig();try{
+  const c={schema_version:"1.0",command_id:"asset-command-01",action:"asset",report_request_id:request,bundle_sha256:bundle.hash,file_id:"F111",message_ts:"1793448050.000001"};
+  admit(r,c);let reads=0;
+  const io={...r.io,verifyAsset:async expected=>{reads++;assert.deepEqual(expected,{file_id:"F111",message_ts:c.message_ts,name:"poster.png",sha256:digest(png),bytes:png.length});const {name,...proof}=expected;return {status:"verified",channel_id:config.channel_id,...proof,messages_sent:0};}};
+  await advanceNotice(r.outbox,c.command_id,io);await advanceNotice(r.outbox,c.command_id,io);
+  assert.equal(reads,1);assert.equal(r.outbox.notice(request),null);
+  const response=r.outbox.command(c.command_id).response;
+  assert.equal(response.send_authorized,false);assert.equal(response.asset.status,"verified");assert.equal(response.wecom_status,"not_checked");
+  assert.equal(r.sent.length,1);assert.equal(r.sent[0].thread,"1793448100.000001");
+  assert.throws(()=>encodeNoticeCommand({...c,attempt_id:"cannot-reserve-01"}));
+ }finally{r.state.close();}
+});
+test("unavailable or mismatched control image proof yields a negative receipt and leaves the final outbox untouched",async()=>{
+ const patches=[{channel_id:"COTHER"},{sha256:"f".repeat(64)},{bytes:png.length+1},{messages_sent:1},{file_id:"FOTHER"},{message_ts:"1793448049.000001"},{extra:true}];
+ for(const patch of [null,...patches]){
+  const r=rig();try{
+   const c={schema_version:"1.0",command_id:"asset-command-01",action:"asset",report_request_id:request,bundle_sha256:bundle.hash,file_id:"F111",message_ts:"1793448050.000001"};admit(r,c);
+   await advanceNotice(r.outbox,c.command_id,{...r.io,verifyAsset:async()=>{if(patch===null)throw Error("unavailable");return {status:"verified",channel_id:config.channel_id,message_ts:c.message_ts,file_id:c.file_id,sha256:digest(png),bytes:png.length,messages_sent:0,...patch};}});
+   assert.deepEqual(r.outbox.command(c.command_id).response.asset,{status:"not_verified",messages_sent:0});assert.equal(r.outbox.notice(request),null);
+  }finally{r.state.close();}
+ }
+});
+
 test("control check derives expectations from the saved bundle and never grants or records a send",async()=>{
  const r=rig();try{
   const c=claim();admit(r,c);await advanceNotice(r.outbox,c.command_id,r.io);

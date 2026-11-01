@@ -70,12 +70,12 @@ export async function handoffTick(state,config,slack,io){
    if(["response_sending","response_unknown"].includes(operation.phase)){commandId=candidate;break;}
    if(commandId)continue;
    const command=operation.phase==="received"?decodeNoticeCommand(operation.bytes):null;
-   const job=command?.action==="claim"?state.get(command.report_request_id):null;
+   const job=["claim","prepare","begin","asset"].includes(command?.action)?state.get(command.report_request_id):null;
    if(job&&job.phase!=="receipt_sent")continue;
    commandId=candidate;
   }
   if(commandId){
-   await advanceNotice(notices,commandId,{verify:io.verify,checkNotice:io.checkNotice,receipt:(thread,text)=>slack.controlReceipt(thread,text),findReceipt:(thread,text)=>slack.findControlReceipt(thread,text)});
+   await advanceNotice(notices,commandId,{verify:io.verify,checkNotice:io.checkNotice,verifyAsset:io.verifyAsset,receipt:(thread,text)=>slack.controlReceipt(thread,text),findReceipt:(thread,text)=>slack.findControlReceipt(thread,text)});
    noticeResult={command_id:commandId,phase:notices.command(commandId).phase};
   }
   if(id){await advanceHandoff(state,id,io);return {request_id:id,phase:state.get(id).phase,...(noticeResult?{notice:noticeResult}:{})};}
@@ -94,7 +94,7 @@ export async function runHandoff(configFile){
  const io={
   propose:async(files,base)=>proposeWithApp(files,base,{appId:config.producer_app_id,mergerAppId:config.merger_app_id,privateKey:await privateFile(config.producer_key_file,32768)},{ready:config.ready_for_review}),
   readPR:n=>publicGitHub("/pulls/"+n),readMergeCommit:publicMergeCommit,readCommit:sha=>publicGitHub("/git/commits/"+sha),
-  verify:verifyReportPublication,receipt:(thread,proof)=>slack.receipt(thread,proof)
+  verify:verifyReportPublication,verifyAsset:request=>slack.controlAsset(request),receipt:(thread,proof)=>slack.receipt(thread,proof)
  };
  if(config.notification_checker)io.checkNotice=request=>runNoticeChecker(config.notification_checker,request);
  try{return await handoffTick(state,config,slack,io);}finally{state.close();}
