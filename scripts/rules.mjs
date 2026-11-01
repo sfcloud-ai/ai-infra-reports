@@ -3,6 +3,8 @@ import {REPOSITORY} from "./archive.mjs";
 const canonical=v=>Array.isArray(v)?v.map(canonical):v&&typeof v==="object"?Object.fromEntries(Object.keys(v).sort().map(k=>[k,canonical(v[k])])):v;
 const stable=v=>JSON.stringify(canonical(v));
 const mainScope={ref_name:{include:["refs/heads/main"],exclude:[]}};
+const reportCreationScope={ref_name:{include:["refs/heads/report/*"],exclude:[]}};
+const otherCreationScope={ref_name:{include:["~ALL"],exclude:["refs/heads/main","refs/heads/report/*"]}};
 const positive=n=>Number.isSafeInteger(n)&&n>0;
 const attested=s=>structuredClone({...publicRuleset(s),bypass_actors:s.bypass_actors});
 export function publicRuleset(s) {
@@ -38,15 +40,15 @@ export function configurationPolicy(main,other,actionsAppId,now=Date.now()) {
  const status=main.rules.find(r=>r.type==="required_status_checks")?.parameters;
  if(!exactRules(main,["pull_request","non_fast_forward","deletion","required_status_checks"])||status?.strict_required_status_checks_policy!==true||!status.required_status_checks?.some(c=>c.context==="validate"&&c.integration_id===actionsAppId))throw Error("Main requires strict Actions validate and PR/force/deletion protection");
  humanIds(other.bypass_actors,"always");
- if(stable(other.conditions)!==stable({ref_name:{include:["~ALL"],exclude:["refs/heads/main"]}})||!exactRules(other,["update","deletion"])||!deniesFetchMerge(other.rules.find(r=>r.type==="update")))throw Error("All non-main branches must deny App updates and deletion without restricting creation");
- return {schema_version:"2.0",actions_app_id:actionsAppId,rulesets:[main,other].map(attested)};
+ if(stable(other.conditions)!==stable({ref_name:{include:["~ALL"],exclude:["refs/heads/main"]}})||!exactRules(other,["update","deletion"])||!deniesFetchMerge(other.rules.find(r=>r.type==="update")))throw Error("All non-main branches must deny App updates and deletion with creation handled separately");
+ return {schema_version:"3.0",actions_app_id:actionsAppId,rulesets:[main,other].map(attested)};
 }
 
-export function mergerPolicy(quality,other,updates,codeReview,actionsAppId,producerAppId,mergerAppId,now=Date.now()){
+export function mergerPolicy(quality,other,updates,codeReview,reportCreation,otherCreation,actionsAppId,producerAppId,mergerAppId,now=Date.now()){
  const basic=configurationPolicy(quality,other,actionsAppId,now);
  if(!positive(producerAppId)||!positive(mergerAppId)||producerAppId===mergerAppId||[producerAppId,mergerAppId].includes(actionsAppId))throw Error("Independent producer and merger App identities required");
- for(const s of [updates,codeReview])active(s,now);
- if(new Set([quality,other,updates,codeReview].map(s=>s.id)).size!==4)throw Error("Four distinct rulesets required");
+ for(const s of [updates,codeReview,reportCreation,otherCreation])active(s,now);
+ if(new Set([quality,other,updates,codeReview,reportCreation,otherCreation].map(s=>s.id)).size!==6)throw Error("Six distinct rulesets required");
  if(stable(updates.conditions)!==stable(mainScope)||!exactRules(updates,["update"])||!deniesFetchMerge(updates.rules[0]))throw Error("Main update restriction must be separate from quality rules");
  const mergerActors=updates.bypass_actors.filter(a=>a.actor_type==="Integration");
  if(mergerActors.length!==1||mergerActors[0].actor_id!==mergerAppId||mergerActors[0].bypass_mode!=="always")throw Error("Only the trusted merger App and named humans may update main");
@@ -56,10 +58,18 @@ export function mergerPolicy(quality,other,updates,codeReview,actionsAppId,produ
  // Humans bypass only this approval rule, through a PR. Quality rules still block
  // unresolved Request changes and failed/outdated checks for every actor.
  if(stable(humanIds(codeReview.bypass_actors,"pull_request"))!==stable(humans))throw Error("Code-review bypass must match the named human writers");
- return {...basic,producer_app_id:producerAppId,merger_app_id:mergerAppId,rulesets:[...basic.rulesets,attested(updates),attested(codeReview)]};
+ // Creation exceptions must not grant updates or deletion. The Producer can
+ // create one-level report branches; other non-main branches are human-only.
+ for(const [s,scope]of [[reportCreation,reportCreationScope],[otherCreation,otherCreationScope]]){
+  if(stable(s.conditions)!==stable(scope)||stable(s.rules)!==stable([{type:"creation"}]))throw Error("Separate exact branch creation scopes and creation-only rules required");
+ }
+ const creators=reportCreation.bypass_actors.filter(a=>a.actor_type==="Integration");
+ if(creators.length!==1||creators[0].actor_id!==producerAppId||creators[0].bypass_mode!=="always")throw Error("Only the trusted Producer App may create report branches alongside named humans");
+ if(stable(humanIds(reportCreation.bypass_actors.filter(a=>a.actor_type!=="Integration"),"always"))!==stable(humans)||stable(humanIds(otherCreation.bypass_actors,"always"))!==stable(humans))throw Error("Creation exceptions must match the named human writers");
+ return {...basic,producer_app_id:producerAppId,merger_app_id:mergerAppId,rulesets:[...basic.rulesets,...[updates,codeReview,reportCreation,otherCreation].map(attested)]};
 }
 export async function verifyRules(api,actionsAppId,policy,identity) {
- if(!policy||policy.schema_version!=="2.0"||policy.actions_app_id!==actionsAppId||policy.rulesets?.length!==4||identity?.producerAppId!==policy.producer_app_id||identity?.mergerAppId!==policy.merger_app_id)throw Error("Owner-verified ruleset policy and separate App identities required");
+ if(!policy||policy.schema_version!=="3.0"||policy.actions_app_id!==actionsAppId||policy.rulesets?.length!==6||identity?.producerAppId!==policy.producer_app_id||identity?.mergerAppId!==policy.merger_app_id)throw Error("Owner-verified six-ruleset policy and separate App identities required");
  const normalized=mergerPolicy(...policy.rulesets,actionsAppId,policy.producer_app_id,policy.merger_app_id);
  for(const expected of normalized.rulesets){
   const live=await api.request("GET",PREFIX+"/rulesets/"+expected.id);

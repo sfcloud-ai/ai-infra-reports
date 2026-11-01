@@ -56,6 +56,23 @@ test("full merger validation reads PR metadata and performs exactly one SHA-cond
  assert.equal(result.merged,true);assert.equal(result.sha,"f".repeat(40));
  assert.equal(api.calls.filter(c=>c.route.endsWith("/pulls/1")&&c.method==="GET").length,2);
  assert.equal(api.calls.filter(c=>c.method!=="GET").length,1);
+ for(const id of [1,2,3,4,5,6])assert.equal(api.calls.filter(c=>c.method==="GET"&&c.route.endsWith("/rulesets/"+id)).length,2);
+});
+
+test("creation drift at initial validation or final recheck blocks the sole merge write",async()=>{
+ for(const id of [5,6])for(const phase of [1,2]){
+  const {api,options,rules}=mergerFixture(),request=api.request;let reads=0;
+  api.request=async(method,route,body)=>{if(method==="GET"&&route.endsWith("/rulesets/"+id)&&++reads===phase)rules[id-1].updated_at="2026-10-30T00:00:01Z";return request(method,route,body);};
+  await assert.rejects(()=>mergeReport(api,3,options),/changed/);assert.equal(reads,phase);assert(!api.calls.some(c=>c.method!=="GET"));
+ }
+});
+
+test("blocked review or failed CI cannot use the creation policy to authorize a merge",async()=>{
+ for(const kind of ["review","CI"]){
+  const {api,options}=mergerFixture(),request=api.request;
+  api.request=async(method,route,body)=>{const value=await request(method,route,body);if(kind==="review"&&route.endsWith("/pulls/1"))return {...value,mergeable_state:"blocked"};if(kind==="CI"&&route.endsWith("/actions/runs/3"))return {...value,conclusion:"failure"};return value;};
+  await assert.rejects(()=>mergeReport(api,3,options),kind==="review"?/mergeability/:/Exact-head/);assert(!api.calls.some(c=>c.method!=="GET"));
+ }
 });
 
 test("read-only Contents cannot merge and missing deletion protection blocks before any write",async()=>{

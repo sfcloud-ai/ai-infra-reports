@@ -1,5 +1,5 @@
 {
-  "schema_version": "2.0",
+  "schema_version": "3.0",
   "actions_app_id": 15368,
   "rulesets": [
     {
@@ -230,6 +230,110 @@
           "actor_id": 213046593,
           "actor_type": "User",
           "bypass_mode": "pull_request"
+        }
+      ]
+    },
+    {
+      "id": 26309160,
+      "source": "sfcloud-ai/ai-infra-reports",
+      "source_type": "Repository",
+      "target": "branch",
+      "enforcement": "active",
+      "updated_at": "2026-11-01T19:50:37.852+08:00",
+      "conditions": {
+        "ref_name": {
+          "exclude": [],
+          "include": [
+            "refs/heads/report/*"
+          ]
+        }
+      },
+      "rules": [
+        {
+          "type": "creation"
+        }
+      ],
+      "bypass_actors": [
+        {
+          "actor_id": 5556888,
+          "actor_type": "Integration",
+          "bypass_mode": "always"
+        },
+        {
+          "actor_id": 13200012,
+          "actor_type": "User",
+          "bypass_mode": "always"
+        },
+        {
+          "actor_id": 44562010,
+          "actor_type": "User",
+          "bypass_mode": "always"
+        },
+        {
+          "actor_id": 93473331,
+          "actor_type": "User",
+          "bypass_mode": "always"
+        },
+        {
+          "actor_id": 117171321,
+          "actor_type": "User",
+          "bypass_mode": "always"
+        },
+        {
+          "actor_id": 213046593,
+          "actor_type": "User",
+          "bypass_mode": "always"
+        }
+      ]
+    },
+    {
+      "id": 26309161,
+      "source": "sfcloud-ai/ai-infra-reports",
+      "source_type": "Repository",
+      "target": "branch",
+      "enforcement": "active",
+      "updated_at": "2026-11-01T19:50:39.554+08:00",
+      "conditions": {
+        "ref_name": {
+          "exclude": [
+            "refs/heads/main",
+            "refs/heads/report/*"
+          ],
+          "include": [
+            "~ALL"
+          ]
+        }
+      },
+      "rules": [
+        {
+          "type": "creation"
+        }
+      ],
+      "bypass_actors": [
+        {
+          "actor_id": 13200012,
+          "actor_type": "User",
+          "bypass_mode": "always"
+        },
+        {
+          "actor_id": 44562010,
+          "actor_type": "User",
+          "bypass_mode": "always"
+        },
+        {
+          "actor_id": 93473331,
+          "actor_type": "User",
+          "bypass_mode": "always"
+        },
+        {
+          "actor_id": 117171321,
+          "actor_type": "User",
+          "bypass_mode": "always"
+        },
+        {
+          "actor_id": 213046593,
+          "actor_type": "User",
+          "bypass_mode": "always"
         }
       ]
     }
