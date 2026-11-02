@@ -119,7 +119,19 @@ export class RemoteNativeRuntime{
   const j=this.journal.binding,manifest=createNoticeManifest(b.files.get(b.report.path+'report.json'),j.report_commit),poster=b.files.get(b.report.path+b.report.poster);
   requireThat(j.edition===`${b.report.date}/r${b.report.revision}`&&j.not_before===b.report.date+'T00:00:00.000Z'&&j.mode==='native_bundle_v1'&&j.url===manifest.index_url&&j.text_sha256===digest(Buffer.from(manifest.text))&&j.poster_sha256===digest(poster),'Remote journal differs from original publication');
   if(this.journal.phase==='complete')return {type:'complete',run_id:this.fixed.report_request_id,slack_status:'verified',wecom_status:'not_checked'};
-  if(this.journal.next_attempt_at>this.now())return {type:'deferred',run_id:this.fixed.report_request_id,next_attempt_at:this.journal.next_attempt_at,slack_status:'not_checked',wecom_status:'not_checked'};
+  while(true){
+   const due=Math.max(this.journal.next_attempt_at,this.journal.operations.length?0:Date.parse(j.not_before));
+   if(due<=this.now())break;
+   if(due+180000>=this.control.deadline){
+    if(due>this.journal.next_attempt_at)return this.defer('read_retry',due);
+    return {type:'deferred',run_id:this.fixed.report_request_id,next_attempt_at:due,slack_status:'not_checked',wecom_status:'not_checked'};
+   }
+   // A 07:50 bootstrap retains its process through the 08:00 boundary instead
+   // of unnecessarily waiting for the next coarse scheduler invocation.
+   while(this.now()<due)await this.control.sleep(Math.min(30000,due-this.now()));
+   await this.journalCommand('journal_read');
+   if(this.journal.phase==='complete')return {type:'complete',run_id:this.fixed.report_request_id,slack_status:'verified',wecom_status:'not_checked'};
+  }
   try{
    if(!this.journal.operations.length){
     requireThat(this.allowFinal,'Final delivery disabled');

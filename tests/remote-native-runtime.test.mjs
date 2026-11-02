@@ -166,3 +166,11 @@ test('retryable post-begin preflight preserves the live completion owner within 
   const result=await host.run({open:true});assert.equal(result.type,'complete');assert.equal(r.counts.begin,1);assert.equal(r.counts.final,1);assert(r.clock.now>=TARGET+60000);
  }finally{r.close();}
 });
+test('07:50 bootstrap waits inside its slice until 08:00 without an hourly wakeup',async()=>{
+ const r=await remoteRig();try{
+  r.clock.now=TARGET-600000;
+  const result=await r.runtime().run({open:true});assert.equal(result.type,'complete');assert.equal(r.clock.now,TARGET);assert.equal(r.counts.begin,1);assert.equal(r.counts.final,1);
+  const begin=r.publisher.db.prepare("SELECT source_ts FROM notice_commands WHERE id=?").get(r.outbox.notice(ID).detail.completion_command_id);
+  assert(begin.source_ts.startsWith(String(TARGET/1000)+'.'));
+ }finally{r.close();}
+});
