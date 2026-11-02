@@ -82,6 +82,18 @@ completion and search tools, plus read-thread and read-file for the original
 report bundle. It forwards actual tool results, including structured file data;
 it never invents an acknowledgement or retries an ambiguous mutation. Read
 timeouts remain read failures. Every slice is bounded to 2–30 minutes.
+The dispatcher requests an interactive terminal so executor stdin remains open
+between tool calls. The CLI disables terminal input echo; Ctrl-C closes its
+input without dispatching further tools. Terminal presentation controls are
+removed only from CLI stdout framing. Interactive stdout uses ordered 48-character
+hex chunks of ASCII JSON (Unicode escapes), each on a short physical line, so
+terminal rendering cannot discard spaces or alter Unicode and Windows scrolling cannot wrap
+inside a JSON request. The dispatcher reassembles the exact JSON and rejects
+missing/reordered chunks. Native tool result objects are forwarded unchanged.
+Direct pipe-based callers may still provide and retain their own stdin.
+The dispatcher sends each input JSON body and its terminating newline in separate
+stdin writes so large tool results are released from terminal paste buffering.
+This is one protocol response and never repeats a native tool invocation.
 
 For a new daily report, `--start OPERATOR.json` uses the existing operator format
 and original local bootstrap journal through upload/prepare only. It then opens
@@ -95,6 +107,9 @@ launching the CLI and starting its execution budget. Research/publication at
 07:20 must not consume that later send budget. A cloud task ending during this
 pre-upload wait has not established a remote journal; retain its original run
 record and never invent a replacement bootstrap on an hourly retry.
+Once registered, the host waits through the 08:00 boundary within the same slice
+when enough budget remains; it does not defer a ten-minute wait to the next hourly
+wakeup. Longer waits are persisted and resumed by the scheduler.
 
 For later slices, `--resume CONFIG.json` requires only `allow_final`, `scope` and
 `workspace_host`, with the same fixed native identities. It discovers up to four

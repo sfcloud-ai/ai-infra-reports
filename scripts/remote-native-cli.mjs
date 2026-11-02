@@ -7,20 +7,23 @@ import {requireThat} from './report-handoff.mjs';
 import {CloudRunState,ReadPending} from './cloud-sender.mjs';
 import {NativeScheduledHost,NativeSlackTransport,prepareNativeRun,NATIVE_TOOLS} from './native-scheduled-host.mjs';
 import {RemoteControl,RemoteNativeRuntime,REMOTE_READ_TOOLS,discoverRemoteRuns,readRemoteBundle,SliceEnded,temporaryRead} from './remote-native-runtime.mjs';
-const emit=x=>process.stdout.write(JSON.stringify(x)+'\n');
-let lines,state;
+import {frameRemoteMessage} from './remote-native-dispatch.mjs';
+const emit=x=>process.stdout.write(process.stdin.isTTY?frameRemoteMessage(x):JSON.stringify(x)+'\n');
+let lines,state,raw=false,interrupted=false;
 try{
  const [mode,filename,...extra]=process.argv.slice(2);
  requireThat(['--resume','--start'].includes(mode)&&filename&&!extra.length,'Usage: remote-native-cli.mjs --resume|--start CONFIG.json');
  const c=JSON.parse(await readFile(filename,'utf8')),starting=mode==='--start';
  const keys=['allow_final','scope','workspace_host',...(starting?['state_file','bundle_file','report_commit']:[])].sort().join();
  requireThat(c&&Object.keys(c).sort().join()===keys&&typeof c.allow_final==='boolean','Exact remote operator required');
+ if(process.stdin.isTTY){process.stdin.setRawMode(true);raw=true;}
  lines=createInterface({input:process.stdin,crlfDelay:Infinity});const input=lines[Symbol.asyncIterator]();let serial=0;
- const read=async()=>{const r=await input.next();requireThat(!r.done&&Buffer.byteLength(r.value)<=24*1024*1024,'Invalid host input');return JSON.parse(r.value);};
+ if(raw)process.stdin.on('data',chunk=>{if(Buffer.isBuffer(chunk)?chunk.includes(3):chunk.includes('\x03')){interrupted=true;lines.close();process.stdin.pause();}});
+ const read=async()=>{const r=await input.next();requireThat(!interrupted&&!r.done&&Buffer.byteLength(r.value)<=24*1024*1024,'Invalid host input');return JSON.parse(r.value);};
  emit({type:'ready',protocol:'native_remote_runtime_v1'});
  const run=await read();requireThat(Object.keys(run).sort().join()==='deadline,type'&&run.type==='run'&&Number.isSafeInteger(run.deadline)&&run.deadline>Date.now()&&run.deadline<=Date.now()+30*60000,'Bounded run required');
  const callTool=async(tool,args)=>{
-  requireThat(Date.now()<run.deadline,'Execution slice ended before tool call');
+  requireThat(!interrupted&&Date.now()<run.deadline,'Execution slice ended before tool call');
   const id=++serial;emit({type:'tool',id,tool,arguments:args});const reply=await read();
   if(reply.type==='tool_read_error'){requireThat([NATIVE_TOOLS.search,...Object.values(REMOTE_READ_TOOLS)].includes(tool)&&reply.id===id&&reply.reason==='temporary_read_failure','Invalid read error');throw new ReadPending('Native read temporarily unavailable');}
   requireThat(reply.type==='tool_result'&&reply.id===id&&Object.hasOwn(reply,'result'),'Out-of-order tool response');return reply.result;
@@ -47,4 +50,4 @@ try{
 }catch(error){
  // No assertion that a defer was persisted when the control reply is unknown.
  emit({type:'stopped',reason:error instanceof SliceEnded?'Execution slice ended; discover existing remote intents next time. Bootstrap uploads require the original journal.':'Remote runtime stopped; reconcile original operations. No replacement upload or grant.',slack_status:'not_checked',wecom_status:'not_checked'});process.exitCode=1;
-}finally{lines?.close();process.stdin.pause();state?.close();}
+}finally{lines?.close();if(raw)try{process.stdin.setRawMode(false);}catch{}process.stdin.pause();state?.close();}
