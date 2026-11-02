@@ -84,10 +84,41 @@ export async function prepareNativeRun(state,{bundleBytes,reportCommit,workspace
 }
 export class NativeScheduledHost{
  #cache=new Map();
+ #retryAfter=new Map();
  constructor(state,transport,{allowFinal=false,now=Date.now,fetchPublic=fetch}={}){
   this.state=state;this.transport=transport;this.allowFinal=allowFinal;this.now=now;this.fetchPublic=fetchPublic;this.session=randomUUID();
  }
  config(job){return {...this.state.scope,workspace_host:job.detail.workspace_host};}
+ waitForPublicationRetry(job){
+  const now=this.now(),retry=this.#retryAfter.get(job.id);
+  requireThat(Number.isSafeInteger(now)&&now>0,'Host clock unavailable');
+  if(retry&&now<retry)throw new ReadPending('Publication read temporarily unavailable; waiting before retry');
+ }
+ async verifyPublication(job,b){
+  this.waitForPublicationRetry(job);
+  const fetchPublic=async(...args)=>{
+   const response=await this.fetchPublic(...args);
+   const status=response.status,h=response.headers;
+   if(status===429||status>=500&&status<=599||status===403&&(h.get('x-ratelimit-remaining')==='0'||h.has('retry-after'))){
+    const current=this.now(),ra=h.get('retry-after'),reset=h.get('x-ratelimit-reset');
+    const retryAt=ra===null?0:/^\d+$/.test(ra)?current+Number(ra)*1000:Date.parse(ra);
+    const resetAt=reset!==null&&/^\d+$/.test(reset)?Number(reset)*1000:0;
+    this.#retryAfter.set(job.id,Math.max(current+15000,Number.isFinite(retryAt)?retryAt:0,Number.isFinite(resetAt)?resetAt:0));
+    await response.body?.cancel().catch(()=>{});
+    throw new ReadPending(`Publication HTTP ${status}; waiting before retry`);
+   }
+   return response;
+  };
+  try{await verifyReportPublication(job.detail.report_commit,b,fetchPublic);}catch(error){
+   // Include failures while streaming a response, not just response headers.
+   const code=error?.cause?.code??error?.code;
+   if(error?.name==='TimeoutError'||['ECONNRESET','ETIMEDOUT','EAI_AGAIN','ECONNREFUSED','UND_ERR_CONNECT_TIMEOUT','UND_ERR_SOCKET','UND_ERR_HEADERS_TIMEOUT','UND_ERR_BODY_TIMEOUT'].includes(code)){
+    this.#retryAfter.set(job.id,this.now()+15000);throw new ReadPending('Publication network read temporarily unavailable');
+   }
+   throw error;
+  }
+  this.#retryAfter.delete(job.id);
+ }
  async once(id,name,input,write){
   const prior=this.state.op(id,name);
   if(prior){this.state.begin(id,name,input);return prior;}
@@ -130,7 +161,7 @@ export class NativeScheduledHost{
   if(job.phase==='native_prepared'){
    requireThat(Number.isSafeInteger(this.now())&&this.now()>0,'Host clock unavailable');
    if(this.now()<Date.parse(job.detail.not_before)-600000)throw new ReadPending('Pre-upload window starts ten minutes before delivery');
-   await verifyReportPublication(job.detail.report_commit,b,this.fetchPublic);
+   await this.verifyPublication(job,b);
    const attachment=bundled?job.bundle:poster;
    const op=await this.once(id,'native:poster',{sha256:digest(attachment)},()=>this.transport.upload(attachment,bundled?'ai-brief-bundle.json':b.report.poster.split('/').at(-1)));
    if(op.phase!=='acknowledged')throw new ReconciliationRequired('Poster upload unknown; no replacement');
@@ -144,8 +175,14 @@ export class NativeScheduledHost{
    requireThat(this.allowFinal,'Final delivery disabled; begin was not submitted');
    const prior=this.state.op(id,'native:begin:command');
    if(prior&&prior.result?.owner!==this.session){this.state.move(id,job.phase,'native_reconcile',job.detail);return this.state.get(id);}
+   // Do not consume the durable one-time intent while waiting for the due time
+   // or for public sources. A restarted host before begin is still safe.
+   if(this.now()<Date.parse(job.detail.not_before))throw new ReadPending('Awaiting 08:00 Asia/Shanghai before begin');
+   const at=this.now();await this.verifyPublication(job,b);
+   if(this.now()<at||this.now()-at>60000)throw new ReadPending('Preflight expired before begin; refresh reads');
    const r=await this.control(job,'begin',fields);this.boundNotice(job,b,r.receipt,'completion_intent');
    requireThat(r.receipt.send_authorized&&r.receipt.reason==='new_completion_intent','No new completion permission');
+   this.#cache.set(id,{at,r});
    this.state.move(id,job.phase,'final_ready',job.detail);
   }else if(job.phase==='final_ready'){
    requireThat(this.allowFinal,'Final delivery disabled');
@@ -153,8 +190,10 @@ export class NativeScheduledHost{
    let cached=this.#cache.get(id),now=this.now();
    requireThat(Number.isSafeInteger(now)&&now>0,'Host clock unavailable');
    if(!cached||now<cached.at||now-cached.at>60000){
+    // Backoff also gates receipt reads; polling Slack cannot repair a throttled source.
+    this.waitForPublicationRetry(job);
     const at=now,r=await this.control(job,'begin',fields);this.boundNotice(job,b,r.receipt,'completion_intent');
-    await verifyReportPublication(job.detail.report_commit,b,this.fetchPublic);
+    await this.verifyPublication(job,b);
     cached={at,r};this.#cache.set(id,cached);
    }
    const args=()=>{

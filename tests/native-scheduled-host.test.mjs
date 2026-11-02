@@ -30,7 +30,7 @@ test('control locator accepts only the pinned connector attribution or its strip
 });
 test('slow preflight refreshes reads without consuming a completion intent or another begin',async()=>{
  const r=await rig();try{
-  await r.arm();r.clock.now=TARGET;r.modes.slowPreflight=true;
+  await r.arm();r.clock.now=TARGET+60001;r.modes.slowPreflight=true;
   await assert.rejects(()=>r.host.step(ID),ReadPending);
   assert.equal(r.state.get(ID).phase,'final_ready');assert.equal(r.state.op(ID,'final_complete'),null);assert.equal(r.counts.begin,1);assert.equal(r.counts.final,0);
   await r.host.step(ID);assert.equal(r.counts.begin,1);assert.equal(r.counts.final,1);
@@ -41,7 +41,7 @@ function rendered({text,ts,channel='C123',author='U123',thread,bot=false}){
  return jsonResult({results:`# Search Results for: \n\n## Messages (1 results)\n### Result 1 of 1\nChannel: ${channel.startsWith('D')?'DM':'#control'} (ID: ${channel})\nFrom: ${bot?'Publisher':'Sender'} (ID: ${author}) ${bot?' [BOT]':''}\nTime: fixture\nMessage_ts: ${ts}\nPermalink: [link](${url})\nText: \n${text}\n\n---\n\n`,pagination_info:'End of results - No more pages available.\\n'});
 }
 async function rig({filename=':memory:',start=TARGET-600000,allowFinal=true,deliveryMode='native_v1'}={}){
- const clock={now:start},modes={},counts={ticket:0,post:0,control:0,final:0,begin:0,check:0},uploads=new Map(),sources=new Map(),replies=new Map();let serial=1,final;
+ const clock={now:start},modes={},reads={search:0},counts={ticket:0,post:0,control:0,final:0,begin:0,check:0},uploads=new Map(),sources=new Map(),replies=new Map();let serial=1,final;
  const next=()=>`${Math.floor(clock.now/1000)}.${String(serial++).padStart(6,'0')}`;
  const state=new CloudRunState(filename,SCOPE);
  await prepareNativeRun(state,{bundleBytes:bytes,reportCommit:MERGE,workspaceHost:workspace,deliveryMode});
@@ -70,7 +70,7 @@ async function rig({filename=':memory:',start=TARGET-600000,allowFinal=true,deli
     return modes.checkerNegative?{slack_status:'not_verified'}:{slack_status:'verified',wecom_status:'not_checked',publication_status:'not_checked',receipt:{channel:'D123',ts:final.ts,relay_request_id:'auto:'+final.ts,file_id:final.file_id,transport_sha256:digest(bundled?bytes:poster),transport_bytes:bundled?bytes.length:poster.length,...(bundled?{poster_sha256:modes.badPoster?'0'.repeat(64):digest(poster),poster_bytes:poster.length}:{})},observed_publication_commit:MERGE,messages_sent:0,state_changed:false};}});
    if(modes.controlTimeout)throw Error('lost control acknowledgment');return jsonResult({file_id:args.file_id});
   }
-  assert.equal(tool,NATIVE_TOOLS.search);
+  assert.equal(tool,NATIVE_TOOLS.search);reads.search++;
   if(args.filters.includes('D123'))return final?rendered({...final,channel:'D123'}):empty();
   const id=args.keywords[1].slice(1,-1),isReceipt=args.keywords[0]==='"!ai-notice receipt"';
   if(isReceipt&&modes.pendingReceipt)return empty();
@@ -83,17 +83,16 @@ async function rig({filename=':memory:',start=TARGET-600000,allowFinal=true,deli
   assert.equal(options.redirect,'error');const f=uploads.get(url.split('/').at(-1));assert.equal(Number(options.headers['content-length']),f.content_length);assert.equal(options.body.length,f.content_length);f.bytes=Buffer.from(options.body);return new Response('ok',{status:200});
  };
  const site=publicationSite({files:bundle.files,slug:'2026-11-01/r1',sourceCommit:MERGE});
- const fetchPublic=async(...args)=>{if(modes.pagesUnavailable)throw Error('pages unavailable');if(modes.slowPreflight){clock.now+=61000;modes.slowPreflight=false;}return site.fetcher(...args);};
+ const fetchPublic=async(...args)=>{if(modes.pagesUnavailable)throw Error('pages unavailable');if(modes.httpStatus)return new Response(null,{status:modes.httpStatus,headers:modes.headers});if(modes.networkTimeout)throw new DOMException('read timeout','TimeoutError');if(modes.streamTimeout)return new Response(new ReadableStream({start(c){c.error(new DOMException('stream timeout','TimeoutError'));}}),{headers:{'content-type':'application/json'}});if(modes.badContent)return new Response('{}',{headers:{'content-type':'application/json'}});if(modes.slowPreflight){clock.now+=61000;modes.slowPreflight=false;}return site.fetcher(...args);};
  const transport=new NativeSlackTransport(callTool,{uploadFetch});
  const makeHost=(s=state)=>new NativeScheduledHost(s,transport,{allowFinal,now:()=>clock.now,fetchPublic});
- return {state,publisher,outbox,host:makeHost(),makeHost,clock,modes,counts,uploads,async arm(){for(let i=0;i<3;i++)await this.host.step(ID);assert.equal(state.get(ID).phase,'final_ready');},close(){state.close();publisher.close();}};
+ return {state,publisher,outbox,host:makeHost(),makeHost,clock,modes,counts,reads,uploads,async arm(){await this.host.step(ID);await this.host.step(ID);if(clock.now<TARGET){await assert.rejects(()=>this.host.step(ID),ReadPending);assert.equal(counts.begin,0);clock.now=TARGET;}await this.host.step(ID);assert.equal(state.get(ID).phase,'final_ready');},close(){state.close();publisher.close();}};
 }
 
 test('native host prepares early, gates the single completion at 08:00 and records independent check',async()=>{
  const r=await rig();try{
   await r.arm();assert.equal(r.counts.begin,1);assert.equal(r.counts.final,0);
-  await assert.rejects(()=>r.host.step(ID),ReadPending);assert.equal(r.counts.final,0);
-  r.clock.now=TARGET;await r.host.step(ID);assert.equal(r.counts.final,1);
+  assert.equal(r.clock.now,TARGET);await r.host.step(ID);assert.equal(r.counts.final,1);
   await r.host.step(ID);assert.equal(r.state.get(ID).phase,'sender_reported');assert.equal(r.counts.check,1);
   assert.equal(r.state.get(ID).detail.wecom_status,'not_checked');await r.host.step(ID);assert.equal(r.counts.final,1);
   assert(!JSON.stringify(r.state.get(ID)).includes('summary'));
@@ -106,7 +105,7 @@ test('new native runs carry the exact bundle and record separate transport and o
   const state=new CloudRunState(':memory:',SCOPE);try{await prepareNativeRun(state,{bundleBytes:bytes,reportCommit:MERGE,workspaceHost:workspace});assert.equal(state.get(ID).detail.mode,'native_bundle_v1');}finally{state.close();}
  }finally{r.close();}
  const b=await rig({deliveryMode:'native_bundle_v1'});try{
-  await b.arm();await assert.rejects(()=>b.host.step(ID),ReadPending);assert.equal(b.counts.final,0);
+  await b.arm();assert.equal(b.counts.final,0);
   b.clock.now=TARGET;await b.host.step(ID);await b.host.step(ID);await b.host.step(ID);
   assert.equal(b.state.get(ID).phase,'sender_reported');assert.equal(b.counts.final,1);
   const receipt=b.outbox.notice(ID).detail.sender_receipt;
@@ -164,7 +163,7 @@ test('missing control or receipt only polls the original command',async()=>{
  }
 });
 test('forged Publisher result and changed public content cannot authorize completion',async()=>{
- const r=await rig();try{await r.host.step(ID);r.modes.forgedReceipt=true;await assert.rejects(()=>r.host.step(ID),/Untrusted/);assert.equal(r.counts.final,0);r.modes.forgedReceipt=false;await r.host.step(ID);await r.host.step(ID);r.clock.now=TARGET;r.modes.pagesUnavailable=true;await assert.rejects(()=>r.host.step(ID),/pages/);assert.equal(r.counts.final,0);}finally{r.close();}
+ const r=await rig();try{await r.host.step(ID);r.modes.forgedReceipt=true;await assert.rejects(()=>r.host.step(ID),/Untrusted/);assert.equal(r.counts.final,0);r.modes.forgedReceipt=false;await r.host.step(ID);r.clock.now=TARGET;r.modes.pagesUnavailable=true;await assert.rejects(()=>r.host.step(ID),/pages/);assert.equal(r.counts.final,0);}finally{r.close();}
 });
 test('restart after begin cannot reuse its grant even with the same durable journal',async()=>{
  const tmp=await mkdtemp(path.join(os.tmpdir(),'native-host-')),filename=path.join(tmp,'state.sqlite');const r=await rig({filename});let reopened;
@@ -172,7 +171,7 @@ test('restart after begin cannot reuse its grant even with the same durable jour
  finally{reopened?.close();r.publisher.close();await rm(tmp,{recursive:true,force:true});}
 });
 test('restart before begin retains the original uploaded poster and reservation',async()=>{
- const r=await rig();try{await r.host.step(ID);await r.host.step(ID);const file=r.state.get(ID).detail.file_id;r.host=r.makeHost();await r.host.step(ID);r.clock.now=TARGET;await r.host.step(ID);assert.equal(r.state.get(ID).detail.file_id,file);assert.equal(r.counts.final,1);}finally{r.close();}
+ const r=await rig();try{await r.host.step(ID);await r.host.step(ID);const file=r.state.get(ID).detail.file_id;r.host=r.makeHost();await assert.rejects(()=>r.host.step(ID),ReadPending);r.clock.now=TARGET;await r.host.step(ID);await r.host.step(ID);assert.equal(r.state.get(ID).detail.file_id,file);assert.equal(r.counts.final,1);}finally{r.close();}
 });
 test('unknown final completion reconciles and never calls completion again',async()=>{
  for(const missing of [false,true]){
@@ -223,5 +222,67 @@ test('starting too early does not allocate an expiring upload, and changed input
   await assert.rejects(()=>r.host.step(ID),ReadPending);assert.equal(r.counts.ticket,0);
   await assert.rejects(()=>prepareNativeRun(r.state,{bundleBytes:bytes,reportCommit:'e'.repeat(40),workspaceHost:workspace}),/inputs changed/);
   assert.equal(r.counts.begin,0);
+ }finally{r.close();}
+});
+
+for(const condition of [
+ {httpStatus:403,headers:{'x-ratelimit-remaining':'0'}},
+ {httpStatus:429,headers:{'retry-after':'30'}},
+ {httpStatus:503}, {networkTimeout:true}, {streamTimeout:true},
+])test('temporary read waits before begin and cannot consume intent '+JSON.stringify(condition),async()=>{
+ const r=await rig();try{
+  await r.host.step(ID);await r.host.step(ID);r.clock.now=TARGET;Object.assign(r.modes,condition);
+  await assert.rejects(()=>r.host.step(ID),ReadPending);
+  assert.equal(r.counts.begin,0);assert.equal(r.state.op(ID,'native:begin:command'),null);assert.equal(r.counts.final,0);
+  for(const k of Object.keys(condition))delete r.modes[k];
+  await assert.rejects(()=>r.host.step(ID),ReadPending);
+  r.clock.now+=30001;await r.host.step(ID);await r.host.step(ID);
+  assert.equal(r.counts.begin,1);assert.equal(r.counts.final,1);
+ }finally{r.close();}
+});
+test('temporary failure after begin preserves live grant but never re-sends begin',async()=>{
+ const r=await rig();try{
+  await r.arm();r.clock.now+=60001;r.modes.httpStatus=503;
+  await assert.rejects(()=>r.host.step(ID),ReadPending);assert.equal(r.counts.begin,1);assert.equal(r.counts.final,0);
+  delete r.modes.httpStatus;r.clock.now+=15001;await r.host.step(ID);
+  assert.equal(r.counts.begin,1);assert.equal(r.counts.final,1);
+ }finally{r.close();}
+});
+for(const condition of [{httpStatus:401},{httpStatus:403},{badContent:true}])test('identity/content failures remain fatal '+JSON.stringify(condition),async()=>{
+ const r=await rig();try{
+  await r.host.step(ID);await r.host.step(ID);r.clock.now=TARGET;Object.assign(r.modes,condition);
+  await assert.rejects(()=>r.host.step(ID),e=>!(e instanceof ReadPending));
+  assert.equal(r.counts.begin,0);assert.equal(r.counts.final,0);
+ }finally{r.close();}
+});
+test('slow preflight before begin does not consume an intent',async()=>{
+ const r=await rig();try{
+  await r.host.step(ID);await r.host.step(ID);r.clock.now=TARGET;r.modes.slowPreflight=true;
+  await assert.rejects(()=>r.host.step(ID),ReadPending);assert.equal(r.counts.begin,0);
+  await r.host.step(ID);await r.host.step(ID);assert.equal(r.counts.begin,1);assert.equal(r.counts.final,1);
+ }finally{r.close();}
+});
+
+test('rate limit reset prevents premature source polling',async()=>{
+ const r=await rig();try{
+  await r.host.step(ID);await r.host.step(ID);r.clock.now=TARGET;
+  r.modes.httpStatus=403;r.modes.headers={'x-ratelimit-remaining':'0','x-ratelimit-reset':String((TARGET+120000)/1000)};
+  await assert.rejects(()=>r.host.step(ID),ReadPending);delete r.modes.httpStatus;
+  r.clock.now+=119999;await assert.rejects(()=>r.host.step(ID),ReadPending);assert.equal(r.counts.begin,0);
+  r.clock.now++;await r.host.step(ID);await r.host.step(ID);assert.equal(r.counts.begin,1);assert.equal(r.counts.final,1);
+ }finally{r.close();}
+});
+
+test('publication backoff waits before reading the original begin receipt again',async()=>{
+ const r=await rig();try{
+  await r.arm();r.clock.now+=60001;r.modes.httpStatus=429;r.modes.headers={'retry-after':'30'};
+  await assert.rejects(()=>r.host.step(ID),ReadPending);
+  const reads=r.reads.search,writes={...r.counts};
+  for(let i=0;i<5;i++){
+   r.clock.now+=5000;await assert.rejects(()=>r.host.step(ID),ReadPending);
+   assert.equal(r.reads.search,reads);assert.deepEqual(r.counts,writes);
+  }
+  delete r.modes.httpStatus;r.clock.now+=5000;await r.host.step(ID);
+  assert(r.reads.search>reads);assert.equal(r.counts.begin,1);assert.equal(r.counts.final,1);
  }finally{r.close();}
 });
