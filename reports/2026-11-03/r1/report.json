@@ -1,0 +1,166 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-11-03",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-11-03",
+  "subtitle": "微调算清成本，控制流程独立验收，推理状态及时对齐",
+  "articles": [
+    {
+      "id": "model-serving-gpu",
+      "title": "模型服务与 GPU 超配｜先筛能跑，再算加卡成本",
+      "summary": "微调配置扫描把可行性与扩容成本分开；独立模型权重/KV超配候选保留明确取舍。",
+      "sha256": "c416f7a5bc4883089351b8d6d1ab0aa5b9a00743207471bccccf1898992ed463"
+    },
+    {
+      "id": "hardware-status",
+      "title": "重点硬件｜本次无合格新进展",
+      "summary": "核查H100、H200及Pro5500，静态规格不当新进展；硬件身份冲突的能耗候选不入选。",
+      "sha256": "a22f496a81601d69e7c82f6937d06781fc59a04b3402f20239c5eb28bbbb84ad"
+    },
+    {
+      "id": "model-architecture-status",
+      "title": "模型与新架构｜本次无合格新进展",
+      "summary": "已查Qwen、GLM、DeepSeek官方模型资料，不把旧模型卡或自动更新时间当架构新进展。",
+      "sha256": "d94355f9feb20c0ba1f68414820797fe0a2ffbcc1298a184b06df93499156065"
+    },
+    {
+      "id": "embodied-training",
+      "title": "制造业具身训练｜先修控制流程，再决定是否训练",
+      "summary": "RoboArchitect冻结策略，根据失败轨迹修订外层控制程序；用未参与修改的仿真场景验收。",
+      "sha256": "aff2bbf0b85347dffdf0cb5b0d8e406b6bb5727e7cca1058f326fd93ce3be655"
+    },
+    {
+      "id": "small-model-status",
+      "title": "前沿小模型｜EmbeddingGemma2 按任务缩向量",
+      "summary": "新技术报告补齐模态裁剪和向量截断证据；节省原始向量存储，须验收检索质量。",
+      "sha256": "f5da2ea36dd9fe9793cbb0f1436d2efdfe8520456222152b458aa586361d426b"
+    },
+    {
+      "id": "inference-engines",
+      "title": "推理引擎每日变动｜显存热身与缓存状态",
+      "summary": "vLLM按最大批采样热身、成功卸载后同步命中状态；SGLang编译模式分开K/V；DeepInfer保留核查结果。",
+      "sha256": "8ebb0ab76a9b19b83a9cdfea4d1e4256b6e0baf70e6a05aea7566f7cd0fda5c7"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-11-03-finetuning-workload-characterization-v1",
+      "event_key": "finetuning-workload-characterization-v1",
+      "title": "微调工作负载：配置准入与扩容成本",
+      "summary": "公开30,920条配置扫描，先过滤不可行配置再匹配网络与加卡对照；不是生产失败率或新的GPU超配调度器。",
+      "source_urls": [
+        "https://arxiv.org/abs/2610.40983v1",
+        "https://huggingface.co/datasets/ibm-research/LLMFineTuningBench",
+        "https://github.com/atlarge-research/llm-finetuning-workload-characterization/tree/3f19febdf90519cda822d72492dc0eb2646fd18c"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-11-03-hardware-screening-20261103",
+      "event_key": "hardware-screening-20261103",
+      "title": "重点硬件核查记录",
+      "summary": "本次未发现合格新进展；保留Pro5500具体SKU待核实以及能耗论文硬件身份冲突。",
+      "source_urls": [
+        "https://www.nvidia.com/en-us/data-center/h100/",
+        "https://www.nvidia.com/en-us/data-center/h200/",
+        "https://www.nvidia.com/en-us/products/workstations/professional-desktop-gpus/rtx-pro-5500/",
+        "https://arxiv.org/html/2610.40287v1"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status"
+    },
+    {
+      "id": "2026-11-03-architecture-screening-20261103",
+      "event_key": "architecture-screening-20261103",
+      "title": "模型架构核查记录",
+      "summary": "Qwen、GLM、DeepSeek官方模型资料已读，未发现可核验新增机制与服务适配的入选项。",
+      "source_urls": [
+        "https://huggingface.co/Qwen/Qwen3.8-27B",
+        "https://huggingface.co/zai-org/GLM-5.3",
+        "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash-1017"
+      ],
+      "update_of": null,
+      "article_id": "model-architecture-status"
+    },
+    {
+      "id": "2026-11-03-roboarchitect-v1",
+      "event_key": "roboarchitect-v1",
+      "title": "RoboArchitect：冻结策略、修订控制程序",
+      "summary": "从失败轨迹迭代外层程序，最多五轮后独立场景验收；强专家基线增益有限，只有仿真证据。",
+      "source_urls": [
+        "https://arxiv.org/abs/2610.42141v1",
+        "https://github.com/roboarchitect-ai/RoboArchitect/tree/acf50c1d725e8638efad66576cdc8d95ebdb42af"
+      ],
+      "update_of": null,
+      "article_id": "embodied-training"
+    },
+    {
+      "id": "2026-11-03-embeddinggemma2-report-v1",
+      "event_key": "embeddinggemma2-report-v1",
+      "title": "EmbeddingGemma2 技术报告：模态裁剪与向量截断",
+      "summary": "10月27日新报告而非新模型发布；按任务裁剪输出维度，比较检索质量与原始向量存储，不外推在线GPU吞吐。",
+      "source_urls": [
+        "https://huggingface.co/google/embeddinggemma-2",
+        "https://arxiv.org/abs/2610.37364v1",
+        "https://huggingface.co/google/embeddinggemma-2/tree/f9972ac22e696a105c482202646979e33e4b5a1e"
+      ],
+      "update_of": null,
+      "article_id": "small-model-status"
+    },
+    {
+      "id": "2026-11-03-vllm-pr-62560",
+      "event_key": "vllm-pr-62560",
+      "title": "vLLM MRV2 最大批采样热身",
+      "summary": "捕获CUDA图后按最大批次保留采样缓冲，减少流量爬升的缓存显存增长；复用V1已有方案。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/62560",
+        "https://github.com/vllm-project/vllm/commit/b18775f8938b0c264643b7cd344a9ca2441f5b67"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    },
+    {
+      "id": "2026-11-03-vllm-pr-64444",
+      "event_key": "vllm-pr-64444",
+      "title": "vLLM 卸载成功后同步查询状态",
+      "summary": "成功写入后更新命中并使旧查询结果失效；只覆盖本实例写入，不解决所有跨实例共享存储一致性。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/64444",
+        "https://github.com/vllm-project/vllm/commit/5cdeea9b13670c9da832d8ea72d799c8bfbb4552"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    },
+    {
+      "id": "2026-11-03-sglang-pr-47670",
+      "event_key": "sglang-pr-47670",
+      "title": "SGLang 编译模式避免 K/V 别名整池复制",
+      "summary": "torch.compile开启时K/V独立分配，恢复冷缓存解码回归；特定prefill路径有复制代价，v0.5.23尚不包含。",
+      "source_urls": [
+        "https://github.com/sgl-project/sglang/pull/47670",
+        "https://github.com/sgl-project/sglang/commit/2d8462fef2e07d8e8759405f77026a1b7391c6e9"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    }
+  ],
+  "images": [
+    {
+      "path": "assets/overview.png",
+      "sha256": "eed198d1e7a4a95ec6d91cf18213661d193d50b65a59aac5a547e7dba6ccb90a",
+      "alt": "横版六板块晨报海报：微调配置与成本、重点硬件、模型架构、RoboArchitect控制程序、EmbeddingGemma2向量截断及三引擎核查。"
+    },
+    {
+      "path": "assets/kv-alias-flow.png",
+      "sha256": "476025dd30df9426f80d9ab3cbc9e63c5359f65dd34fdf271b33ed3fd7a6dd1b",
+      "alt": "原创简化机制图：编译模式下 K/V 底层存储别名与独立分配对照，说明整池复制的来源及 Prefill 代价。"
+    },
+    {
+      "path": "assets/finetuning-delivery-flow.png",
+      "sha256": "58d60d739ec26af48197d100492d7162b1f8a86b761b05cf8972d6c37d23052f",
+      "alt": "原创工程建议流程：微调配置检查、小规模画像、同配置加卡与RDMA对照、GPU时与质量验收。"
+    }
+  ],
+  "poster": "assets/overview.png"
+}
