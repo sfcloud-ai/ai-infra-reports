@@ -5,7 +5,9 @@ import {requireThat,REQUEST} from './report-handoff.mjs';
 import {createNoticeManifest} from './notice-manifest.mjs';
 const HASH=/^[a-f0-9]{64}$/,UUID=/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
 const OPS=['begin','final_complete','record'];
+export const JOURNAL_CATALOG=Object.freeze({report_request_id:'remote-journal-catalog',bundle_sha256:'0'.repeat(64)});
 export const JOURNAL_FIELDS=Object.freeze({
+ journal_catalog:[],
  journal_open:['attempt_id','file_id','expected_revision'],
  journal_read:['attempt_id','file_id'],
  journal_intent:['attempt_id','file_id','expected_revision','executor_id','operation','input_sha256'],
@@ -13,6 +15,7 @@ export const JOURNAL_FIELDS=Object.freeze({
  journal_defer:['attempt_id','file_id','expected_revision','next_attempt_at','reason']
 });
 export function validateJournalCommand(c){
+ if(c.action==='journal_catalog'){requireThat(Object.entries(JOURNAL_CATALOG).every(([k,v])=>c[k]===v),'Invalid journal catalog scope');return;}
  if(c.action!=='journal_read')requireThat(Number.isSafeInteger(c.expected_revision)&&c.expected_revision>=0,'Invalid journal revision');
  if(c.action==='journal_open')requireThat(c.expected_revision===0,'Opening revision must be zero');
  if(['journal_intent','journal_settle'].includes(c.action))requireThat(OPS.includes(c.operation),'Unsupported journal operation');
@@ -39,6 +42,27 @@ export function remoteJournal(db,id){
  if(!row)return null;
  requireThat(digest(Buffer.from(row.binding))===row.binding_sha256,'Remote journal binding damaged');
  return {...row,binding:JSON.parse(row.binding),operations:db.prepare('SELECT * FROM remote_native_ops WHERE report_id=? ORDER BY operation').all(id)};
+}
+// A bounded authenticated read, ordered by oldest due time for fairness.
+export function remoteCatalog(outbox){
+ remoteJournalSchemaObjects(outbox.db);
+ if(!outbox.db.prepare("SELECT 1 FROM sqlite_master WHERE name='remote_native_runs'").get())return [];
+ return outbox.db.prepare("SELECT report_id FROM remote_native_runs WHERE phase='open' ORDER BY next_attempt_at,report_id LIMIT 4").all().map(({report_id})=>{
+  const run=remoteJournal(outbox.db,report_id),job=outbox.state.get(report_id),n=outbox.notice(report_id);
+  requireThat(JSON.stringify(run.binding)===JSON.stringify(binding(outbox,job,n)),'Catalog binding changed');
+  return {report_request_id:report_id,bundle_sha256:run.binding.bundle_sha256,attempt_id:run.binding.attempt_id,file_id:run.binding.file_id,report_commit:run.binding.report_commit,source_ts:job.source_ts,next_attempt_at:run.next_attempt_at};
+ });
+}
+// Recovered evidence settles an intent; it cannot replay the original write.
+export function remoteEvidence(outbox,run,job,n){
+ const found={};
+ for(const op of run.operations){
+  if(op.phase==='acknowledged'||op.operation==='final_complete')continue;
+  for(const row of outbox.db.prepare('SELECT id FROM notice_commands WHERE hash=? AND response IS NOT NULL').all(op.input_sha256)){
+   try{evidence(outbox,{operation:op.operation,evidence_command_id:row.id},job,n,op);found[op.operation]=row.id;break;}catch{}
+  }
+ }
+ return found;
 }
 function binding(outbox,job,n){
  requireThat(job.phase==='receipt_sent'&&n?.report_id===job.id&&n.detail.delivery_mode==='native_bundle_v1'&&n.detail.poster_policy==='original_bytes_v1'&&n.detail.bundle_sha256===job.hash&&n.detail.report_merge_sha===job.detail.commit&&n.detail.destination===outbox.destination,'Remote journal requires the original published native bundle reservation');
@@ -86,7 +110,7 @@ export function applyJournalCommand(outbox,c,job,{now=Date.now(),bundle}={}){
   else if(c.action==='journal_intent'){
    const prior=run.operations.find(o=>o.operation===c.operation);
    if(prior){requireThat(prior.input_sha256===c.input_sha256,'Operation input changed');reason='journal_existing_intent';}
-   else if(now<run.next_attempt_at)reason='journal_retry_not_due';
+   else if(c.operation==='begin'&&now<run.next_attempt_at)reason='journal_retry_not_due';
    else{
     const index=OPS.indexOf(c.operation),previous=run.operations.find(o=>o.operation===OPS[index-1]);
     requireThat(index===0?n.phase==='reserved':previous?.phase==='acknowledged','Previous operation needs reconciliation');
@@ -116,7 +140,9 @@ export function applyJournalCommand(outbox,c,job,{now=Date.now(),bundle}={}){
    reason='journal_deferred';
   }
  }
- return {reason,new_intent:newIntent,journal:remoteJournal(db,job.id)};
+ const journal=remoteJournal(db,job.id);
+ if(journal)journal.evidence=remoteEvidence(outbox,journal,job,n);
+ return {reason,new_intent:newIntent,journal};
 }
 // Existing begin/record commands must match the remote intent exactly once a
 // reservation opts in. Ordinary legacy reservations retain their original rules.

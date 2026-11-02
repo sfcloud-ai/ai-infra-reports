@@ -74,18 +74,77 @@ Unresolved journal state prevents deployment cutover or readiness migration;
 completed audit rows are preserved. This does not relax existing notice, recovery
 or unknown control-write migration gates.
 
-## Integration still required
+## Cloud runtime and scheduler activation
 
-This change implements and tests the server protocol and native receipt adapter;
-it does not deploy them, migrate a real run, integrate the old local-journal CLI,
-or install a cloud wakeup service. The host must opt in while its original
-reservation is still eligible and orchestrate journal commands through the existing
-native transport. Ambiguous uploads/shares of command files are read-reconciled,
-never blindly repeated. A fresh snapshot request is a new read operation, not a
-retry of an unknown mutation.
+`remote-native-cli.mjs` and `remote-native-dispatch.mjs` implement an ephemeral
+cloud execution slice. The dispatcher calls only the existing native upload,
+completion and search tools, plus read-thread and read-file for the original
+report bundle. It forwards actual tool results, including structured file data;
+it never invents an acknowledgement or retries an ambiguous mutation. Read
+timeouts remain read failures. Every slice is bounded to 2–30 minutes.
 
-`next_attempt_at` is durable data, not a timer. The existing scheduler still needs
-an actual authenticated entry that wakes the original cloud task and preserves
-its fixed identity. Without that entry, this protocol does not establish an
-operational unattended retry loop. Tests use synthetic bundles and isolated
-SQLite files; no production journal, file ID or completion intent is exercised.
+For a new daily report, `--start OPERATOR.json` uses the existing operator format
+and original local bootstrap journal through upload/prepare only. It then opens
+the remote journal before any begin. It rejects an existing begin, final write,
+recovery fence or other legacy terminal phase. It does not import today's old
+completion intent. A bootstrap stopped before remote open still requires its
+original local journal; hourly resumes never allocate a replacement upload.
+Pass `bootstrapNotBefore` to `driveRemoteNativeHost` as the report date's 07:50
+Asia/Shanghai instant. The dispatcher waits in at most 30-second intervals before
+launching the CLI and starting its execution budget. Research/publication at
+07:20 must not consume that later send budget. A cloud task ending during this
+pre-upload wait has not established a remote journal; retain its original run
+record and never invent a replacement bootstrap on an hourly retry.
+
+For later slices, `--resume CONFIG.json` requires only `allow_final`, `scope` and
+`workspace_host`, with the same fixed native identities. It discovers up to four
+open journals ordered by oldest due time, picks the first due entry, reads the
+original report thread and file, and hashes the exact UTF-8 bundle bytes. There
+is no local journal, cached completion grant, credential or upload URL to carry
+across runs. The original Publisher bundle/source/reservation is authoritative.
+The authenticated `journal_catalog` command uses the fixed envelope exported as
+`JOURNAL_CATALOG` and no report-specific file/attempt fields. It does not create
+tables or adopt legacy reservations. Completed runs are excluded.
+
+Before begin, a due fresh executor verifies publication and may allocate the first
+intent. After begin, an existing executor alone can allocate final completion;
+the ordinary native begin receipt and fresh publication checks are also required.
+A restarted executor only reconciles existing intents. Stored matching begin and
+record evidence is exposed in journal snapshots; final evidence always comes
+from the independent original-file checker. Check/status reads for opted-in
+journals are exempt from the ordinary command quota, so read reconciliation has
+no hidden count cutoff. Audit rows remain retained.
+
+The runtime emits `complete`, `deferred`, `idle`, `observed` or `stopped`. Only `complete`
+reports verified Slack delivery; WeCom remains independently unverified.
+`deferred` reports the persisted Publisher next-attempt instant. An unresolved
+control response emits `stopped`, not an invented successful deferral. New slices
+discover the existing ledger and never replay the old command.
+`observed` means another executor won the operation CAS; it leaves that owner's
+revision/backoff unchanged. Settlement conflicts reread the returned snapshot
+and submit a new conditional acknowledgement, without replaying the operation.
+After begin, transient publication checks retain the live executor and retry
+within its remaining slice. If that slice cannot retain the owner, subsequent
+runs remain reconciliation-only; they cannot promise a new send for a known or
+unknown original completion intent.
+
+Deployment and scheduler changes are separate operational steps. First stage and
+validate the exact merged version without production credentials. Existing
+unresolved-operation deployment and migration gates still apply. Never copy,
+reset or migrate a live journal to make those gates pass. Then verify the active
+Publisher supports the catalog and runtime protocol before changing the existing
+cloud task. Do not enable a scheduler against unsupported deployed code.
+
+An existing hourly-capable cloud schedule can poll this runtime at or after
+`next_attempt_at`; this is coarse polling, not an exact T4 callback. Retain the
+daily report creation at 07:20 Asia/Shanghai and permit new report construction
+only in that daily slot. Other hourly slots run `--resume` only. Do not regenerate
+the current report or invoke `--start` on a retry. A completed, future-due or empty
+catalog produces no formal message. At 07:20, process the new daily workflow and
+then resume older pending runs within available execution time. A schedule change
+alone is not proof that a cloud execution or delivery succeeded; read back its
+actual run result and independent receipts.
+
+Tests use synthetic bundles, fake native tools and isolated SQLite files. They
+verify disconnects, rate-limit persistence, concurrent executors and lost replies;
+they neither deploy a service nor exercise a production destination.

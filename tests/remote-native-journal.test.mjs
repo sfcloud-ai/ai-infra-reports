@@ -169,19 +169,19 @@ test('retained journal polls have no command-count expiry and preserve the ordin
 });
 
 test('retained duplicate JSON action keys use the same final value as command admission',async()=>{
- for(const actual of ['status','journal_read']){
+ for(const actual of ['prepare_bundle','journal_read']){
   const r=await setup();try{
    await open(r);
    const insert=r.state.db.prepare("INSERT INTO notice_commands VALUES(?,?,?,?,'response_sent','{}','1793450000.000001')");
    r.state.db.exec('BEGIN');
    for(let i=0;i<9999;i++){
-    const c={schema_version:'1.0',command_id:`duplicate-action-${String(i).padStart(8,'0')}`,action:actual,report_request_id:ID,bundle_sha256:bundle.hash,...(actual==='journal_read'?{attempt_id:fixed.attempt_id,file_id:fixed.file_id}:{})};
-    const first=actual==='status'?'journal_read':'status';
+    const c={schema_version:'1.0',command_id:`duplicate-action-${String(i).padStart(8,'0')}`,action:actual,report_request_id:ID,bundle_sha256:bundle.hash,attempt_id:fixed.attempt_id,file_id:fixed.file_id};
+    const first=actual==='prepare_bundle'?'journal_read':'prepare_bundle';
     const data=Buffer.from(JSON.stringify(c).replace(`"action":"${actual}"`,`"action":"${first}","action":"${actual}"`)+'\n');
     insert.run(c.command_id,digest(data),`1793449200.${String(++serial).padStart(6,'0')}`,data);
    }
    r.state.db.exec('COMMIT');
-   if(actual==='status')assert.throws(()=>admit(r,command('prepare_bundle')),/capacity reached/);
+   if(actual==='prepare_bundle')assert.throws(()=>admit(r,command('prepare_bundle')),/capacity reached/);
    else assert.doesNotThrow(()=>admit(r,command('prepare_bundle')));
    assert.equal((await submit(r,command('journal_read'))).reason,'journal_read');
   }finally{r.state.close();}
