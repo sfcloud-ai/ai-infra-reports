@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,rm} from 'node:fs/promises';
+import {mkdtemp,rm,writeFile} from 'node:fs/promises';
+import {spawnSync} from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import {digest} from '../scripts/archive.mjs';
@@ -13,6 +14,7 @@ import {NativeScheduledHost,NativeSlackTransport,prepareNativeRun,NATIVE_TOOLS,n
 import {nativeRecoveryPlan,fenceNativeRecovery,readRecoveryFence} from '../scripts/native-recovery-fence.mjs';
 import {NativeRecoveryHost} from '../scripts/native-recovery-host.mjs';
 import {authorizeNoticeRecovery,noticeRecovery} from '../scripts/notice-recovery.mjs';
+import {planRecoverySuccessor,fenceRecoverySuccessor,authorizeRecoverySuccessor,recoverySuccessor,successorSchemaObjects} from '../scripts/recovery-control-successor.mjs';
 import {publicationSite} from './helpers/publication-site.mjs';
 import {FILES,SCOPE,MERGE,TARGET} from './helpers/cloud-sender-fixture.mjs';
 const ID='isolated-native-host-fixture',workspace='fixture-workspace.slack.com';
@@ -89,7 +91,7 @@ async function rig({filename=':memory:',start=TARGET-600000,allowFinal=true,deli
  const fetchPublic=async(...args)=>{if(modes.pagesUnavailable)throw Error('pages unavailable');if(modes.httpStatus)return new Response(null,{status:modes.httpStatus,headers:modes.headers});if(modes.networkTimeout)throw new DOMException('read timeout','TimeoutError');if(modes.streamTimeout)return new Response(new ReadableStream({start(c){c.error(new DOMException('stream timeout','TimeoutError'));}}),{headers:{'content-type':'application/json'}});if(modes.badContent)return new Response('{}',{headers:{'content-type':'application/json'}});if(modes.slowPreflight){clock.now+=61000;modes.slowPreflight=false;}return site.fetcher(...args);};
  const transport=new NativeSlackTransport(callTool,{uploadFetch});
  const makeHost=(s=state)=>new NativeScheduledHost(s,transport,{allowFinal,now:()=>clock.now,fetchPublic});
- return {state,publisher,outbox,host:makeHost(),makeHost,makeRecovery:(s=state,enabled=allowFinal)=>new NativeRecoveryHost(s,transport,{allowFinal:enabled,now:()=>clock.now,fetchPublic}),clock,modes,counts,reads,uploads,async arm(){await this.host.step(ID);await this.host.step(ID);if(clock.now<TARGET){await assert.rejects(()=>this.host.step(ID),ReadPending);assert.equal(counts.begin,0);clock.now=TARGET;}await this.host.step(ID);assert.equal(state.get(ID).phase,'final_ready');},close(){state.close();publisher.close();}};
+ return {state,publisher,outbox,proof,host:makeHost(),makeHost,makeRecovery:(s=state,enabled=allowFinal,successorId)=>new NativeRecoveryHost(s,transport,{allowFinal:enabled,now:()=>clock.now,fetchPublic,successorId}),clock,modes,counts,reads,uploads,async arm(){await this.host.step(ID);await this.host.step(ID);if(clock.now<TARGET){await assert.rejects(()=>this.host.step(ID),ReadPending);assert.equal(counts.begin,0);clock.now=TARGET;}await this.host.step(ID);assert.equal(state.get(ID).phase,'final_ready');},close(){state.close();publisher.close();}};
 }
 
 test('native host prepares early, gates the single completion at 08:00 and records independent check',async()=>{
@@ -497,5 +499,152 @@ test('current owner polls an allocated begin through the reserved minute without
   r.clock.now+=5000;r.modes.pendingReceipt=false;
   await r.host.step(ID,{deadline});assert.equal(r.state.get(ID).phase,'final_ready');assert.equal(r.counts.begin,1);
   await r.host.step(ID,{deadline});assert.equal(r.counts.final,1);assert.equal(r.host.ownsCompletionWindow(ID),false);
+ }finally{r.close();}
+});
+
+const SUCCESSOR='explicit-control-successor-fixture';
+async function unknownRecoveryControl(r){
+ const a=await armRecovery(r);await a.host.step(ID);r.modes.controlMissing=true;
+ await assert.rejects(()=>a.host.step(ID),ReadPending);r.modes.controlMissing=false;
+ const oldCommand=r.state.op(ID,'native:recovery:begin:command'),oldShare=r.state.op(ID,'native:recovery:begin:share');
+ assert.equal(oldShare.phase,'unknown');
+ const plan=planRecoverySuccessor(r.state,ID,SUCCESSOR);
+ fenceRecoverySuccessor(r.state,plan,{owner_stopped:true,reference:'isolated fixture'});
+ const authorization={owner_stopped:true,publisher_verified:true,relay_requests:0,checked_at:r.clock.now,reference:'isolated fixture'};
+ return {...a,plan,authorization,oldCommand,oldShare};
+}
+test('fenced recovery control successor retains unknown evidence and known bundle, grants once',async()=>{
+ const r=await rig({deliveryMode:'native_bundle_v1'});try{
+  const a=await unknownRecoveryControl(r),file=r.state.get(ID).detail.file_id;
+  authorizeRecoverySuccessor(r.outbox,a.plan,a.authorization);
+  assert.equal(successorSchemaObjects(r.publisher.db).length,4);
+  await assert.rejects(()=>a.host.step(ID),/permanently fenced/);
+  const next=r.makeRecovery(r.state,true,SUCCESSOR);await next.step(ID);
+  assert.equal(r.state.get(ID).phase,'recovery_final_ready');assert.equal(r.outbox.notice(ID).file_id,file);
+  await next.step(ID);await next.step(ID);assert.equal(r.state.get(ID).phase,'sender_reported');
+  assert.equal(r.counts.final,1);await next.step(ID);assert.equal(r.counts.final,1);
+  assert.deepEqual(r.state.op(ID,'native:recovery:begin:command'),a.oldCommand);
+  assert.deepEqual(r.state.op(ID,'native:recovery:begin:share'),a.oldShare);
+  assert.equal(r.state.op(ID,'recovery:upload').result.file_id,file);
+  assert.throws(()=>r.publisher.db.exec('DELETE FROM recovery_control_successors'),/Immutable/);
+ }finally{r.close();}
+});
+for(const received of [false,true])test('late fenced command gets negative response, received='+received,async()=>{
+ const r=await rig({deliveryMode:'native_bundle_v1'});try{
+  const a=await unknownRecoveryControl(r),bytes=Buffer.from(a.oldCommand.result.bytes,'base64'),c=JSON.parse(bytes);
+  const admit=()=>r.outbox.admit({request_id:c.command_id,hash:digest(bytes),source_ts:'1793491300.000001'},bytes);
+  if(received)admit();authorizeRecoverySuccessor(r.outbox,a.plan,a.authorization);if(!received)admit();
+  r.outbox.prepare(c.command_id,c,r.publisher.get(ID),bundle,r.proof);
+  const old=r.outbox.command(c.command_id);assert.equal(old.phase,'response_ready');assert.equal(old.response.send_authorized,false);assert.equal(old.response.reason,'recovery_command_fenced');
+  assert.equal(noticeRecovery(r.outbox,ID).phase,'approved');
+  const next=r.makeRecovery(r.state,true,SUCCESSOR);await next.step(ID);await next.step(ID);assert.equal(r.counts.final,1);
+ }finally{r.close();}
+});
+test('server fence rejects an old-code direct consume and a third command',async()=>{
+ const r=await rig({deliveryMode:'native_bundle_v1'});try{
+  const a=await unknownRecoveryControl(r);authorizeRecoverySuccessor(r.outbox,a.plan,a.authorization);
+  assert.throws(()=>r.publisher.db.prepare("UPDATE notice_recovery_authorizations SET phase='consumed',grant_command_id=?,replacement_file_id=? WHERE report_id=?").run(a.plan.binding.old_command_id,a.plan.binding.file_id,ID),/permanently fenced/);
+  const old=JSON.parse(Buffer.from(a.oldCommand.result.bytes,'base64')),third={...old,command_id:'native-third-command-fixture'},bytes=Buffer.from(JSON.stringify(third));
+  r.outbox.admit({request_id:third.command_id,hash:digest(bytes),source_ts:'1793491300.000002'},bytes);
+  r.outbox.prepare(third.command_id,third,r.publisher.get(ID),bundle,r.proof);
+  assert.equal(r.outbox.command(third.command_id).response.send_authorized,false);
+ }finally{r.close();}
+});
+test('old activation winning transaction prevents successor authorization',async()=>{
+ const r=await rig({deliveryMode:'native_bundle_v1'});try{
+  const a=await unknownRecoveryControl(r),bytes=Buffer.from(a.oldCommand.result.bytes,'base64'),c=JSON.parse(bytes);
+  r.outbox.admit({request_id:c.command_id,hash:digest(bytes),source_ts:'1793491300.000001'},bytes);
+  r.outbox.prepare(c.command_id,c,r.publisher.get(ID),bundle,r.proof);
+  assert.equal(noticeRecovery(r.outbox,ID).phase,'consumed');
+  assert.throws(()=>authorizeRecoverySuccessor(r.outbox,a.plan,a.authorization),/already issued/);
+  assert.equal(recoverySuccessor(r.publisher.db,ID),null);
+ }finally{r.close();}
+});
+for(const point of ['before-grant','after-grant'])test('successor restart cannot steal owner '+point,async()=>{
+ const r=await rig({deliveryMode:'native_bundle_v1'});try{
+  const a=await unknownRecoveryControl(r);authorizeRecoverySuccessor(r.outbox,a.plan,a.authorization);
+  const next=r.makeRecovery(r.state,true,SUCCESSOR);
+  if(point==='before-grant'){
+   const c=JSON.parse(Buffer.from(a.plan.binding.command_base64,'base64'));
+   await next.command(r.state.get(ID),'recover_begin',{attempt_id:c.attempt_id,file_id:c.file_id,fence_sha256:c.fence_sha256,original_begin_sha256:c.original_begin_sha256},'recovery:successor:begin');
+  }else await next.step(ID);
+  const phase=r.state.get(ID).phase;await assert.rejects(()=>r.makeRecovery(r.state,true,SUCCESSOR).step(ID),/observe without changing/);assert.equal(r.state.get(ID).phase,phase);assert.equal(r.counts.final,0);
+  if(point==='before-grant')await next.step(ID);await next.step(ID);assert.equal(r.counts.final,1);
+ }finally{r.close();}
+});
+for(const phase of ['started','unknown','acknowledged'])test('successor rejects final intent '+phase,async()=>{
+ const r=await rig({deliveryMode:'native_bundle_v1'});try{
+  const a=await armRecovery(r);await a.host.step(ID);r.modes.controlMissing=true;await assert.rejects(()=>a.host.step(ID),ReadPending);
+  r.state.begin(ID,'final_complete',{});if(phase!=='started')r.state.settle(ID,'final_complete',phase,null);
+  assert.throws(()=>planRecoverySuccessor(r.state,ID,SUCCESSOR),/unstarted/);
+ }finally{r.close();}
+});
+test('successor permits negative checker generations then records the original final',async()=>{
+ const r=await rig({deliveryMode:'native_bundle_v1'});try{
+  const a=await unknownRecoveryControl(r);authorizeRecoverySuccessor(r.outbox,a.plan,a.authorization);
+  const next=r.makeRecovery(r.state,true,SUCCESSOR);await next.step(ID);await next.step(ID);
+  r.modes.checkerNegative=true;await assert.rejects(()=>next.step(ID),ReadPending);assert.equal(r.state.get(ID).detail.check_generation,1);
+  r.modes.checkerNegative=false;await next.step(ID);assert.equal(r.state.get(ID).phase,'sender_reported');assert.equal(r.counts.final,1);
+ }finally{r.close();}
+});
+test('late fenced recovery command finishes without a publication network read',async()=>{
+ const r=await rig({deliveryMode:'native_bundle_v1'});try{
+  const a=await unknownRecoveryControl(r);authorizeRecoverySuccessor(r.outbox,a.plan,a.authorization);
+  const bytes=Buffer.from(a.oldCommand.result.bytes,'base64'),c=JSON.parse(bytes);
+  r.outbox.admit({request_id:c.command_id,hash:digest(bytes),source_ts:'1793491300.000001'},bytes);
+  let receipts=0;await advanceNotice(r.outbox,c.command_id,{verify:async()=>assert.fail('revoked command must not block on publication'),receipt:async(thread,text)=>{assert.equal(JSON.parse(text.slice('!ai-notice receipt '.length)).send_authorized,false);receipts++;return '1793491300.000002';}});
+  assert.equal(receipts,1);assert.equal(r.outbox.command(c.command_id).phase,'response_sent');assert.equal(noticeRecovery(r.outbox,ID).phase,'approved');
+ }finally{r.close();}
+});
+test('transport audit retains ticket and safe network code but never signed URL',async()=>{
+ const events=[],secret='https://files.slack.com/upload/v1/secret-signature';
+ const transport=new NativeSlackTransport(async()=>nativeTicket('F123',secret,2),{onUploadStage:e=>events.push(e),uploadFetch:async()=>{throw Object.assign(Error('secret URL '+secret),{cause:{code:'ECONNRESET'}});}});
+ await assert.rejects(()=>transport.upload(Buffer.from('{}'),'ai-notice-command.json'));
+ assert.equal(events.at(-1).file_id,'F123');assert.equal(events.at(-1).error_code,'ECONNRESET');assert.equal(events.at(-1).stage,'upload_error');
+ assert(!JSON.stringify(events).includes(secret));assert(!JSON.stringify(events).includes('secret-signature'));
+});
+
+test('CLI emits a fenced result and recovers it read-only from the original WAL journal',async()=>{
+ const dir=await mkdtemp(path.join(os.tmpdir(),'successor-cli-')),filename=path.join(dir,'journal.sqlite');
+ const r=await rig({filename,deliveryMode:'native_bundle_v1'});
+ try{
+  const a=await armRecovery(r);await a.host.step(ID);r.modes.controlMissing=true;
+  await assert.rejects(()=>a.host.step(ID),ReadPending);r.modes.controlMissing=false;
+  const operator=path.join(dir,'operator.json'),bundleFile=path.join(dir,'bundle.json'),planFile=path.join(dir,'plan.json');
+  await writeFile(bundleFile,bytes);
+  await writeFile(operator,JSON.stringify({allow_final:true,bundle_file:bundleFile,report_commit:MERGE,scope:SCOPE,state_file:filename,workspace_host:workspace}));
+  const run=(...args)=>spawnSync(process.execPath,['scripts/native-recovery-successor-cli.mjs',operator,...args],{encoding:'utf8'});
+  const planned=run('plan',SUCCESSOR);assert.equal(planned.status,0,planned.stderr);
+  const plan=JSON.parse(planned.stdout);assert.equal(plan.type,'successor-plan');await writeFile(planFile,planned.stdout);
+  const fenced=run('fence',planFile,'--confirm-original-owner-stopped');assert.equal(fenced.status,0,fenced.stderr);
+  const result=JSON.parse(fenced.stdout);assert.equal(result.type,'successor-fenced');assert.deepEqual(result.binding,plan.binding);assert.equal(result.binding_sha256,plan.binding_sha256);
+  const snapshot=()=>JSON.stringify({job:r.state.get(ID),ops:r.state.db.prepare('SELECT * FROM cloud_ops ORDER BY name').all(),fence:recoverySuccessor(r.state.db,ID)});
+  const before=snapshot(),inspected=run('inspect',SUCCESSOR,'--confirm-original-owner-stopped');assert.equal(inspected.status,0,inspected.stderr);
+  assert.deepEqual(JSON.parse(inspected.stdout),result);assert.equal(snapshot(),before);assert.equal(r.counts.final,0);
+  for(const args of [['inspect',SUCCESSOR],['inspect','different-successor','--confirm-original-owner-stopped'],['fence',planFile,'--confirm-original-owner-stopped']]){
+   const rejected=run(...args);assert.equal(rejected.status,1);assert.equal(JSON.parse(rejected.stdout).type,'stopped');assert.equal(snapshot(),before);
+  }
+  const readonly=new CloudRunState(filename,SCOPE,{readOnly:true});try{assert.throws(()=>readonly.move(ID,'recovery_uploaded','native_reconcile',r.state.get(ID).detail),/readonly|read-only/i);}finally{readonly.close();}
+  r.state.begin(ID,'native:recovery:successor:begin:command',{});
+  const started=snapshot(),rejected=run('inspect',SUCCESSOR,'--confirm-original-owner-stopped');assert.equal(rejected.status,1);assert.equal(snapshot(),started);
+ }finally{r.close();await rm(dir,{recursive:true,force:true});}
+});
+
+for(const slow of [false,true])test('successor leaves a new grant unallocated near its deadline, slow preflight='+slow,async()=>{
+ const r=await rig({deliveryMode:'native_bundle_v1'});try{
+  const a=await unknownRecoveryControl(r);authorizeRecoverySuccessor(r.outbox,a.plan,a.authorization);
+  const next=r.makeRecovery(r.state,true,SUCCESSOR),deadline=r.clock.now+(slow?240000:180000);r.modes.slowPreflight=slow;
+  await assert.rejects(()=>next.step(ID,{deadline}),ReadPending);
+  assert.equal(r.state.op(ID,'native:recovery:successor:begin:command'),null);assert.equal(noticeRecovery(r.outbox,ID).phase,'approved');assert.equal(r.counts.final,0);
+  await next.step(ID,{deadline:r.clock.now+600000});await next.step(ID,{deadline:r.clock.now+600000});assert.equal(r.counts.final,1);
+ }finally{r.close();}
+});
+
+test('successor current owner can finish an already allocated control during the reserved margin',async()=>{
+ const r=await rig({deliveryMode:'native_bundle_v1'});try{
+  const a=await unknownRecoveryControl(r);authorizeRecoverySuccessor(r.outbox,a.plan,a.authorization);
+  const next=r.makeRecovery(r.state,true,SUCCESSOR),c=JSON.parse(Buffer.from(a.plan.binding.command_base64,'base64'));
+  await next.command(r.state.get(ID),'recover_begin',{attempt_id:c.attempt_id,file_id:c.file_id,fence_sha256:c.fence_sha256,original_begin_sha256:c.original_begin_sha256},'recovery:successor:begin');
+  await next.step(ID,{deadline:r.clock.now+60000});await next.step(ID,{deadline:r.clock.now+60000});assert.equal(r.counts.final,1);
  }finally{r.close();}
 });

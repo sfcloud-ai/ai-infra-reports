@@ -35,16 +35,17 @@ export function validateCloudScope(c){
  const result=structuredClone(c);Object.freeze(result.transport_profile);return Object.freeze(result);
 }
 export class CloudRunState{
- constructor(filename,scope){
-  this.scope=validateCloudScope(scope);this.db=new DatabaseSync(filename);
+ constructor(filename,scope,{readOnly=false}={}){
+  this.scope=validateCloudScope(scope);this.db=new DatabaseSync(filename,{readOnly});
   try{
-   this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;
+   if(readOnly)this.db.exec('PRAGMA query_only=ON; BEGIN');
+   else this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;
     CREATE TABLE IF NOT EXISTS cloud_scope(id INTEGER PRIMARY KEY CHECK(id=1), hash TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS cloud_runs(id TEXT PRIMARY KEY, edition TEXT UNIQUE NOT NULL, bundle BLOB, input_hash TEXT NOT NULL, phase TEXT NOT NULL, detail TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS cloud_read_retries(run_id TEXT NOT NULL, operation TEXT NOT NULL, failures INTEGER NOT NULL, next_at INTEGER NOT NULL, first_at INTEGER NOT NULL, last_at INTEGER NOT NULL, reason TEXT NOT NULL, PRIMARY KEY(run_id,operation));
     CREATE TABLE IF NOT EXISTS cloud_ops(run_id TEXT NOT NULL, name TEXT NOT NULL, input_hash TEXT NOT NULL, phase TEXT NOT NULL, result TEXT, PRIMARY KEY(run_id,name));`);
    // Never adopt an older draft's reservations as proof of an unstarted send.
-   const scopeHash=hash({schema_version:2,scope:this.scope});this.db.prepare('INSERT OR IGNORE INTO cloud_scope VALUES(1,?)').run(scopeHash);
+   const scopeHash=hash({schema_version:2,scope:this.scope});if(!readOnly)this.db.prepare('INSERT OR IGNORE INTO cloud_scope VALUES(1,?)').run(scopeHash);
    requireThat(this.db.prepare('SELECT hash FROM cloud_scope WHERE id=1').get().hash===scopeHash,'Cloud scope changed; reconcile before activation');
   }catch(e){this.db.close();throw e;}
  }

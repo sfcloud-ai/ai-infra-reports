@@ -8,12 +8,13 @@ import {scopeDigest,handoffScope} from "./handoff-state.mjs";
 import {requireThat} from "./report-handoff.mjs";
 import {recoverySchemaObjects} from "./notice-recovery.mjs";
 import {remoteJournalSchemaObjects} from "./remote-native-journal.mjs";
+import {successorSchemaObjects} from './recovery-control-successor.mjs';
 import {validateConfig,privateFile,privateDirectory} from "./run-handoff.mjs";
-const known=new Set(["scope","jobs","notice_scope","notices","notice_commands","ready_migrations","notice_recovery_authorizations","remote_native_runs","remote_native_ops"]);
+const known=new Set(["scope","jobs","notice_scope","notices","notice_commands","ready_migrations","notice_recovery_authorizations","remote_native_runs","remote_native_ops","recovery_control_successors"]);
 function inspect(db){
  requireThat(db.prepare("PRAGMA integrity_check").get().integrity_check==="ok","State integrity failed");
  const tables=db.prepare("SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all();
- const recoveryObjects=recoverySchemaObjects(db),journalObjects=remoteJournalSchemaObjects(db),allowedTriggers=new Set([...recoveryObjects,...journalObjects].filter(o=>o.type==='trigger').map(o=>o.name));
+ const recoveryObjects=recoverySchemaObjects(db),journalObjects=remoteJournalSchemaObjects(db),successorObjects=successorSchemaObjects(db),allowedTriggers=new Set([...recoveryObjects,...journalObjects,...successorObjects].filter(o=>o.type==='trigger').map(o=>o.name));
  requireThat(db.prepare("SELECT name FROM sqlite_master WHERE type IN ('trigger','view')").all().every(o=>allowedTriggers.has(o.name)),"Unexpected state triggers/views");
  requireThat(tables.every(t=>known.has(t.name))&&tables.some(t=>t.name==="jobs")&&tables.some(t=>t.name==="scope"),"Unknown state schema");
  requireThat(db.prepare("SELECT count(*) AS n FROM jobs WHERE phase!='receipt_sent'").get().n===0,"Pending report state prevents migration");
@@ -24,6 +25,7 @@ function inspect(db){
  const hash=createHash("sha256");
  if(recoveryObjects.length)hash.update(JSON.stringify(recoveryObjects)+"\n");
  if(journalObjects.length)hash.update(JSON.stringify(journalObjects)+"\n");
+ if(successorObjects.length)hash.update(JSON.stringify(successorObjects)+"\n");
  for(const t of tables.filter(t=>!["scope","ready_migrations"].includes(t.name))){
   hash.update(JSON.stringify([t.name,t.sql])+"\n");
   const columns=db.prepare(`PRAGMA table_info(${t.name})`).all();

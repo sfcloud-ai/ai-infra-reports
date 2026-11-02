@@ -7,6 +7,7 @@ import {HandoffState,handoffScope} from "../scripts/handoff-state.mjs";
 import {NoticeOutbox,notificationScope} from "../scripts/notice-outbox.mjs";
 import {installNoticeRecovery} from "../scripts/notice-recovery.mjs";
 import {REMOTE_JOURNAL_SCHEMA} from "../scripts/remote-native-journal.mjs";
+import {installRecoverySuccessor} from '../scripts/recovery-control-successor.mjs';
 import {digest} from "../scripts/archive.mjs";
 import {planReadyMigration,stageReadyMigration,verifyReadyMigration} from "../scripts/ready-migration.mjs";
 async function fixture(){
@@ -97,5 +98,24 @@ test('remote journal migrations retain settled audit and reject active runs or d
   assert.equal((await verifyReadyMigration(f.before,f.after,plan.data_sha256)).verified,true);
   state=new HandoffState(f.file,handoffScope(f.before));state.db.exec('DROP TRIGGER remote_native_run_keep');state.close();
   await assert.rejects(()=>planReadyMigration(f.before,f.after),/remote journal schema/);
+ }finally{await f.clean();}
+});
+
+test('successor audit preserves the unresolved gate and survives only with its exact grant guard',async()=>{
+ const f=await fixture();try{
+  let state=new HandoffState(f.file,handoffScope(f.before));
+  new NoticeOutbox(state,notificationScope({...f.before,notification_destination:'D123',notification_not_before:'1793447000.000001'}));
+  installNoticeRecovery(state.db);installRecoverySuccessor(state.db,{publisher:true});
+  const plan={command_id:'successor-command',command_sha256:'hash',file_id:'F123'};
+  state.db.prepare('INSERT INTO notice_recovery_authorizations VALUES(?,?,?,?,?,?,?,?,?)').run('recover','original-report-01','{}','hash','{}','{}','approved',null,null);
+  state.db.prepare('INSERT INTO recovery_control_successors VALUES(?,?,?,?,?)').run('original-report-01','successor',JSON.stringify(plan),'hash','{}');
+  state.db.exec("INSERT INTO notice_commands VALUES('successor-command','hash','1793448001.000001',X'00','response_sent','{}','1793448002.000001')");state.close();
+  await assert.rejects(()=>planReadyMigration(f.before,f.after),/Unresolved recovery/);
+  state=new HandoffState(f.file,handoffScope(f.before));
+  state.db.exec("UPDATE notice_recovery_authorizations SET phase='consumed',grant_command_id='successor-command',replacement_file_id='F123'");state.close();
+  const migration=await planReadyMigration(f.before,f.after);await stageReadyMigration(f.before,f.after,migration.data_sha256);
+  assert.equal((await verifyReadyMigration(f.before,f.after,migration.data_sha256)).verified,true);
+  state=new HandoffState(f.file,handoffScope(f.before));state.db.exec('DROP TRIGGER recovery_successor_grant_guard');state.close();
+  await assert.rejects(()=>planReadyMigration(f.before,f.after),/successor schema/);
  }finally{await f.clean();}
 });
