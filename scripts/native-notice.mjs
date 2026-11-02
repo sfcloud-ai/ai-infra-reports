@@ -37,7 +37,7 @@ export function readNativeReceipt(invocation,{bytes,sourceTs,config}){
  requireThat(url.hostname===config.workspace_host&&!url.port&&!url.username&&!url.password&&!url.hash&&url.pathname===`/archives/${config.channel_id}/p${match[3].replace(".","")}`&&[...url.searchParams.keys()].sort().join()==="cid,thread_ts"&&url.searchParams.get("cid")===config.channel_id&&url.searchParams.get("thread_ts")===sourceTs,"Receipt is not in the original control thread");
  const r=JSON.parse(match[5]);
  const keys=["schema_version","command_id","command_sha256","report_request_id","bundle_sha256","send_authorized","reason","notice","slack_status","wecom_status"];
- if(c.action==="asset")keys.push("asset");if(c.action==="check")keys.push("verification");if(c.action==="status"&&Object.hasOwn(r,"recovery"))keys.push("recovery");if(Object.hasOwn(JOURNAL_FIELDS,c.action))keys.push("journal","new_intent");exact(r,keys);
+ if(c.action==="asset")keys.push("asset");if(c.action==="check")keys.push("verification");if(c.action==="status"&&Object.hasOwn(r,"recovery"))keys.push("recovery");if(Object.hasOwn(JOURNAL_FIELDS,c.action))keys.push("journal","new_intent");if(c.action==='journal_catalog')keys.push('catalog');exact(r,keys);
  requireThat(r.schema_version==="1.0"&&r.command_id===c.command_id&&r.command_sha256===digest(bytes)&&r.report_request_id===c.report_request_id&&r.bundle_sha256===c.bundle_sha256&&typeof r.send_authorized==="boolean"&&r.wecom_status==="not_checked","Receipt does not bind this fresh command");
  return r;
 }

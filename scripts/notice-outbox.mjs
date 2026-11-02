@@ -5,7 +5,7 @@ import {scopeDigest,handoffScope} from "./handoff-state.mjs";
 import {acceptDataCommand,decodeBundle,requireThat,REQUEST} from "./report-handoff.mjs";
 import {noticeIdentityReserved,noticeRecovery,activateNoticeRecovery,checkRecoveryGrant} from "./notice-recovery.mjs";
 import {checkedNoticeResult} from "./notice-checker.mjs";
-import {JOURNAL_FIELDS,validateJournalCommand,applyJournalCommand,guardJournalOperation,remoteJournal} from "./remote-native-journal.mjs";
+import {JOURNAL_FIELDS,validateJournalCommand,applyJournalCommand,guardJournalOperation,remoteJournal,remoteCatalog} from "./remote-native-journal.mjs";
 export const MAX_NOTICE_COMMAND=16384;
 export function notificationScope(config){
  const {ready_for_review,...scope}=handoffScope(config);
@@ -24,8 +24,8 @@ export function decodeNoticeCommand(bytes){
  const fields={claim:["attempt_id","file_id"],prepare:["attempt_id","file_id"],prepare_bundle:["attempt_id","file_id"],begin:["attempt_id","file_id"],recover_begin:["attempt_id","file_id","fence_sha256","original_begin_sha256"],status:[],asset:["file_id","message_ts"],unknown:["attempt_id","file_id"],check:["attempt_id","file_id","message_ts"],record:recordFields,record_bundle:[...recordFields,"poster_sha256","poster_bytes"],...JOURNAL_FIELDS};
  requireThat(c&&typeof c.action==="string"&&Object.hasOwn(fields,c.action),"Unsupported notice action");exact(c,[...common,...fields[c.action]]);
  requireThat(c.schema_version==="1.0"&&[c.command_id,c.report_request_id].every(v=>typeof v==="string"&&REQUEST.test(v))&&typeof c.bundle_sha256==="string"&&HASH.test(c.bundle_sha256),"Notice request identity");
- if(c.action!=="status")requireThat(typeof c.file_id==="string"&&FILE.test(c.file_id),"Notice file identity");
- if(!["status","asset"].includes(c.action))requireThat(typeof c.attempt_id==="string"&&REQUEST.test(c.attempt_id),"Notice attempt identity");
+ if(!["status","journal_catalog"].includes(c.action))requireThat(typeof c.file_id==="string"&&FILE.test(c.file_id),"Notice file identity");
+ if(!["status","asset","journal_catalog"].includes(c.action))requireThat(typeof c.attempt_id==="string"&&REQUEST.test(c.attempt_id),"Notice attempt identity");
  if(["check","asset"].includes(c.action))requireThat(typeof c.message_ts==="string"&&TS.test(c.message_ts),"Exact notice timestamp required");
  if(["record","record_bundle"].includes(c.action))requireThat(typeof c.message_ts==="string"&&TS.test(c.message_ts)&&[c.text_sha256,c.transport_sha256].every(v=>typeof v==="string"&&HASH.test(v))&&Number.isSafeInteger(c.transport_bytes)&&c.transport_bytes>0&&c.transport_bytes<=(c.action==="record_bundle"?8*1024*1024:2000000),"Reported Slack receipt fields");
  if(c.action==="record_bundle")requireThat(typeof c.poster_sha256==="string"&&HASH.test(c.poster_sha256)&&Number.isSafeInteger(c.poster_bytes)&&c.poster_bytes>0&&c.poster_bytes<=2000000,"Reported original poster fields");
@@ -51,12 +51,13 @@ export class NoticeOutbox{
   if(prior){requireThat(prior.hash===event.hash&&prior.source_ts===event.source_ts,"Notice command replay conflict");return;}
   // Remote reads/deferrals must not create a hidden lifetime retry limit or
   // consume the ordinary notification quota. Keep their audit rows intact.
-  if(!Object.hasOwn(JOURNAL_FIELDS,c.action)){
+  const exempt=command=>Object.hasOwn(JOURNAL_FIELDS,command.action)||['status','check'].includes(command.action)&&!!remoteJournal(this.db,command.report_request_id);
+  if(!exempt(c)){
    let count=0;
    for(const row of this.db.prepare('SELECT bytes FROM notice_commands').iterate()){
     // Use the same decoder as admission, including duplicate JSON key behavior.
     // Damaged/legacy rows conservatively consume ordinary capacity.
-    let journal=false;try{journal=Object.hasOwn(JOURNAL_FIELDS,decodeNoticeCommand(Buffer.from(row.bytes)).action);}catch{}
+    let journal=false;try{journal=exempt(decodeNoticeCommand(Buffer.from(row.bytes)));}catch{}
     if(!journal&&++count>=10000)break;
    }
    requireThat(count<10000,"Notice state capacity reached");
@@ -64,6 +65,16 @@ export class NoticeOutbox{
   this.db.prepare("INSERT INTO notice_commands VALUES (?,?,?,?,'received',NULL,NULL)").run(c.command_id,event.hash,event.source_ts,bytes);
  }
  pending(){return this.db.prepare("SELECT id FROM notice_commands WHERE phase!='response_sent' ORDER BY source_ts").all().map(r=>r.id);}
+ prepareCatalog(id,c){
+  this.db.exec('BEGIN IMMEDIATE');
+  try{
+   if(this.command(id).phase==='received'){
+    const response={schema_version:'1.0',command_id:id,command_sha256:this.command(id).hash,report_request_id:c.report_request_id,bundle_sha256:c.bundle_sha256,send_authorized:false,reason:'journal_catalog',notice:null,slack_status:'not_checked',wecom_status:'not_checked',journal:null,new_intent:false,catalog:remoteCatalog(this)};
+    this.db.prepare("UPDATE notice_commands SET phase='response_ready',response=? WHERE id=? AND phase='received'").run(JSON.stringify(response),id);
+   }
+   this.db.exec('COMMIT');
+  }catch(error){this.db.exec('ROLLBACK');throw error;}
+ }
  prepare(id,c,job,bundle,proof,check){
   this.db.exec("BEGIN IMMEDIATE");
   try{
@@ -163,6 +174,8 @@ export async function advanceNotice(outbox,id,io){
  }
  if(operation.phase==="received"){
   const c=decodeNoticeCommand(operation.bytes),job=outbox.state.get(c.report_request_id);
+  if(c.action==='journal_catalog')outbox.prepareCatalog(id,c);
+  else{
   requireThat(job&&job.hash===c.bundle_sha256,"Unknown report or bundle changed");
   let bundle,proof,check;
   if(c.action==='journal_intent'&&c.operation==='final_complete')bundle=await decodeBundle(job.bytes);
@@ -190,7 +203,9 @@ export async function advanceNotice(outbox,id,io){
     check={asset:ok?observed:{status:"not_verified",messages_sent:0}};
    }
   }
-  outbox.prepare(id,c,job,bundle,proof,check);operation=outbox.command(id);
+  outbox.prepare(id,c,job,bundle,proof,check);
+  }
+  operation=outbox.command(id);
  }
  requireThat(operation.phase==="response_ready","Unknown notice response phase");
  if(!outbox.move(id,"response_ready","response_sending"))return;
