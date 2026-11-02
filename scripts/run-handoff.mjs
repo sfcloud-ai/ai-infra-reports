@@ -5,7 +5,7 @@ import {constants} from "node:fs";
 import path from "node:path";
 import {pathToFileURL} from "node:url";
 import {HandoffState,handoffScope} from "./handoff-state.mjs";
-import {NoticeOutbox,notificationScope,acceptNoticeCommand,decodeNoticeCommand,advanceNotice,MAX_NOTICE_COMMAND} from "./notice-outbox.mjs";
+import {NoticeOutbox,notificationScope,acceptNoticeCommand,decodeNoticeCommand,advanceNotice,MAX_NOTICE_COMMAND,remoteReceiptCanWait} from "./notice-outbox.mjs";
 import {SlackHandoff,publicGitHub,publicMergeCommit} from "./slack-handoff.mjs";
 import {acceptMessage,decodeBundle,requireThat,verifyReportPublication} from "./report-handoff.mjs";
 import {advanceHandoff} from "./handoff-worker.mjs";
@@ -62,18 +62,24 @@ export async function handoffTick(state,config,slack,io){
   }
   // Bound each lane to one operation. A later PR must not starve completed-report
   // notices; a premature claim waits while its publication continues advancing.
-  const id=state.pending()[0];let commandId,noticeResult;
+  const id=state.pending()[0];let commandId,noticeResult,waitingRemoteReceipt;
   for(const candidate of notices?.pending()??[]){
    const operation=notices.command(candidate);
    // Reconcile any uncertain write before another reply, even if a previously
    // waiting claim earlier in the queue has since become eligible.
-   if(["response_sending","response_unknown"].includes(operation.phase)){commandId=candidate;break;}
+   if(["response_sending","response_unknown"].includes(operation.phase)){
+    // A lost remote-ledger response stays read-only. Let new authenticated
+    // snapshots/reconciliation commands progress without repeating that write.
+    if(remoteReceiptCanWait(notices,operation)){waitingRemoteReceipt??=candidate;continue;}
+    commandId=candidate;break;
+   }
    if(commandId)continue;
    const command=operation.phase==="received"?decodeNoticeCommand(operation.bytes):null;
    const job=["claim","prepare","prepare_bundle","begin","asset"].includes(command?.action)?state.get(command.report_request_id):null;
    if(job&&job.phase!=="receipt_sent")continue;
    commandId=candidate;
   }
+  commandId??=waitingRemoteReceipt;
   if(commandId){
    await advanceNotice(notices,commandId,{verify:io.verify,checkNotice:io.checkNotice,verifyAsset:io.verifyAsset,receipt:(thread,text)=>slack.controlReceipt(thread,text),findReceipt:(thread,text)=>slack.findControlReceipt(thread,text)});
    noticeResult={command_id:commandId,phase:notices.command(commandId).phase};

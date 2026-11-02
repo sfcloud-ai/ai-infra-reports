@@ -24,13 +24,22 @@ REPOSITORY = "sfcloud-ai/ai-infra-reports"
 SERVICE = "ai-report-publisher.service"
 CONFIG = Path("/etc/ai-report-publisher-cd.json")
 SHA = re.compile(r"[0-9a-f]{40}")
-TABLES = {"scope", "jobs", "ready_migrations", "notice_scope", "notices", "notice_commands", "notice_recovery_authorizations"}
+TABLES = {"scope", "jobs", "ready_migrations", "notice_scope", "notices", "notice_commands", "notice_recovery_authorizations", "remote_native_runs", "remote_native_ops"}
 
 
 RECOVERY_SCHEMA = {
     "CREATE TABLE notice_recovery_authorizations (recovery_id TEXT PRIMARY KEY, report_id TEXT UNIQUE NOT NULL, binding TEXT NOT NULL, binding_sha256 TEXT NOT NULL, original_notice TEXT NOT NULL, authorization TEXT NOT NULL, phase TEXT NOT NULL, grant_command_id TEXT, replacement_file_id TEXT)",
     "CREATE TRIGGER notice_recovery_keep_evidence BEFORE UPDATE OF recovery_id,report_id,binding,binding_sha256,original_notice,authorization ON notice_recovery_authorizations BEGIN SELECT RAISE(ABORT,'Immutable recovery authorization'); END",
     "CREATE TRIGGER notice_recovery_no_delete BEFORE DELETE ON notice_recovery_authorizations BEGIN SELECT RAISE(ABORT,'Immutable recovery authorization'); END",
+}
+
+REMOTE_JOURNAL_SCHEMA = {
+    "CREATE TABLE remote_native_runs (report_id TEXT PRIMARY KEY, binding TEXT NOT NULL, binding_sha256 TEXT NOT NULL, revision INTEGER NOT NULL, phase TEXT NOT NULL, next_attempt_at INTEGER NOT NULL, deferrals INTEGER NOT NULL, retry_reason TEXT)",
+    "CREATE TABLE remote_native_ops (report_id TEXT NOT NULL, operation TEXT NOT NULL, input_sha256 TEXT NOT NULL, executor_id TEXT NOT NULL, intent_command_id TEXT NOT NULL UNIQUE, phase TEXT NOT NULL, evidence_command_id TEXT, result_sha256 TEXT, PRIMARY KEY(report_id,operation))",
+    "CREATE TRIGGER remote_native_binding_immutable BEFORE UPDATE OF report_id,binding,binding_sha256 ON remote_native_runs BEGIN SELECT RAISE(ABORT,'Immutable remote journal binding'); END",
+    "CREATE TRIGGER remote_native_run_keep BEFORE DELETE ON remote_native_runs BEGIN SELECT RAISE(ABORT,'Remote journal cannot be deleted'); END",
+    "CREATE TRIGGER remote_native_intent_immutable BEFORE UPDATE OF report_id,operation,input_sha256,executor_id,intent_command_id ON remote_native_ops BEGIN SELECT RAISE(ABORT,'Immutable remote operation intent'); END",
+    "CREATE TRIGGER remote_native_op_keep BEFORE DELETE ON remote_native_ops BEGIN SELECT RAISE(ABORT,'Remote operation cannot be deleted'); END",
 }
 
 
@@ -197,7 +206,10 @@ def snapshot(path, settled=True):
         recovery = database.execute("SELECT type,name,sql FROM sqlite_master WHERE name='notice_recovery_authorizations' OR tbl_name='notice_recovery_authorizations' AND type='trigger' ORDER BY name").fetchall()
         if recovery and {row[2] for row in recovery} != RECOVERY_SCHEMA:
             raise ValueError("unsupported_recovery_schema")
-        allowed = {row[1] for row in recovery if row[0] == 'trigger'}
+        journal = database.execute("SELECT type,name,sql FROM sqlite_master WHERE name IN ('remote_native_runs','remote_native_ops') OR tbl_name IN ('remote_native_runs','remote_native_ops') AND type='trigger' ORDER BY name").fetchall()
+        if journal and {row[2] for row in journal} != REMOTE_JOURNAL_SCHEMA:
+            raise ValueError("unsupported_remote_journal_schema")
+        allowed = {row[1] for row in recovery + journal if row[0] == 'trigger'}
         objects = database.execute("SELECT name FROM sqlite_master WHERE type IN ('view','trigger')").fetchall()
         if any(row[0] not in allowed for row in objects):
             raise ValueError("unsupported_ledger_object")
@@ -205,6 +217,8 @@ def snapshot(path, settled=True):
         if not {"scope", "jobs"} <= {row[0] for row in tables} <= TABLES:
             raise ValueError("unsupported_ledger_schema")
         result = [["recovery_schema", recovery]] if recovery else []
+        if journal:
+            result.append(["remote_journal_schema", journal])
         for name, sql in tables:
             columns = database.execute("PRAGMA table_info(" + name + ")").fetchall()
             if any(not re.fullmatch(r"[a-z_][a-z0-9_]*", col[1]) for col in columns):
@@ -214,7 +228,7 @@ def snapshot(path, settled=True):
             result.append([name, sql, [[{"base64": base64.b64encode(value).decode()} if isinstance(value, bytes) else value
                                       for value in row] for row in rows]])
         if settled:
-            for name, phase in (("jobs", "receipt_sent"), ("notices", "sender_reported"), ("notice_commands", "response_sent"), ("notice_recovery_authorizations", "consumed")):
+            for name, phase in (("jobs", "receipt_sent"), ("notices", "sender_reported"), ("notice_commands", "response_sent"), ("notice_recovery_authorizations", "consumed"), ("remote_native_runs", "complete"), ("remote_native_ops", "acknowledged")):
                 if name in {row[0] for row in tables} and database.execute("SELECT count(*) FROM " + name + " WHERE phase!=?", (phase,)).fetchone()[0]:
                     raise Deferred("in_flight_or_unknown_operation")
         return hashlib.sha256(json.dumps(result, separators=(",", ":")).encode()).hexdigest()

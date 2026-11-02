@@ -5,6 +5,7 @@ import {scopeDigest,handoffScope} from "./handoff-state.mjs";
 import {acceptDataCommand,decodeBundle,requireThat,REQUEST} from "./report-handoff.mjs";
 import {noticeIdentityReserved,noticeRecovery,activateNoticeRecovery,checkRecoveryGrant} from "./notice-recovery.mjs";
 import {checkedNoticeResult} from "./notice-checker.mjs";
+import {JOURNAL_FIELDS,validateJournalCommand,applyJournalCommand,guardJournalOperation,remoteJournal} from "./remote-native-journal.mjs";
 export const MAX_NOTICE_COMMAND=16384;
 export function notificationScope(config){
  const {ready_for_review,...scope}=handoffScope(config);
@@ -20,7 +21,7 @@ export function decodeNoticeCommand(bytes){
  const c=JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(bytes));
  const common=["schema_version","command_id","action","report_request_id","bundle_sha256"];
  const recordFields=["attempt_id","file_id","message_ts","text_sha256","transport_sha256","transport_bytes"];
- const fields={claim:["attempt_id","file_id"],prepare:["attempt_id","file_id"],prepare_bundle:["attempt_id","file_id"],begin:["attempt_id","file_id"],recover_begin:["attempt_id","file_id","fence_sha256","original_begin_sha256"],status:[],asset:["file_id","message_ts"],unknown:["attempt_id","file_id"],check:["attempt_id","file_id","message_ts"],record:recordFields,record_bundle:[...recordFields,"poster_sha256","poster_bytes"]};
+ const fields={claim:["attempt_id","file_id"],prepare:["attempt_id","file_id"],prepare_bundle:["attempt_id","file_id"],begin:["attempt_id","file_id"],recover_begin:["attempt_id","file_id","fence_sha256","original_begin_sha256"],status:[],asset:["file_id","message_ts"],unknown:["attempt_id","file_id"],check:["attempt_id","file_id","message_ts"],record:recordFields,record_bundle:[...recordFields,"poster_sha256","poster_bytes"],...JOURNAL_FIELDS};
  requireThat(c&&typeof c.action==="string"&&Object.hasOwn(fields,c.action),"Unsupported notice action");exact(c,[...common,...fields[c.action]]);
  requireThat(c.schema_version==="1.0"&&[c.command_id,c.report_request_id].every(v=>typeof v==="string"&&REQUEST.test(v))&&typeof c.bundle_sha256==="string"&&HASH.test(c.bundle_sha256),"Notice request identity");
  if(c.action!=="status")requireThat(typeof c.file_id==="string"&&FILE.test(c.file_id),"Notice file identity");
@@ -29,6 +30,7 @@ export function decodeNoticeCommand(bytes){
  if(["record","record_bundle"].includes(c.action))requireThat(typeof c.message_ts==="string"&&TS.test(c.message_ts)&&[c.text_sha256,c.transport_sha256].every(v=>typeof v==="string"&&HASH.test(v))&&Number.isSafeInteger(c.transport_bytes)&&c.transport_bytes>0&&c.transport_bytes<=(c.action==="record_bundle"?8*1024*1024:2000000),"Reported Slack receipt fields");
  if(c.action==="record_bundle")requireThat(typeof c.poster_sha256==="string"&&HASH.test(c.poster_sha256)&&Number.isSafeInteger(c.poster_bytes)&&c.poster_bytes>0&&c.poster_bytes<=2000000,"Reported original poster fields");
  if(c.action==="recover_begin")requireThat([c.fence_sha256,c.original_begin_sha256].every(v=>typeof v==="string"&&HASH.test(v)),"Recovery evidence binding required");
+ if(Object.hasOwn(JOURNAL_FIELDS,c.action))validateJournalCommand(c);
  return c;
 }
 export class NoticeOutbox{
@@ -47,7 +49,18 @@ export class NoticeOutbox{
   const c=decodeNoticeCommand(bytes);requireThat(c.command_id===event.request_id&&digest(bytes)===event.hash,"Notice transport mismatch");
   const prior=this.command(c.command_id);
   if(prior){requireThat(prior.hash===event.hash&&prior.source_ts===event.source_ts,"Notice command replay conflict");return;}
-  requireThat(this.db.prepare("SELECT count(*) AS n FROM notice_commands").get().n<10000,"Notice state capacity reached");
+  // Remote reads/deferrals must not create a hidden lifetime retry limit or
+  // consume the ordinary notification quota. Keep their audit rows intact.
+  if(!Object.hasOwn(JOURNAL_FIELDS,c.action)){
+   let count=0;
+   for(const row of this.db.prepare('SELECT bytes FROM notice_commands').iterate()){
+    // Use the same decoder as admission, including duplicate JSON key behavior.
+    // Damaged/legacy rows conservatively consume ordinary capacity.
+    let journal=false;try{journal=Object.hasOwn(JOURNAL_FIELDS,decodeNoticeCommand(Buffer.from(row.bytes)).action);}catch{}
+    if(!journal&&++count>=10000)break;
+   }
+   requireThat(count<10000,"Notice state capacity reached");
+  }
   this.db.prepare("INSERT INTO notice_commands VALUES (?,?,?,?,'received',NULL,NULL)").run(c.command_id,event.hash,event.source_ts,bytes);
  }
  pending(){return this.db.prepare("SELECT id FROM notice_commands WHERE phase!='response_sent' ORDER BY source_ts").all().map(r=>r.id);}
@@ -57,8 +70,11 @@ export class NoticeOutbox{
    if(this.command(id).phase!=="received"){this.db.exec("COMMIT");return;}
    const current=this.state.get(c.report_request_id);
    requireThat(current?.hash===job.hash&&current.phase===job.phase&&JSON.stringify(current.detail)===JSON.stringify(job.detail),"Report changed during notice validation");
-   let notice=this.notice(c.report_request_id),authorized=false,reason;
-   if(["claim","prepare","prepare_bundle"].includes(c.action)){
+   let notice=this.notice(c.report_request_id),authorized=false,reason,journal;
+   guardJournalOperation(this,c);
+   if(Object.hasOwn(JOURNAL_FIELDS,c.action)){
+    journal=applyJournalCommand(this,c,job,{bundle});reason=journal.reason;
+   }else if(["claim","prepare","prepare_bundle"].includes(c.action)){
     const edition=`${bundle.report.date}/r${bundle.report.revision}`;
     if(notice||this.db.prepare("SELECT 1 FROM notices WHERE edition=?").get(edition)||noticeIdentityReserved(this,c.attempt_id,c.file_id))reason="already_reserved";
     else{
@@ -121,6 +137,7 @@ export class NoticeOutbox{
    if(c.action==="status"&&recovery)response.recovery={recovery_id:recovery.recovery_id,phase:recovery.phase,fence_sha256:recovery.binding_sha256,original_begin_sha256:recovery.binding.original_begin_sha256};
    if(c.action==="check")response.verification=check.result;
    if(c.action==="asset")response.asset=check.asset;
+   if(journal){response.journal=journal.journal;response.new_intent=journal.new_intent;}
    this.db.prepare("UPDATE notice_commands SET phase='response_ready',response=? WHERE id=? AND phase='received'").run(JSON.stringify(response),id);
    this.db.exec("COMMIT");
   }catch(e){this.db.exec("ROLLBACK");throw e;}
@@ -128,12 +145,19 @@ export class NoticeOutbox{
  move(id,from,to,ts=null){return this.db.prepare("UPDATE notice_commands SET phase=?,receipt_ts=? WHERE id=? AND phase=?").run(to,ts,id,from).changes===1;}
 }
 export const noticeResponseText=response=>"!ai-notice receipt "+JSON.stringify(response);
+export function remoteReceiptCanWait(outbox,operation){
+ const c=decodeNoticeCommand(operation.bytes);
+ return Object.hasOwn(JOURNAL_FIELDS,c.action)||!!remoteJournal(outbox.db,c.report_request_id);
+}
 export async function advanceNotice(outbox,id,io){
  let operation=outbox.command(id);requireThat(operation,"Unknown notice command");
  if(operation.phase==="response_sent")return;
  if(["response_sending","response_unknown"].includes(operation.phase)){
   // Recovery reads the exact original control thread. Absence never permits retry.
-  const ts=await io.findReceipt(operation.source_ts,noticeResponseText(operation.response));
+  let ts;
+  try{ts=await io.findReceipt(operation.source_ts,noticeResponseText(operation.response));}
+  catch(error){if(remoteReceiptCanWait(outbox,operation))return;throw error;}
+  if(!TS.test(ts??'')&&remoteReceiptCanWait(outbox,operation))return;
   requireThat(typeof ts==="string"&&TS.test(ts),"Control receipt reconciliation failed");
   outbox.move(id,operation.phase,"response_sent",ts);return;
  }
@@ -141,6 +165,7 @@ export async function advanceNotice(outbox,id,io){
   const c=decodeNoticeCommand(operation.bytes),job=outbox.state.get(c.report_request_id);
   requireThat(job&&job.hash===c.bundle_sha256,"Unknown report or bundle changed");
   let bundle,proof,check;
+  if(c.action==='journal_intent'&&c.operation==='final_complete')bundle=await decodeBundle(job.bytes);
   if(["claim","prepare","prepare_bundle","begin","recover_begin","check","asset","record_bundle"].includes(c.action)){
    requireThat(job.phase==="receipt_sent","Publication receipt must finish before notification claim");
    if(["claim","prepare","prepare_bundle","begin","recover_begin"].includes(c.action))requireThat(TS.test(job.source_ts)&&BigInt(job.source_ts.replace(".",""))>BigInt(outbox.notBefore.replace(".","")),"Pre-activation reports cannot receive a notification grant");
@@ -173,5 +198,5 @@ export async function advanceNotice(outbox,id,io){
   const ts=await io.receipt(operation.source_ts,noticeResponseText(operation.response));
   requireThat(typeof ts==="string"&&TS.test(ts),"Notice response timestamp missing");
   outbox.move(id,"response_sending","response_sent",ts);
- }catch{outbox.move(id,"response_sending","response_unknown");throw Error("Notice response outcome unknown; read original thread, never resend");}
+ }catch{outbox.move(id,"response_sending","response_unknown");if(remoteReceiptCanWait(outbox,operation))return;throw Error("Notice response outcome unknown; read original thread, never resend");}
 }

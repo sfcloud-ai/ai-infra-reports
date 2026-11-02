@@ -115,6 +115,22 @@ class LedgerTests(unittest.TestCase):
             database.execute("UPDATE jobs SET bytes=X'0201'")
         self.assertNotEqual(cd.snapshot(self.database), before)
 
+    def test_remote_journal_schema_and_unresolved_operation_gate(self):
+        with connection(self.database) as database:
+            for sql in sorted(cd.REMOTE_JOURNAL_SCHEMA, key=lambda s: not s.startswith('CREATE TABLE')):
+                database.execute(sql)
+            database.execute("INSERT INTO remote_native_runs VALUES('report','{}','hash',1,'open',0,0,NULL)")
+        with self.assertRaises(cd.Deferred):
+            cd.snapshot(self.database)
+        before = cd.snapshot(self.database, settled=False)
+        with connection(self.database) as database:
+            database.execute("UPDATE remote_native_runs SET phase='complete'")
+        self.assertNotEqual(cd.snapshot(self.database), before)
+        with connection(self.database) as database:
+            database.execute('DROP TRIGGER remote_native_run_keep')
+        with self.assertRaisesRegex(ValueError, 'unsupported_remote_journal_schema'):
+            cd.snapshot(self.database)
+
     def test_wal_backup_has_no_admin_owned_sidecars_before_service_probe(self):
         with connection(self.database) as database:
             self.assertEqual(database.execute("PRAGMA journal_mode=WAL").fetchone()[0], "wal")
