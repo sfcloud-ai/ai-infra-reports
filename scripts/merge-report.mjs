@@ -26,7 +26,7 @@ export function gateFacts({pr,run,workflow,main,botId,botLogin}) {
  // Merger. Only the SHA-conditional merge endpoint decides whether that actor
  // may merge; verified quality rules have no bypass, and remain enforced there.
  if(pr.mergeable!==true||!["clean","blocked"].includes(pr.mergeable_state))throw Error("PR mergeability is not confirmed");
- if(workflow.path!==".github/workflows/validate.yml"||run.workflow_id!==workflow.id||run.event!=="pull_request"||run.conclusion!=="success"||run.status!=="completed"||run.head_sha!==pr.head.sha||run.head_repository.full_name!==REPOSITORY)throw Error("Exact-head trusted CI required");
+ if(workflow.path!==".github/workflows/validate.yml"||run.workflow_id!==workflow.id||run.event!=="pull_request"||run.conclusion!=="success"||run.status!=="completed"||run.head_branch!==pr.head.ref||run.head_sha!==pr.head.sha||run.head_repository.full_name!==REPOSITORY)throw Error("Exact-head trusted CI required");
  if(run.pull_requests.length!==1||run.pull_requests[0].number!==pr.number||run.pull_requests[0].base?.ref!=="main"||run.pull_requests[0].base?.sha!==main||run.pull_requests[0].head?.sha!==pr.head.sha)throw Error("CI/PR association mismatch");
  return pr.head.sha;
 }
@@ -54,6 +54,11 @@ export async function mergeReport(api,runId,{enabled,botId,botLogin,trustedSha,p
  if(!Number.isSafeInteger(runId)||runId<=0||!/^[a-f0-9]{40}$/.test(trustedSha))throw Error("Trusted execution context required");
  requireBotIdentity(botId,botLogin);
  const run=await api.request("GET",PREFIX+"/actions/runs/"+runId);
+ if(typeof run?.head_branch!=="string"||!run.head_branch)throw Error("CI head branch required");
+ // Producer branches are report/<base>-<bundle>. Route only outside that
+ // namespace; malformed report branches still face every strict merge gate.
+ // Engineering workflow_run records can legitimately omit PR associations.
+ if(!run.head_branch.startsWith("report/"))return {merged:false,reason:"non_report_branch"};
  if(run?.pull_requests?.length!==1)throw Error("One associated PR required");
  const number=run.pull_requests[0].number;
  if(!Number.isSafeInteger(number)||number<=0)throw Error("Associated PR number required");
