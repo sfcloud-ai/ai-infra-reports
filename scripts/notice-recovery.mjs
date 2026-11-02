@@ -13,7 +13,7 @@ export function installNoticeRecovery(db){
 }
 // Recognize only this exact passive audit schema; unknown triggers still fail closed.
 export function recoverySchemaObjects(db){
- const objects=db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name='notice_recovery_authorizations' OR tbl_name='notice_recovery_authorizations' AND type='trigger' ORDER BY name").all();
+ const objects=db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name='notice_recovery_authorizations' OR tbl_name='notice_recovery_authorizations' AND type='trigger' AND name!='recovery_successor_grant_guard' ORDER BY name").all();
  if(!objects.length)return [];
  requireThat(objects.length===NOTICE_RECOVERY_SCHEMA.length&&objects.every(o=>NOTICE_RECOVERY_SCHEMA.includes(o.sql)),'Unexpected recovery audit schema');
  return objects;

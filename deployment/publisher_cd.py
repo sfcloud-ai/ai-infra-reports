@@ -24,7 +24,7 @@ REPOSITORY = "sfcloud-ai/ai-infra-reports"
 SERVICE = "ai-report-publisher.service"
 CONFIG = Path("/etc/ai-report-publisher-cd.json")
 SHA = re.compile(r"[0-9a-f]{40}")
-TABLES = {"scope", "jobs", "ready_migrations", "notice_scope", "notices", "notice_commands", "notice_recovery_authorizations", "remote_native_runs", "remote_native_ops"}
+TABLES = {"scope", "jobs", "ready_migrations", "notice_scope", "notices", "notice_commands", "notice_recovery_authorizations", "remote_native_runs", "remote_native_ops", "recovery_control_successors"}
 
 
 RECOVERY_SCHEMA = {
@@ -40,6 +40,14 @@ REMOTE_JOURNAL_SCHEMA = {
     "CREATE TRIGGER remote_native_run_keep BEFORE DELETE ON remote_native_runs BEGIN SELECT RAISE(ABORT,'Remote journal cannot be deleted'); END",
     "CREATE TRIGGER remote_native_intent_immutable BEFORE UPDATE OF report_id,operation,input_sha256,executor_id,intent_command_id ON remote_native_ops BEGIN SELECT RAISE(ABORT,'Immutable remote operation intent'); END",
     "CREATE TRIGGER remote_native_op_keep BEFORE DELETE ON remote_native_ops BEGIN SELECT RAISE(ABORT,'Remote operation cannot be deleted'); END",
+}
+
+
+RECOVERY_SUCCESSOR_SCHEMA = {
+    "CREATE TABLE recovery_control_successors (report_id TEXT PRIMARY KEY, successor_id TEXT UNIQUE NOT NULL, plan TEXT NOT NULL, plan_sha256 TEXT NOT NULL, authorization TEXT NOT NULL)",
+    "CREATE TRIGGER recovery_successor_no_update BEFORE UPDATE ON recovery_control_successors BEGIN SELECT RAISE(ABORT,'Immutable recovery successor'); END",
+    "CREATE TRIGGER recovery_successor_no_delete BEFORE DELETE ON recovery_control_successors BEGIN SELECT RAISE(ABORT,'Immutable recovery successor'); END",
+    "CREATE TRIGGER recovery_successor_grant_guard BEFORE UPDATE ON notice_recovery_authorizations WHEN NEW.phase='consumed' AND EXISTS(SELECT 1 FROM recovery_control_successors WHERE report_id=NEW.report_id) BEGIN SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM recovery_control_successors s JOIN notice_commands c ON c.id=NEW.grant_command_id WHERE s.report_id=NEW.report_id AND json_extract(s.plan,'$.command_id')=NEW.grant_command_id AND json_extract(s.plan,'$.command_sha256')=c.hash AND json_extract(s.plan,'$.file_id')=NEW.replacement_file_id) THEN RAISE(ABORT,'Recovery command permanently fenced') END; END",
 }
 
 
@@ -203,13 +211,16 @@ def snapshot(path, settled=True):
         database.execute("BEGIN")
         if database.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
             raise ValueError("ledger_integrity")
-        recovery = database.execute("SELECT type,name,sql FROM sqlite_master WHERE name='notice_recovery_authorizations' OR tbl_name='notice_recovery_authorizations' AND type='trigger' ORDER BY name").fetchall()
+        recovery = database.execute("SELECT type,name,sql FROM sqlite_master WHERE name='notice_recovery_authorizations' OR tbl_name='notice_recovery_authorizations' AND type='trigger' AND name!='recovery_successor_grant_guard' ORDER BY name").fetchall()
         if recovery and {row[2] for row in recovery} != RECOVERY_SCHEMA:
             raise ValueError("unsupported_recovery_schema")
         journal = database.execute("SELECT type,name,sql FROM sqlite_master WHERE name IN ('remote_native_runs','remote_native_ops') OR tbl_name IN ('remote_native_runs','remote_native_ops') AND type='trigger' ORDER BY name").fetchall()
         if journal and {row[2] for row in journal} != REMOTE_JOURNAL_SCHEMA:
             raise ValueError("unsupported_remote_journal_schema")
-        allowed = {row[1] for row in recovery + journal if row[0] == 'trigger'}
+        successor = database.execute("SELECT type,name,sql FROM sqlite_master WHERE name IN ('recovery_control_successors','recovery_successor_grant_guard') OR tbl_name='recovery_control_successors' AND type='trigger' ORDER BY name").fetchall()
+        if successor and {row[2] for row in successor} != RECOVERY_SUCCESSOR_SCHEMA:
+            raise ValueError('unsupported_recovery_successor_schema')
+        allowed = {row[1] for row in recovery + journal + successor if row[0] == 'trigger'}
         objects = database.execute("SELECT name FROM sqlite_master WHERE type IN ('view','trigger')").fetchall()
         if any(row[0] not in allowed for row in objects):
             raise ValueError("unsupported_ledger_object")
@@ -219,6 +230,8 @@ def snapshot(path, settled=True):
         result = [["recovery_schema", recovery]] if recovery else []
         if journal:
             result.append(["remote_journal_schema", journal])
+        if successor:
+            result.append(["recovery_successor_schema", successor])
         for name, sql in tables:
             columns = database.execute("PRAGMA table_info(" + name + ")").fetchall()
             if any(not re.fullmatch(r"[a-z_][a-z0-9_]*", col[1]) for col in columns):

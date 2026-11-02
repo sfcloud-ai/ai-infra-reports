@@ -187,6 +187,30 @@ class LedgerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "recovery_schema"):
             cd.snapshot(self.database)
 
+    def test_successor_fence_preserves_audit_and_unresolved_gate(self):
+        with connection(self.database) as database:
+            for sql in sorted(cd.RECOVERY_SCHEMA):
+                database.execute(sql)
+            database.execute("ALTER TABLE notice_commands ADD COLUMN hash TEXT")
+            database.execute("INSERT INTO notice_commands VALUES('successor-command','response_sent','hash')")
+            database.execute("INSERT INTO notice_recovery_authorizations VALUES('recover','report','{}','hash','{}','{}','approved',NULL,NULL)")
+            for sql in sorted(cd.RECOVERY_SUCCESSOR_SCHEMA):
+                database.execute(sql)
+            plan = json.dumps({'command_id': 'successor-command', 'command_sha256': 'hash', 'file_id': 'F123'})
+            database.execute("INSERT INTO recovery_control_successors VALUES('report','successor',?,'hash','{}')", (plan,))
+        with self.assertRaises(cd.Deferred):
+            cd.snapshot(self.database)
+        before = cd.snapshot(self.database, settled=False)
+        with connection(self.database) as database:
+            with self.assertRaisesRegex(sqlite3.IntegrityError, 'permanently fenced'):
+                database.execute("UPDATE notice_recovery_authorizations SET phase='consumed',grant_command_id='old-command',replacement_file_id='F123'")
+            database.execute("UPDATE notice_recovery_authorizations SET phase='consumed',grant_command_id='successor-command',replacement_file_id='F123'")
+        self.assertNotEqual(cd.snapshot(self.database), before)
+        with connection(self.database) as database:
+            database.execute('DROP TRIGGER recovery_successor_grant_guard')
+        with self.assertRaisesRegex(ValueError, 'unsupported_recovery_successor_schema'):
+            cd.snapshot(self.database)
+
     def test_unknown_schema_or_trigger_prevents_automatic_migration(self):
         with connection(self.database) as database:
             database.execute("CREATE TABLE future_schema(value)")

@@ -46,17 +46,26 @@ export function nativeMessageLocator(result,{config,channel,expectedText,expecte
  return {source_ts:m[3]};
 }
 export class NativeSlackTransport{
- constructor(callTool,{uploadFetch=fetch}={}){this.callTool=callTool;this.uploadFetch=uploadFetch;}
+ constructor(callTool,{uploadFetch=fetch,onUploadStage=()=>{}}={}){this.callTool=callTool;this.uploadFetch=uploadFetch;this.onUploadStage=onUploadStage;}
  async upload(bytes,name){
+  const audit=(stage,extra={})=>this.onUploadStage({stage,name,bytes:bytes.length,sha256:digest(bytes),...extra});
+  let fileId;
+  try{
+  audit('ticket_requested');
   const t=uploadTicket(await this.callTool(NATIVE_TOOLS.ticket,{filename:name,content_length:bytes.length}));
   requireThat(typeof t.file_id==='string'&&/^F[A-Z0-9]+$/.test(t.file_id)&&typeof t.upload_url==='string','Upload ticket format changed');
+  fileId=t.file_id;
+  audit('ticket_received',{file_id:t.file_id});
   requireThat(/^https:\/\/files\.slack\.com\/upload\/v1\/[A-Za-z0-9._~!$&'()*+,;=:@%/?-]+$/.test(t.upload_url),'Unexpected upload endpoint');
   const u=new URL(t.upload_url);
   requireThat(u.protocol==='https:'&&u.hostname==='files.slack.com'&&!u.port&&!u.username&&!u.password&&!u.hash&&u.pathname.startsWith('/upload/v1/'),'Unexpected upload endpoint');
   // Never normalize the signed URL, follow redirects or retry this mutation.
+  audit('post_started',{file_id:t.file_id});
   const r=await this.uploadFetch(t.upload_url,{method:'POST',body:bytes,headers:{'content-type':name.endsWith('.png')?'image/png':name.endsWith('.jpg')?'image/jpeg':'application/json','content-length':String(bytes.length)},redirect:'error',signal:AbortSignal.timeout(30000)});
+  audit('post_response',{file_id:t.file_id,status:r.status});
   requireThat(r.status===200,'Upload outcome unconfirmed; do not obtain a replacement ticket');
   await r.body?.cancel();return {file_id:t.file_id};
+  }catch(e){audit('upload_error',{...(fileId?{file_id:fileId}:{}),...safeTransportError(e)});throw e;}
  }
  async complete(args){const r=await this.callTool(NATIVE_TOOLS.complete,args);requireThat(r&&!r.isError,'Completion outcome unconfirmed');return null;}
  async source(bytes,config){
@@ -73,6 +82,12 @@ export class NativeSlackTransport{
   const args=searchArgs(config,['"AI Infra 晨报"',`"${manifest.date}"`,`"${manifest.articles[0].url}"`],config.notification_destination);
   return nativeMessageLocator(await this.callTool(NATIVE_TOOLS.search,args),{config,channel:config.notification_destination});
  }
+}
+export function safeTransportError(error){
+ const name=['Error','TypeError','SyntaxError','TimeoutError','AbortError'].includes(error?.name)?error.name:'unknown';
+ const code=error?.cause?.code??error?.code;
+ const allowed=['ECONNRESET','ETIMEDOUT','EAI_AGAIN','ECONNREFUSED','UND_ERR_CONNECT_TIMEOUT','UND_ERR_SOCKET','UND_ERR_HEADERS_TIMEOUT','UND_ERR_BODY_TIMEOUT'];
+ return {error_type:name,...(allowed.includes(code)?{error_code:code}:{})};
 }
 export async function prepareNativeRun(state,{bundleBytes,reportCommit,workspaceHost,deliveryMode}){
  const b=await decodeBundle(bundleBytes);

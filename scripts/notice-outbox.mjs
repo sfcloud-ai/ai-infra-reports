@@ -6,6 +6,7 @@ import {acceptDataCommand,decodeBundle,requireThat,REQUEST} from "./report-hando
 import {noticeIdentityReserved,noticeRecovery,activateNoticeRecovery,checkRecoveryGrant} from "./notice-recovery.mjs";
 import {checkedNoticeResult} from "./notice-checker.mjs";
 import {JOURNAL_FIELDS,validateJournalCommand,applyJournalCommand,guardJournalOperation,remoteJournal,remoteCatalog} from "./remote-native-journal.mjs";
+import {recoveryCommandAllowed} from './recovery-control-successor.mjs';
 export const MAX_NOTICE_COMMAND=16384;
 export function notificationScope(config){
  const {ready_for_review,...scope}=handoffScope(config);
@@ -109,7 +110,8 @@ export class NoticeOutbox{
      authorized=true;reason="new_completion_intent";
     }
    }else if(c.action==="recover_begin"){
-    activateNoticeRecovery(this,c,job,bundle,proof);authorized=true;reason="recovery_completion_intent";
+    if(!recoveryCommandAllowed(this,c))reason='recovery_command_fenced';
+    else{activateNoticeRecovery(this,c,job,bundle,proof);authorized=true;reason="recovery_completion_intent";}
    }else if(c.action==="asset"){
     requireThat(check?.asset,"Asset verification result required");reason="control_asset_checked";
    }else if(c.action==="check"){
@@ -179,7 +181,8 @@ export async function advanceNotice(outbox,id,io){
   requireThat(job&&job.hash===c.bundle_sha256,"Unknown report or bundle changed");
   let bundle,proof,check;
   if(c.action==='journal_intent'&&c.operation==='final_complete')bundle=await decodeBundle(job.bytes);
-  if(["claim","prepare","prepare_bundle","begin","recover_begin","check","asset","record_bundle"].includes(c.action)){
+  const fencedRecovery=c.action==='recover_begin'&&!recoveryCommandAllowed(outbox,c);
+  if(!fencedRecovery&&["claim","prepare","prepare_bundle","begin","recover_begin","check","asset","record_bundle"].includes(c.action)){
    requireThat(job.phase==="receipt_sent","Publication receipt must finish before notification claim");
    if(["claim","prepare","prepare_bundle","begin","recover_begin"].includes(c.action))requireThat(TS.test(job.source_ts)&&BigInt(job.source_ts.replace(".",""))>BigInt(outbox.notBefore.replace(".","")),"Pre-activation reports cannot receive a notification grant");
    bundle=await decodeBundle(job.bytes);proof=await io.verify(job.detail.commit,bundle);
