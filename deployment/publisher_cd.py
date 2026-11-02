@@ -24,7 +24,14 @@ REPOSITORY = "sfcloud-ai/ai-infra-reports"
 SERVICE = "ai-report-publisher.service"
 CONFIG = Path("/etc/ai-report-publisher-cd.json")
 SHA = re.compile(r"[0-9a-f]{40}")
-TABLES = {"scope", "jobs", "ready_migrations", "notice_scope", "notices", "notice_commands"}
+TABLES = {"scope", "jobs", "ready_migrations", "notice_scope", "notices", "notice_commands", "notice_recovery_authorizations"}
+
+
+RECOVERY_SCHEMA = {
+    "CREATE TABLE notice_recovery_authorizations (recovery_id TEXT PRIMARY KEY, report_id TEXT UNIQUE NOT NULL, binding TEXT NOT NULL, binding_sha256 TEXT NOT NULL, original_notice TEXT NOT NULL, authorization TEXT NOT NULL, phase TEXT NOT NULL, grant_command_id TEXT, replacement_file_id TEXT)",
+    "CREATE TRIGGER notice_recovery_keep_evidence BEFORE UPDATE OF recovery_id,report_id,binding,binding_sha256,original_notice,authorization ON notice_recovery_authorizations BEGIN SELECT RAISE(ABORT,'Immutable recovery authorization'); END",
+    "CREATE TRIGGER notice_recovery_no_delete BEFORE DELETE ON notice_recovery_authorizations BEGIN SELECT RAISE(ABORT,'Immutable recovery authorization'); END",
+}
 
 
 class Deferred(Exception):
@@ -187,12 +194,17 @@ def snapshot(path, settled=True):
         database.execute("BEGIN")
         if database.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
             raise ValueError("ledger_integrity")
-        if database.execute("SELECT count(*) FROM sqlite_master WHERE type IN ('view','trigger')").fetchone()[0]:
+        recovery = database.execute("SELECT type,name,sql FROM sqlite_master WHERE name='notice_recovery_authorizations' OR tbl_name='notice_recovery_authorizations' AND type='trigger' ORDER BY name").fetchall()
+        if recovery and {row[2] for row in recovery} != RECOVERY_SCHEMA:
+            raise ValueError("unsupported_recovery_schema")
+        allowed = {row[1] for row in recovery if row[0] == 'trigger'}
+        objects = database.execute("SELECT name FROM sqlite_master WHERE type IN ('view','trigger')").fetchall()
+        if any(row[0] not in allowed for row in objects):
             raise ValueError("unsupported_ledger_object")
         tables = database.execute("SELECT name,sql FROM sqlite_master WHERE type='table' ORDER BY name").fetchall()
         if not {"scope", "jobs"} <= {row[0] for row in tables} <= TABLES:
             raise ValueError("unsupported_ledger_schema")
-        result = []
+        result = [["recovery_schema", recovery]] if recovery else []
         for name, sql in tables:
             columns = database.execute("PRAGMA table_info(" + name + ")").fetchall()
             if any(not re.fullmatch(r"[a-z_][a-z0-9_]*", col[1]) for col in columns):
@@ -202,7 +214,7 @@ def snapshot(path, settled=True):
             result.append([name, sql, [[{"base64": base64.b64encode(value).decode()} if isinstance(value, bytes) else value
                                       for value in row] for row in rows]])
         if settled:
-            for name, phase in (("jobs", "receipt_sent"), ("notices", "sender_reported"), ("notice_commands", "response_sent")):
+            for name, phase in (("jobs", "receipt_sent"), ("notices", "sender_reported"), ("notice_commands", "response_sent"), ("notice_recovery_authorizations", "consumed")):
                 if name in {row[0] for row in tables} and database.execute("SELECT count(*) FROM " + name + " WHERE phase!=?", (phase,)).fetchone()[0]:
                     raise Deferred("in_flight_or_unknown_operation")
         return hashlib.sha256(json.dumps(result, separators=(",", ":")).encode()).hexdigest()

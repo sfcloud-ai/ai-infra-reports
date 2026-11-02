@@ -6,21 +6,25 @@ import path from "node:path";
 import {pathToFileURL} from "node:url";
 import {scopeDigest,handoffScope} from "./handoff-state.mjs";
 import {requireThat} from "./report-handoff.mjs";
+import {recoverySchemaObjects} from "./notice-recovery.mjs";
 import {validateConfig,privateFile,privateDirectory} from "./run-handoff.mjs";
-const known=new Set(["scope","jobs","notice_scope","notices","notice_commands","ready_migrations"]);
+const known=new Set(["scope","jobs","notice_scope","notices","notice_commands","ready_migrations","notice_recovery_authorizations"]);
 function inspect(db){
  requireThat(db.prepare("PRAGMA integrity_check").get().integrity_check==="ok","State integrity failed");
  const tables=db.prepare("SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all();
- requireThat(db.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type IN ('trigger','view')").get().n===0,"Unexpected state triggers/views");
+ const recoveryObjects=recoverySchemaObjects(db),allowedTriggers=new Set(recoveryObjects.filter(o=>o.type==='trigger').map(o=>o.name));
+ requireThat(db.prepare("SELECT name FROM sqlite_master WHERE type IN ('trigger','view')").all().every(o=>allowedTriggers.has(o.name)),"Unexpected state triggers/views");
  requireThat(tables.every(t=>known.has(t.name))&&tables.some(t=>t.name==="jobs")&&tables.some(t=>t.name==="scope"),"Unknown state schema");
  requireThat(db.prepare("SELECT count(*) AS n FROM jobs WHERE phase!='receipt_sent'").get().n===0,"Pending report state prevents migration");
  if(tables.some(t=>t.name==="notices"))requireThat(db.prepare("SELECT count(*) AS n FROM notices WHERE phase!='sender_reported'").get().n===0,"Unresolved notification prevents migration");
  if(tables.some(t=>t.name==="notice_commands"))requireThat(db.prepare("SELECT count(*) AS n FROM notice_commands WHERE phase!='response_sent'").get().n===0,"Unresolved control receipt prevents migration");
+ if(recoveryObjects.length)requireThat(db.prepare("SELECT count(*) AS n FROM notice_recovery_authorizations WHERE phase!='consumed'").get().n===0,"Unresolved recovery authorization prevents migration");
  const hash=createHash("sha256");
+ if(recoveryObjects.length)hash.update(JSON.stringify(recoveryObjects)+"\n");
  for(const t of tables.filter(t=>!["scope","ready_migrations"].includes(t.name))){
   hash.update(JSON.stringify([t.name,t.sql])+"\n");
   const columns=db.prepare(`PRAGMA table_info(${t.name})`).all();
-  requireThat(columns.every(c=>/^[a-z_]+$/.test(c.name)),"Unexpected state column name");
+  requireThat(columns.every(c=>/^[a-z_][a-z0-9_]*$/.test(c.name)),"Unexpected state column name");
   const primary=columns.filter(c=>c.pk).sort((a,b)=>a.pk-b.pk).map(c=>c.name);
   requireThat(primary.length>0,"State tables require a stable primary key");
   for(const row of db.prepare(`SELECT * FROM ${t.name} ORDER BY ${primary.join(",")}`).iterate()){

@@ -10,6 +10,9 @@ import {HandoffState} from '../scripts/handoff-state.mjs';
 import {NoticeOutbox,notificationScope,advanceNotice} from '../scripts/notice-outbox.mjs';
 import {createNoticeManifest} from '../scripts/notice-manifest.mjs';
 import {NativeScheduledHost,NativeSlackTransport,prepareNativeRun,NATIVE_TOOLS,nativeMessageLocator} from '../scripts/native-scheduled-host.mjs';
+import {nativeRecoveryPlan,fenceNativeRecovery,readRecoveryFence} from '../scripts/native-recovery-fence.mjs';
+import {NativeRecoveryHost} from '../scripts/native-recovery-host.mjs';
+import {authorizeNoticeRecovery,noticeRecovery} from '../scripts/notice-recovery.mjs';
 import {publicationSite} from './helpers/publication-site.mjs';
 import {FILES,SCOPE,MERGE,TARGET} from './helpers/cloud-sender-fixture.mjs';
 const ID='isolated-native-host-fixture',workspace='fixture-workspace.slack.com';
@@ -86,7 +89,7 @@ async function rig({filename=':memory:',start=TARGET-600000,allowFinal=true,deli
  const fetchPublic=async(...args)=>{if(modes.pagesUnavailable)throw Error('pages unavailable');if(modes.httpStatus)return new Response(null,{status:modes.httpStatus,headers:modes.headers});if(modes.networkTimeout)throw new DOMException('read timeout','TimeoutError');if(modes.streamTimeout)return new Response(new ReadableStream({start(c){c.error(new DOMException('stream timeout','TimeoutError'));}}),{headers:{'content-type':'application/json'}});if(modes.badContent)return new Response('{}',{headers:{'content-type':'application/json'}});if(modes.slowPreflight){clock.now+=61000;modes.slowPreflight=false;}return site.fetcher(...args);};
  const transport=new NativeSlackTransport(callTool,{uploadFetch});
  const makeHost=(s=state)=>new NativeScheduledHost(s,transport,{allowFinal,now:()=>clock.now,fetchPublic});
- return {state,publisher,outbox,host:makeHost(),makeHost,clock,modes,counts,reads,uploads,async arm(){await this.host.step(ID);await this.host.step(ID);if(clock.now<TARGET){await assert.rejects(()=>this.host.step(ID),ReadPending);assert.equal(counts.begin,0);clock.now=TARGET;}await this.host.step(ID);assert.equal(state.get(ID).phase,'final_ready');},close(){state.close();publisher.close();}};
+ return {state,publisher,outbox,host:makeHost(),makeHost,makeRecovery:(s=state,enabled=allowFinal)=>new NativeRecoveryHost(s,transport,{allowFinal:enabled,now:()=>clock.now,fetchPublic}),clock,modes,counts,reads,uploads,async arm(){await this.host.step(ID);await this.host.step(ID);if(clock.now<TARGET){await assert.rejects(()=>this.host.step(ID),ReadPending);assert.equal(counts.begin,0);clock.now=TARGET;}await this.host.step(ID);assert.equal(state.get(ID).phase,'final_ready');},close(){state.close();publisher.close();}};
 }
 
 test('native host prepares early, gates the single completion at 08:00 and records independent check',async()=>{
@@ -284,5 +287,146 @@ test('publication backoff waits before reading the original begin receipt again'
   }
   delete r.modes.httpStatus;r.clock.now+=5000;await r.host.step(ID);
   assert(r.reads.search>reads);assert.equal(r.counts.begin,1);assert.equal(r.counts.final,1);
+ }finally{r.close();}
+});
+
+
+const RECOVERY='explicit-recovery-fixture-001';
+async function armRecovery(r,{approve=true}={}){
+ await r.arm();const original=r.state.get(ID),oldBegin=r.state.op(ID,'native:begin:command');
+ const plan=await nativeRecoveryPlan(r.state,ID,RECOVERY);await fenceNativeRecovery(r.state,plan);
+ if(approve)authorizeNoticeRecovery(r.outbox,plan,{reference:'isolated test operator',checked_at:r.clock.now,relay_requests:0,publisher_verified:true});
+ return {original,oldBegin,plan,host:r.makeRecovery()};
+}
+test('explicit first-completion recovery fences the original, preserves audit, gets a new grant and sends once',async()=>{
+ const r=await rig({deliveryMode:'native_bundle_v1'});try{
+  const a=await armRecovery(r);assert.equal(r.state.beginCompletion(a.original,{},()=>assert.fail('old sender must not enter')),false);
+  await assert.rejects(()=>r.host.step(ID));assert.equal(r.counts.final,0);
+  assert.deepEqual(r.state.op(ID,'native:begin:command'),a.oldBegin);
+  await a.host.step(ID);const replacement=r.state.get(ID).detail.file_id;assert.notEqual(replacement,a.original.detail.file_id);
+  await a.host.step(ID);assert.equal(r.state.get(ID).phase,'recovery_final_ready');
+  assert.equal(r.outbox.notice(ID).file_id,replacement);assert.equal(noticeRecovery(r.outbox,ID).phase,'consumed');
+  assert.equal(noticeRecovery(r.outbox,ID).original_notice.file_id,a.original.detail.file_id);
+  await a.host.step(ID);assert.equal(r.counts.final,1);await a.host.step(ID);assert.equal(r.state.get(ID).phase,'sender_reported');
+  await a.host.step(ID);assert.equal(r.counts.final,1);assert.equal(r.outbox.notice(ID).phase,'sender_reported');
+  assert.deepEqual(r.state.op(ID,'native:begin:command'),a.oldBegin);
+  assert.throws(()=>r.state.db.exec('DELETE FROM native_recovery_fences'),/Immutable/);
+  assert.throws(()=>r.publisher.db.exec('DELETE FROM notice_recovery_authorizations'),/Immutable/);
+  await assert.rejects(()=>fenceNativeRecovery(r.state,a.plan));
+ }finally{r.close();}
+});
+for(const phase of ['started','unknown','acknowledged'])test('recovery refuses any prior final intent '+phase,async()=>{
+ const r=await rig({deliveryMode:'native_bundle_v1'});try{
+  await r.arm();r.state.begin(ID,'final_complete',{});if(phase!=='started')r.state.settle(ID,'final_complete',phase,null);
+  await assert.rejects(()=>nativeRecoveryPlan(r.state,ID,RECOVERY),/final completion intent/);assert.equal(r.counts.final,0);
+ }finally{r.close();}
+});
+for(const change of ['unknown-preparation','extra-operation','bundle','wrong-plan'])test('recovery refuses changed or incomplete original evidence '+change,async()=>{
+ const r=await rig({deliveryMode:'native_bundle_v1'});try{
+  await r.arm();const plan=await nativeRecoveryPlan(r.state,ID,RECOVERY);
+  if(change==='unknown-preparation')r.state.db.prepare("UPDATE cloud_ops SET phase='unknown' WHERE run_id=? AND name='native:begin:share'").run(ID);
+  if(change==='extra-operation')r.state.begin(ID,'unrecognized-write',{});
+  if(change==='bundle')r.state.db.prepare('UPDATE cloud_runs SET bundle=? WHERE id=?').run(Buffer.from('{}'),ID);
+  if(change==='wrong-plan')plan.binding.old_file_id='F999';
+  await assert.rejects(()=>fenceNativeRecovery(r.state,plan));assert.equal(r.state.get(ID).phase,'final_ready');assert.equal(r.counts.final,0);
+ }finally{r.close();}
+});
+test('recovery cannot upload before explicit operator approval or with final delivery disabled',async()=>{
+ const r=await rig({deliveryMode:'native_bundle_v1'});try{
+  const a=await armRecovery(r,{approve:false});
+  await assert.rejects(()=>r.makeRecovery(r.state,false).step(ID),/disabled/);
+  assert.equal(r.state.op(ID,'recovery:upload'),null);
+  await assert.rejects(()=>a.host.step(ID),/operator recovery approval/);
+  assert.equal(r.state.op(ID,'recovery:upload'),null);assert.equal(r.counts.final,0);
+ }finally{r.close();}
+});
+test('operator approval rejects observed relay activity and duplicate authorization',async()=>{
+ const r=await rig({deliveryMode:'native_bundle_v1'});try{
+  const a=await armRecovery(r,{approve:false}),proof={reference:'isolated test operator',checked_at:r.clock.now,relay_requests:1,publisher_verified:true};
+  assert.throws(()=>authorizeNoticeRecovery(r.outbox,a.plan,proof));assert.equal(noticeRecovery(r.outbox,ID),null);
+  proof.relay_requests=0;authorizeNoticeRecovery(r.outbox,a.plan,proof);
+  assert.throws(()=>authorizeNoticeRecovery(r.outbox,a.plan,proof),/already exists/);
+ }finally{r.close();}
+});
+test('recovery cannot reuse the original begin grant or consume its approval twice',async()=>{
+ const r=await rig({deliveryMode:'native_bundle_v1'});try{
+  const a=await armRecovery(r);await a.host.step(ID);await a.host.step(ID);
+  const job=r.state.get(ID),fields={attempt_id:RECOVERY,file_id:job.detail.file_id};
+  const oldGrant=await a.host.control(job,'begin',fields,'recovery:forbidden-old-begin');
+  assert.equal(oldGrant.receipt.send_authorized,false);
+  await assert.rejects(()=>a.host.control(job,'recover_begin',{...fields,fence_sha256:a.plan.binding_sha256,original_begin_sha256:a.plan.binding.original_begin_sha256},'recovery:second-begin'));
+  assert.equal(noticeRecovery(r.outbox,ID).phase,'consumed');assert.equal(r.counts.final,0);
+ }finally{r.close();}
+});
+test('recovery with unknown replacement upload never requests another file',async()=>{
+ const r=await rig({deliveryMode:'native_bundle_v1'});try{
+  const a=await armRecovery(r);
+  // Allow the approval-status exchange first, then fail only the bundle upload.
+  await a.host.control(r.state.get(ID),'status',{},'recovery:authorization:0');r.modes.posterUnknown=true;
+  await assert.rejects(()=>a.host.step(ID),/upload outcome unknown/);const tickets=r.counts.ticket;
+  await assert.rejects(()=>a.host.step(ID),/upload outcome unknown/);assert.equal(r.counts.ticket,tickets);assert.equal(r.counts.final,0);
+ }finally{r.close();}
+});
+for(const point of ['before-grant','after-grant'])test('recovery restart '+point+' cannot reuse an existing completion grant',async()=>{
+ const r=await rig({deliveryMode:'native_bundle_v1'});try{
+  const a=await armRecovery(r);await a.host.step(ID);
+  if(point==='before-grant')await a.host.command(r.state.get(ID),'recover_begin',{attempt_id:RECOVERY,file_id:r.state.get(ID).detail.file_id,fence_sha256:a.plan.binding_sha256,original_begin_sha256:a.plan.binding.original_begin_sha256},'recovery:begin');
+  else await a.host.step(ID);
+  await r.makeRecovery().step(ID);assert.equal(r.state.get(ID).phase,'native_reconcile');assert.equal(r.counts.final,0);
+ }finally{r.close();}
+});
+for(const missing of [false,true])test('unknown recovered final completion reconciles without another send, missing='+missing,async()=>{
+ const r=await rig({deliveryMode:'native_bundle_v1'});try{
+  const a=await armRecovery(r);await a.host.step(ID);await a.host.step(ID);r.modes.finalTimeout=true;r.modes.finalMissing=missing;
+  await a.host.step(ID);assert.equal(r.state.op(ID,'final_complete').phase,'unknown');const tickets=r.counts.ticket;
+  const restarted=r.makeRecovery();
+  if(missing){await assert.rejects(()=>restarted.step(ID),ReadPending);const afterStatus=r.counts.ticket;await assert.rejects(()=>restarted.step(ID),ReadPending);assert.equal(r.counts.ticket,afterStatus);}
+  else{await restarted.step(ID);assert.equal(r.state.get(ID).phase,'sender_reported');}
+  assert.equal(r.counts.final,1);assert.equal(r.counts.ticket>=tickets,true);
+ }finally{r.close();}
+});
+test('recovery publication read retries retain grant and perform one final completion',async()=>{
+ const r=await rig({deliveryMode:'native_bundle_v1'});try{
+  const a=await armRecovery(r);await a.host.step(ID);await a.host.step(ID);const tickets=r.counts.ticket;
+  r.modes.httpStatus=503;await assert.rejects(()=>a.host.step(ID),ReadPending);r.modes.httpStatus=undefined;
+  assert.equal(r.state.op(ID,'final_complete'),null);r.clock.now+=15000;await a.host.step(ID);
+  assert.equal(r.counts.final,1);assert.equal(r.counts.ticket,tickets);
+ }finally{r.close();}
+});
+
+test('operator approval after a negative status is observed by a restarted recovery host',async()=>{
+ const r=await rig({deliveryMode:'native_bundle_v1'});try{
+  const a=await armRecovery(r,{approve:false});await assert.rejects(()=>a.host.step(ID),ReadPending);
+  assert.equal(r.state.op(ID,'recovery:upload'),null);
+  authorizeNoticeRecovery(r.outbox,a.plan,{reference:'isolated test operator',checked_at:r.clock.now,relay_requests:0,publisher_verified:true});
+  const restarted=r.makeRecovery();await restarted.step(ID);assert.equal(r.state.get(ID).phase,'recovery_uploaded');
+  await restarted.step(ID);await restarted.step(ID);assert.equal(r.counts.final,1);
+  assert.deepEqual(r.state.op(ID,'native:begin:command'),a.oldBegin);
+ }finally{r.close();}
+});
+for(const collision of ['file','attempt'])test('recovery permanently reserves original '+collision+' identity across other editions',async()=>{
+ const r=await rig({deliveryMode:'native_bundle_v1'});try{
+  const a=await armRecovery(r);await a.host.step(ID);await a.host.step(ID);
+  const other='other-recovery-identity-fixture',oldPath=bundle.report.path,newPath=oldPath.replace('2026-11-01','2026-11-02');
+  const files=new Map([...FILES].map(([p,b])=>[p.replace(oldPath,newPath),b]));
+  const report=JSON.parse(files.get(newPath+'report.json'));report.date='2026-11-02';files.set(newPath+'report.json',Buffer.from(JSON.stringify(report)));
+  const otherBytes=await encodeBundle(files,other,'a'.repeat(40),'b'.repeat(40)),otherBundle=await decodeBundle(otherBytes);
+  r.publisher.admit({request_id:other,hash:otherBundle.hash,source_ts:'1793491201.000001'},otherBytes);r.publisher.move(other,'received','receipt_sent',{commit:MERGE});
+  const command={schema_version:'1.0',action:'claim',command_id:'original-identity-claim-'+collision,report_request_id:other,bundle_sha256:otherBundle.hash,attempt_id:collision==='attempt'?a.original.detail.attempt_id:'unrelated-new-attempt',file_id:collision==='file'?a.original.detail.file_id:'FOTHER'};
+  const commandBytes=Buffer.from(JSON.stringify(command));r.outbox.admit({request_id:command.command_id,hash:digest(commandBytes),source_ts:'1793491202.000001'},commandBytes);
+  const proof={publication_status:'verified',commit:MERGE,request_id:other,bundle_sha256:otherBundle.hash,edition:'2026-11-02/r1',url:'https://sfcloud-ai.github.io/ai-infra-reports/2026-11-02/r1/',poster_sha256:digest(poster)};
+  await advanceNotice(r.outbox,command.command_id,{verify:async()=>proof,receipt:async()=> '1793491203.000001'});
+  assert.equal(r.outbox.command(command.command_id).response.send_authorized,false);assert.equal(r.outbox.notice(other),null);
+ }finally{r.close();}
+});
+
+test('original attempt identity is rejected before a permanent fence or replacement upload',async()=>{
+ const r=await rig({deliveryMode:'native_bundle_v1'});try{
+  await r.arm();const original=r.state.get(ID),tickets=r.counts.ticket;
+  await assert.rejects(()=>nativeRecoveryPlan(r.state,ID,original.detail.attempt_id),/differ from the original/);
+  assert.equal(r.state.get(ID).phase,'final_ready');assert.equal(r.counts.ticket,tickets);
+  assert.equal(r.state.db.prepare("SELECT 1 FROM sqlite_master WHERE name='native_recovery_fences'").get(),undefined);
+  const valid=await nativeRecoveryPlan(r.state,ID,RECOVERY);await fenceNativeRecovery(r.state,valid);
+  assert.equal(r.state.get(ID).phase,'recovery_fenced');assert.equal(r.counts.final,0);
  }finally{r.close();}
 });

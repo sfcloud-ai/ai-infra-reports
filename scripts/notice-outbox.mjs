@@ -3,6 +3,7 @@ import {createNoticeManifest} from "./notice-manifest.mjs";
 import {digest} from "./archive.mjs";
 import {scopeDigest,handoffScope} from "./handoff-state.mjs";
 import {acceptDataCommand,decodeBundle,requireThat,REQUEST} from "./report-handoff.mjs";
+import {noticeIdentityReserved,noticeRecovery,activateNoticeRecovery,checkRecoveryGrant} from "./notice-recovery.mjs";
 import {checkedNoticeResult} from "./notice-checker.mjs";
 export const MAX_NOTICE_COMMAND=16384;
 export function notificationScope(config){
@@ -19,7 +20,7 @@ export function decodeNoticeCommand(bytes){
  const c=JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(bytes));
  const common=["schema_version","command_id","action","report_request_id","bundle_sha256"];
  const recordFields=["attempt_id","file_id","message_ts","text_sha256","transport_sha256","transport_bytes"];
- const fields={claim:["attempt_id","file_id"],prepare:["attempt_id","file_id"],prepare_bundle:["attempt_id","file_id"],begin:["attempt_id","file_id"],status:[],asset:["file_id","message_ts"],unknown:["attempt_id","file_id"],check:["attempt_id","file_id","message_ts"],record:recordFields,record_bundle:[...recordFields,"poster_sha256","poster_bytes"]};
+ const fields={claim:["attempt_id","file_id"],prepare:["attempt_id","file_id"],prepare_bundle:["attempt_id","file_id"],begin:["attempt_id","file_id"],recover_begin:["attempt_id","file_id","fence_sha256","original_begin_sha256"],status:[],asset:["file_id","message_ts"],unknown:["attempt_id","file_id"],check:["attempt_id","file_id","message_ts"],record:recordFields,record_bundle:[...recordFields,"poster_sha256","poster_bytes"]};
  requireThat(c&&typeof c.action==="string"&&Object.hasOwn(fields,c.action),"Unsupported notice action");exact(c,[...common,...fields[c.action]]);
  requireThat(c.schema_version==="1.0"&&[c.command_id,c.report_request_id].every(v=>typeof v==="string"&&REQUEST.test(v))&&typeof c.bundle_sha256==="string"&&HASH.test(c.bundle_sha256),"Notice request identity");
  if(c.action!=="status")requireThat(typeof c.file_id==="string"&&FILE.test(c.file_id),"Notice file identity");
@@ -27,6 +28,7 @@ export function decodeNoticeCommand(bytes){
  if(["check","asset"].includes(c.action))requireThat(typeof c.message_ts==="string"&&TS.test(c.message_ts),"Exact notice timestamp required");
  if(["record","record_bundle"].includes(c.action))requireThat(typeof c.message_ts==="string"&&TS.test(c.message_ts)&&[c.text_sha256,c.transport_sha256].every(v=>typeof v==="string"&&HASH.test(v))&&Number.isSafeInteger(c.transport_bytes)&&c.transport_bytes>0&&c.transport_bytes<=(c.action==="record_bundle"?8*1024*1024:2000000),"Reported Slack receipt fields");
  if(c.action==="record_bundle")requireThat(typeof c.poster_sha256==="string"&&HASH.test(c.poster_sha256)&&Number.isSafeInteger(c.poster_bytes)&&c.poster_bytes>0&&c.poster_bytes<=2000000,"Reported original poster fields");
+ if(c.action==="recover_begin")requireThat([c.fence_sha256,c.original_begin_sha256].every(v=>typeof v==="string"&&HASH.test(v)),"Recovery evidence binding required");
  return c;
 }
 export class NoticeOutbox{
@@ -58,7 +60,7 @@ export class NoticeOutbox{
    let notice=this.notice(c.report_request_id),authorized=false,reason;
    if(["claim","prepare","prepare_bundle"].includes(c.action)){
     const edition=`${bundle.report.date}/r${bundle.report.revision}`;
-    if(notice||this.db.prepare("SELECT 1 FROM notices WHERE edition=? OR attempt_id=? OR file_id=?").get(edition,c.attempt_id,c.file_id))reason="already_reserved";
+    if(notice||this.db.prepare("SELECT 1 FROM notices WHERE edition=?").get(edition)||noticeIdentityReserved(this,c.attempt_id,c.file_id))reason="already_reserved";
     else{
      const manifest=createNoticeManifest(bundle.files.get(bundle.report.path+"report.json"),job.detail.commit);
      requireThat(manifest.index_url===proof.url&&manifest.poster.sha256===proof.poster_sha256,"Notice manifest differs from publication proof");
@@ -79,6 +81,8 @@ export class NoticeOutbox{
      this.db.prepare("UPDATE notices SET phase='completion_intent',detail=? WHERE report_id=? AND phase='reserved'").run(JSON.stringify(detail),job.id);
      authorized=true;reason="new_completion_intent";
     }
+   }else if(c.action==="recover_begin"){
+    activateNoticeRecovery(this,c,job,bundle,proof);authorized=true;reason="recovery_completion_intent";
    }else if(c.action==="asset"){
     requireThat(check?.asset,"Asset verification result required");reason="control_asset_checked";
    }else if(c.action==="check"){
@@ -89,7 +93,9 @@ export class NoticeOutbox{
      const d=notice.detail;
      requireThat(typeof d.completion_command_id==="string"&&REQUEST.test(d.completion_command_id)&&typeof d.completion_command_sha256==="string"&&HASH.test(d.completion_command_sha256),"Native send has no persisted completion intent");
      const intent=this.command(d.completion_command_id),begin=intent?decodeNoticeCommand(intent.bytes):null;
-     requireThat(intent&&intent.hash===d.completion_command_sha256&&digest(intent.bytes)===intent.hash&&begin.action==="begin"&&begin.report_request_id===job.id&&begin.bundle_sha256===job.hash&&begin.attempt_id===notice.attempt_id&&begin.file_id===notice.file_id&&intent.response?.send_authorized===true&&intent.response.reason==="new_completion_intent","Native completion command binding changed");
+     requireThat(intent&&intent.hash===d.completion_command_sha256&&digest(intent.bytes)===intent.hash&&["begin","recover_begin"].includes(begin.action)&&begin.report_request_id===job.id&&begin.bundle_sha256===job.hash&&begin.attempt_id===notice.attempt_id&&begin.file_id===notice.file_id&&intent.response?.send_authorized===true&&intent.response.reason===(begin.action==="recover_begin"?"recovery_completion_intent":"new_completion_intent"),"Native completion command binding changed");
+     if(begin.action==="recover_begin")checkRecoveryGrant(this,notice,begin);
+     else requireThat(!notice.detail.recovery,"Recovery cannot use an old begin");
     }
     if(c.action==="unknown"){
      requireThat(notice.phase!=="sender_reported","Reported send cannot be downgraded");
@@ -111,6 +117,8 @@ export class NoticeOutbox{
    }
    notice=this.notice(c.report_request_id);
    const response={schema_version:"1.0",command_id:id,command_sha256:this.command(id).hash,report_request_id:job.id,bundle_sha256:job.hash,send_authorized:authorized,reason:reason??(authorized?"new_reservation":"read_only_status"),notice:notice??null,slack_status:notice?.phase==="sender_reported"?"sender_reported":"not_checked",wecom_status:"not_checked"};
+   const recovery=noticeRecovery(this,job.id);
+   if(c.action==="status"&&recovery)response.recovery={recovery_id:recovery.recovery_id,phase:recovery.phase,fence_sha256:recovery.binding_sha256,original_begin_sha256:recovery.binding.original_begin_sha256};
    if(c.action==="check")response.verification=check.result;
    if(c.action==="asset")response.asset=check.asset;
    this.db.prepare("UPDATE notice_commands SET phase='response_ready',response=? WHERE id=? AND phase='received'").run(JSON.stringify(response),id);
@@ -133,9 +141,9 @@ export async function advanceNotice(outbox,id,io){
   const c=decodeNoticeCommand(operation.bytes),job=outbox.state.get(c.report_request_id);
   requireThat(job&&job.hash===c.bundle_sha256,"Unknown report or bundle changed");
   let bundle,proof,check;
-  if(["claim","prepare","prepare_bundle","begin","check","asset","record_bundle"].includes(c.action)){
+  if(["claim","prepare","prepare_bundle","begin","recover_begin","check","asset","record_bundle"].includes(c.action)){
    requireThat(job.phase==="receipt_sent","Publication receipt must finish before notification claim");
-   if(["claim","prepare","prepare_bundle","begin"].includes(c.action))requireThat(TS.test(job.source_ts)&&BigInt(job.source_ts.replace(".",""))>BigInt(outbox.notBefore.replace(".","")),"Pre-activation reports cannot receive a notification grant");
+   if(["claim","prepare","prepare_bundle","begin","recover_begin"].includes(c.action))requireThat(TS.test(job.source_ts)&&BigInt(job.source_ts.replace(".",""))>BigInt(outbox.notBefore.replace(".","")),"Pre-activation reports cannot receive a notification grant");
    bundle=await decodeBundle(job.bytes);proof=await io.verify(job.detail.commit,bundle);
    const edition=`${bundle.report.date}/r${bundle.report.revision}`;
    requireThat(proof.publication_status==="verified"&&proof.commit===job.detail.commit&&proof.bundle_sha256===job.hash&&proof.request_id===job.id&&proof.edition===edition&&proof.url===`https://sfcloud-ai.github.io/ai-infra-reports/${edition}/`&&proof.poster_sha256===digest(bundle.files.get(bundle.report.path+bundle.report.poster)),"Notice publication proof mismatch");

@@ -155,6 +155,22 @@ class LedgerTests(unittest.TestCase):
                     else:
                         database.execute("DELETE FROM " + table)
 
+    def test_recovery_audit_is_preserved_and_only_exact_guards_are_accepted(self):
+        with connection(self.database) as database:
+            for sql in sorted(cd.RECOVERY_SCHEMA):
+                database.execute(sql)
+            database.execute("INSERT INTO notice_recovery_authorizations VALUES('recover','report','{}','hash','{}','{}','approved',NULL,NULL)")
+        with self.assertRaises(cd.Deferred):
+            cd.snapshot(self.database)
+        before = cd.snapshot(self.database, settled=False)
+        with connection(self.database) as database:
+            database.execute("UPDATE notice_recovery_authorizations SET phase='consumed'")
+        self.assertNotEqual(cd.snapshot(self.database), before)
+        with connection(self.database) as database:
+            database.execute("DROP TRIGGER notice_recovery_no_delete")
+        with self.assertRaisesRegex(ValueError, "recovery_schema"):
+            cd.snapshot(self.database)
+
     def test_unknown_schema_or_trigger_prevents_automatic_migration(self):
         with connection(self.database) as database:
             database.execute("CREATE TABLE future_schema(value)")
