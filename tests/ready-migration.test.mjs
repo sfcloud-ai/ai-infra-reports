@@ -6,6 +6,7 @@ import path from "node:path";
 import {HandoffState,handoffScope} from "../scripts/handoff-state.mjs";
 import {NoticeOutbox,notificationScope} from "../scripts/notice-outbox.mjs";
 import {installNoticeRecovery} from "../scripts/notice-recovery.mjs";
+import {REMOTE_JOURNAL_SCHEMA} from "../scripts/remote-native-journal.mjs";
 import {digest} from "../scripts/archive.mjs";
 import {planReadyMigration,stageReadyMigration,verifyReadyMigration} from "../scripts/ready-migration.mjs";
 async function fixture(){
@@ -82,5 +83,19 @@ test('settled recovery audit survives migration while missing or replaced audit 
   assert.equal((await verifyReadyMigration(f.before,f.after,plan.data_sha256)).verified,true);
   state=new HandoffState(f.file,handoffScope(f.before));state.db.exec('DROP TRIGGER notice_recovery_no_delete');state.close();
   await assert.rejects(()=>planReadyMigration(f.before,f.after),/recovery audit schema/);
+ }finally{await f.clean();}
+});
+
+test('remote journal migrations retain settled audit and reject active runs or damaged triggers',async()=>{
+ const f=await fixture();try{
+  let state=new HandoffState(f.file,handoffScope(f.before));
+  for(const sql of REMOTE_JOURNAL_SCHEMA)state.db.exec(sql);
+  state.db.prepare("INSERT INTO remote_native_runs VALUES(?,?,?,1,'open',0,0,NULL)").run('original-report-01','{}',digest(Buffer.from('{}')));state.close();
+  await assert.rejects(()=>planReadyMigration(f.before,f.after),/Unresolved remote journal/);
+  state=new HandoffState(f.file,handoffScope(f.before));state.db.exec("UPDATE remote_native_runs SET phase='complete'");state.close();
+  const plan=await planReadyMigration(f.before,f.after);await stageReadyMigration(f.before,f.after,plan.data_sha256);
+  assert.equal((await verifyReadyMigration(f.before,f.after,plan.data_sha256)).verified,true);
+  state=new HandoffState(f.file,handoffScope(f.before));state.db.exec('DROP TRIGGER remote_native_run_keep');state.close();
+  await assert.rejects(()=>planReadyMigration(f.before,f.after),/remote journal schema/);
  }finally{await f.clean();}
 });

@@ -177,6 +177,10 @@ be abandoned safely and polled later, but a mutation is never timeout-retried.
 Repeated deferrals always advance an expired wakeup to at least 15 seconds in
 the future, so a stale resume record cannot cause immediate wakeup loops.
 
+For the separate post-reservation Publisher-owned journal protocol, see
+[remote-native-journal.md](remote-native-journal.md). That protocol does not
+automatically migrate this CLI's local journal or supply a scheduler wakeup.
+
 The scheduled CLI advertises `protocol: native_durable_retry_v1` in its ready
 message. The dispatcher sends deadlines, read-error replies and defer only to a
 host with this capability. Legacy entrypoints, including explicit recovery,

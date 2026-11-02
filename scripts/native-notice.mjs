@@ -6,13 +6,14 @@ import {requireThat} from "./report-handoff.mjs";
 import {decodeNoticeCommand,MAX_NOTICE_COMMAND} from "./notice-outbox.mjs";
 import {encodeNoticeCommand} from "./notice-command.mjs";
 import {createNoticeManifest} from "./notice-manifest.mjs";
+import {JOURNAL_FIELDS} from "./remote-native-journal.mjs";
 const SEARCH="mcp__codex_apps__slack_slack_search_public_and_private",TS=/^\d{10}\.\d{6}$/;
 const exact=(o,keys)=>requireThat(o&&typeof o==="object"&&!Array.isArray(o)&&Object.keys(o).sort().join()===keys.sort().join(),"Native receipt fields changed");
 function configIdentity(c){
  requireThat(c&&/^[CG][A-Z0-9]+$/.test(c.channel_id)&&/^U[A-Z0-9]+$/.test(c.bot_user_id)&&/^D[A-Z0-9]+$/.test(c.notification_destination)&&/^[a-z0-9-]+\.slack\.com$/.test(c.workspace_host),"Pinned native control identity required");
 }
 export function freshNativeCommand(action,fields){
- requireThat(["prepare","prepare_bundle","begin","recover_begin","status","asset","check","record","record_bundle","unknown"].includes(action),"Unsupported native command");
+ requireThat(["prepare","prepare_bundle","begin","recover_begin","status","asset","check","record","record_bundle","unknown"].includes(action)||Object.hasOwn(JOURNAL_FIELDS,action),"Unsupported native command");
  requireThat(!Object.hasOwn(fields,"command_id")&&!Object.hasOwn(fields,"action"),"Never reuse a previous command or completion grant");
  return encodeNoticeCommand({schema_version:"1.0",...fields,action,command_id:`native-${action.replaceAll('_','-')}-${randomUUID()}`});
 }
@@ -36,7 +37,7 @@ export function readNativeReceipt(invocation,{bytes,sourceTs,config}){
  requireThat(url.hostname===config.workspace_host&&!url.port&&!url.username&&!url.password&&!url.hash&&url.pathname===`/archives/${config.channel_id}/p${match[3].replace(".","")}`&&[...url.searchParams.keys()].sort().join()==="cid,thread_ts"&&url.searchParams.get("cid")===config.channel_id&&url.searchParams.get("thread_ts")===sourceTs,"Receipt is not in the original control thread");
  const r=JSON.parse(match[5]);
  const keys=["schema_version","command_id","command_sha256","report_request_id","bundle_sha256","send_authorized","reason","notice","slack_status","wecom_status"];
- if(c.action==="asset")keys.push("asset");if(c.action==="check")keys.push("verification");if(c.action==="status"&&Object.hasOwn(r,"recovery"))keys.push("recovery");exact(r,keys);
+ if(c.action==="asset")keys.push("asset");if(c.action==="check")keys.push("verification");if(c.action==="status"&&Object.hasOwn(r,"recovery"))keys.push("recovery");if(Object.hasOwn(JOURNAL_FIELDS,c.action))keys.push("journal","new_intent");exact(r,keys);
  requireThat(r.schema_version==="1.0"&&r.command_id===c.command_id&&r.command_sha256===digest(bytes)&&r.report_request_id===c.report_request_id&&r.bundle_sha256===c.bundle_sha256&&typeof r.send_authorized==="boolean"&&r.wecom_status==="not_checked","Receipt does not bind this fresh command");
  return r;
 }
