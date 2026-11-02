@@ -51,7 +51,7 @@ The existing roughly fifteen-minute retention observation is not a Slack SLA;
 an expired or unknown upload is never replaced automatically.
 
 New runs use `native_bundle_v1`: pre-upload the exact JSON report bundle as
-`ai-brief-bundle.json` → `prepare_bundle` → `begin` → recent publication check →
+`ai-brief-bundle.json` → `prepare_bundle` → due time and fresh publication check → `begin` →
 due-time completion → final-message locator → independent T4 `check` → `record_bundle`.
 The final message text is still only article titles and their URLs. The receiver
 extracts the original poster bytes from the bundle before its WeCom text/image
@@ -113,3 +113,12 @@ Before enabling the existing daily automation:
 This commit does not execute those rollout actions. The report-generation handoff,
 zero-selection delivery contract and actual WeCom receipt monitoring remain
 separate from a successful local sender simulation.
+
+Temporary publication-read failures (explicit rate-limit responses, HTTP 429/5xx,
+network timeouts and connection errors) keep the same live host pending, respecting
+Retry-After / rate-limit reset with a minimum 15-second backoff. Ordinary 401/403,
+identity mismatches and invalid content remain fatal. No intent is allocated before
+the report due time and a successful full preflight. After begin, expired evidence
+is refreshed in the same process; it never authorizes a second begin or completion.
+These retries do not make a stopped process resumable after begin: retain the
+original journal and use read-only reconciliation as above.
