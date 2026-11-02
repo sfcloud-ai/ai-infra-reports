@@ -84,13 +84,12 @@ export async function prepareNativeRun(state,{bundleBytes,reportCommit,workspace
 }
 export class NativeScheduledHost{
  #cache=new Map();
- #retryAfter=new Map();
  constructor(state,transport,{allowFinal=false,now=Date.now,fetchPublic=fetch}={}){
   this.state=state;this.transport=transport;this.allowFinal=allowFinal;this.now=now;this.fetchPublic=fetchPublic;this.session=randomUUID();
  }
  config(job){return {...this.state.scope,workspace_host:job.detail.workspace_host};}
  waitForPublicationRetry(job){
-  const now=this.now(),retry=this.#retryAfter.get(job.id);
+  const now=this.now(),retry=this.state.readRetry(job.id,'publication')?.next_at;
   requireThat(Number.isSafeInteger(now)&&now>0,'Host clock unavailable');
   if(retry&&now<retry)throw new ReadPending('Publication read temporarily unavailable; waiting before retry');
  }
@@ -103,7 +102,7 @@ export class NativeScheduledHost{
     const current=this.now(),ra=h.get('retry-after'),reset=h.get('x-ratelimit-reset');
     const retryAt=ra===null?0:/^\d+$/.test(ra)?current+Number(ra)*1000:Date.parse(ra);
     const resetAt=reset!==null&&/^\d+$/.test(reset)?Number(reset)*1000:0;
-    this.#retryAfter.set(job.id,Math.max(current+15000,Number.isFinite(retryAt)?retryAt:0,Number.isFinite(resetAt)?resetAt:0));
+    this.state.deferRead(job.id,'publication',{now:current,nextAt:Math.max(current+15000,Number.isFinite(retryAt)?retryAt:0,Number.isFinite(resetAt)?resetAt:0),reason:`publication_http_${status}`});
     await response.body?.cancel().catch(()=>{});
     throw new ReadPending(`Publication HTTP ${status}; waiting before retry`);
    }
@@ -113,11 +112,11 @@ export class NativeScheduledHost{
    // Include failures while streaming a response, not just response headers.
    const code=error?.cause?.code??error?.code;
    if(error?.name==='TimeoutError'||['ECONNRESET','ETIMEDOUT','EAI_AGAIN','ECONNREFUSED','UND_ERR_CONNECT_TIMEOUT','UND_ERR_SOCKET','UND_ERR_HEADERS_TIMEOUT','UND_ERR_BODY_TIMEOUT'].includes(code)){
-    this.#retryAfter.set(job.id,this.now()+15000);throw new ReadPending('Publication network read temporarily unavailable');
+    const now=this.now();this.state.deferRead(job.id,'publication',{now,nextAt:now+15000,reason:'publication_network'});throw new ReadPending('Publication network read temporarily unavailable');
    }
    throw error;
   }
-  this.#retryAfter.delete(job.id);
+  this.state.clearReadRetry(job.id,'publication');
  }
  async once(id,name,input,write){
   const prior=this.state.op(id,name);
@@ -152,10 +151,19 @@ export class NativeScheduledHost{
   requireThat(n&&n.report_id===job.id&&n.edition===job.edition&&n.attempt_id===job.detail.attempt_id&&n.file_id===job.detail.file_id&&(!phase||n.phase===phase)&&n.detail.bundle_sha256===b.hash&&n.detail.report_merge_sha===job.detail.report_commit&&n.detail.destination===this.state.scope.notification_destination&&n.detail.poster_original_sha256===m.poster.sha256&&n.detail.text_sha256===digest(Buffer.from(m.text))&&n.detail.url===m.index_url&&n.detail.delivery_mode===job.detail.mode&&n.detail.not_before===job.detail.not_before,'Native reservation differs from the immutable plan');
   return m;
  }
- async step(id){
+ ownsCompletionWindow(id){
+  return ['native_begin','final_ready'].includes(this.state.get(id)?.phase)&&this.state.op(id,'native:begin:command')?.result?.owner===this.session;
+ }
+ async step(id,{deadline=Infinity}={}){
+  requireThat(deadline===Infinity||Number.isSafeInteger(deadline)&&deadline>0,'Invalid execution deadline');
   const job=this.state.get(id);requireThat(['native_v1','native_bundle_v1'].includes(job?.detail.mode),'Not a native scheduled run');
   const bundled=job.detail.mode==='native_bundle_v1';
   if(job.phase==='sender_reported')return job;
+  for(const operation of ['resume','poll']){
+   const pending=this.state.readRetry(id,operation);
+   if(pending&&this.now()<pending.next_at)throw new ReadPending('Durable retry is not due yet');
+   this.state.clearReadRetry(id,operation);
+  }
   const b=await decodeBundle(job.bundle),config=this.config(job),fields={attempt_id:job.detail.attempt_id,file_id:job.detail.file_id};
   const poster=b.files.get(b.report.path+b.report.poster);
   if(job.phase==='native_prepared'){
@@ -178,7 +186,9 @@ export class NativeScheduledHost{
    // Do not consume the durable one-time intent while waiting for the due time
    // or for public sources. A restarted host before begin is still safe.
    if(this.now()<Date.parse(job.detail.not_before))throw new ReadPending('Awaiting 08:00 Asia/Shanghai before begin');
+   if(!prior&&this.now()+60000>=deadline)throw new ReadPending('Defer before begin: execution slice ending');
    const at=this.now();await this.verifyPublication(job,b);
+   if(!prior&&this.now()+60000>=deadline)throw new ReadPending('Defer before begin: execution slice ending');
    if(this.now()<at||this.now()-at>60000)throw new ReadPending('Preflight expired before begin; refresh reads');
    const r=await this.control(job,'begin',fields);this.boundNotice(job,b,r.receipt,'completion_intent');
    requireThat(r.receipt.send_authorized&&r.receipt.reason==='new_completion_intent','No new completion permission');

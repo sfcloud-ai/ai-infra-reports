@@ -430,3 +430,72 @@ test('original attempt identity is rejected before a permanent fence or replacem
   assert.equal(r.state.get(ID).phase,'recovery_fenced');assert.equal(r.counts.final,0);
  }finally{r.close();}
 });
+
+test('rate-limit wait persists across closed journals with no overall retry deadline',async()=>{
+ const tmp=await mkdtemp(path.join(os.tmpdir(),'native-durable-')),filename=path.join(tmp,'state.sqlite'),r=await rig({filename});let state=r.state;
+ try{
+  await r.host.step(ID);await r.host.step(ID);r.clock.now=TARGET;
+  const file=state.get(ID).detail.file_id;
+  for(let attempt=0;attempt<3;attempt++){
+   r.modes.httpStatus=403;r.modes.headers={'x-ratelimit-remaining':'0','x-ratelimit-reset':String((r.clock.now+86400000)/1000)};
+   await assert.rejects(()=>r.host.step(ID),ReadPending);
+   assert.equal(state.readRetry(ID,'publication').failures,attempt+1);
+   const deferred=state.deferNativeRun(ID,r.clock.now);assert.equal(deferred.resume_mode,'continue_before_begin');assert.equal(r.counts.begin,0);
+   const due=deferred.next_attempt_at;state.close();state=new CloudRunState(filename,SCOPE);r.host=r.makeHost(state);
+   const reads=r.reads.search;await assert.rejects(()=>r.host.step(ID),ReadPending);assert.equal(r.reads.search,reads);
+   r.clock.now=due;
+  }
+  delete r.modes.httpStatus;await r.host.step(ID);await r.host.step(ID);
+  assert.equal(state.get(ID).detail.file_id,file);assert.equal(r.counts.begin,1);assert.equal(r.counts.final,1);assert.equal(state.readRetry(ID,'publication'),null);
+ }finally{state.close();r.publisher.close();await rm(tmp,{recursive:true,force:true});}
+});
+test('budget deferral after begin makes subsequent runs reconciliation-only',async()=>{
+ const tmp=await mkdtemp(path.join(os.tmpdir(),'native-deferred-intent-')),filename=path.join(tmp,'state.sqlite'),r=await rig({filename});let state=r.state;
+ try{
+  await r.arm();const deferred=state.deferNativeRun(ID,r.clock.now);assert.equal(deferred.resume_mode,'reconcile_only');assert.equal(deferred.phase,'native_reconcile');
+  for(let attempt=0;attempt<3;attempt++){
+   state.close();state=new CloudRunState(filename,SCOPE);r.host=r.makeHost(state);r.clock.now+=86400000;
+   await assert.rejects(()=>r.host.step(ID),ReadPending);state.deferNativeRun(ID,r.clock.now);
+   assert.equal(r.counts.begin,1);assert.equal(r.counts.final,0);assert.equal(state.op(ID,'final_complete'),null);
+  }
+ }finally{state.close();r.publisher.close();await rm(tmp,{recursive:true,force:true});}
+});
+test('unknown final completion remains one write across repeated deferred runs',async()=>{
+ const tmp=await mkdtemp(path.join(os.tmpdir(),'native-deferred-unknown-')),filename=path.join(tmp,'state.sqlite'),r=await rig({filename});let state=r.state;
+ try{
+  await r.arm();r.modes.finalTimeout=true;r.modes.finalMissing=true;await r.host.step(ID);assert.equal(state.op(ID,'final_complete').phase,'unknown');
+  for(let attempt=0;attempt<3;attempt++){
+   state.deferNativeRun(ID,r.clock.now);state.close();state=new CloudRunState(filename,SCOPE);r.host=r.makeHost(state);r.clock.now+=86400000;
+   await assert.rejects(()=>r.host.step(ID),ReadPending);assert.equal(r.counts.begin,1);assert.equal(r.counts.final,1);
+  }
+ }finally{state.close();r.publisher.close();await rm(tmp,{recursive:true,force:true});}
+});
+test('near execution deadline leaves begin unallocated',async()=>{
+ const r=await rig();try{
+  await r.host.step(ID);await r.host.step(ID);r.clock.now=TARGET;
+  await assert.rejects(()=>r.host.step(ID,{deadline:TARGET+60000}),ReadPending);
+  assert.equal(r.counts.begin,0);assert.equal(r.state.op(ID,'native:begin:command'),null);
+ }finally{r.close();}
+});
+
+for(const steps of [0,1,2])test('scheduled defer preserves explicit recovery evidence after '+steps+' recovery steps',async()=>{
+ const r=await rig({deliveryMode:'native_bundle_v1'});try{
+  const a=await armRecovery(r);for(let i=0;i<steps;i++)await a.host.step(ID);
+  const before=r.state.get(ID),fence=readRecoveryFence(r.state,ID),ops=r.state.db.prepare('SELECT * FROM cloud_ops ORDER BY name').all();
+  assert.throws(()=>r.state.deferNativeRun(ID,r.clock.now),/Explicit recovery cannot be deferred/);
+  assert.deepEqual(r.state.get(ID),before);assert.deepEqual(readRecoveryFence(r.state,ID),fence);
+  assert.deepEqual(r.state.db.prepare('SELECT * FROM cloud_ops ORDER BY name').all(),ops);assert.equal(r.state.readRetry(ID,'resume'),null);assert.equal(r.counts.final,0);
+ }finally{r.close();}
+});
+
+test('current owner polls an allocated begin through the reserved minute without allocating twice',async()=>{
+ const r=await rig();try{
+  await r.host.step(ID);await r.host.step(ID);r.clock.now=TARGET+55000;r.modes.pendingReceipt=true;
+  const deadline=TARGET+120000;assert.equal(r.host.ownsCompletionWindow(ID),false);
+  await assert.rejects(()=>r.host.step(ID,{deadline}),ReadPending);assert.equal(r.counts.begin,1);assert.equal(r.host.ownsCompletionWindow(ID),true);
+  assert.equal(r.makeHost().ownsCompletionWindow(ID),false);
+  r.clock.now+=5000;r.modes.pendingReceipt=false;
+  await r.host.step(ID,{deadline});assert.equal(r.state.get(ID).phase,'final_ready');assert.equal(r.counts.begin,1);
+  await r.host.step(ID,{deadline});assert.equal(r.counts.final,1);assert.equal(r.host.ownsCompletionWindow(ID),false);
+ }finally{r.close();}
+});
