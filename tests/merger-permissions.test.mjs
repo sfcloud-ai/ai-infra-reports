@@ -20,7 +20,7 @@ function mergerFixture(){
   const sha=digest(bytes).slice(0,40);blobs.set(sha,bytes);return {path,sha,size:bytes.length,type:"blob",mode:"100644"};
  }));
  const pr={number:1,state:"open",draft:false,merged:false,base:{sha:main,ref:"main",repo:{full_name:REPOSITORY}},head:{sha:head,ref:"report/"+main.slice(0,12)+"-"+"c".repeat(24),repo:{full_name:REPOSITORY}},user:{type:"Bot",id:17,login:"reports-example[bot]"},commits:1,mergeable:true,mergeable_state:"clean"};
- const run={workflow_id:7,check_suite_id:42,event:"pull_request",conclusion:"success",status:"completed",head_sha:head,head_repository:{full_name:REPOSITORY},pull_requests:[{number:1,base:{ref:"main",sha:main},head:{sha:head}}]};
+ const run={workflow_id:7,check_suite_id:42,event:"pull_request",conclusion:"success",status:"completed",head_branch:pr.head.ref,head_sha:head,head_repository:{full_name:REPOSITORY},pull_requests:[{number:1,base:{ref:"main",sha:main},head:{sha:head}}]};
  const options={enabled:true,botId:17,botLogin:pr.user.login,trustedSha:main,policy:mergerPolicy(...rules,99,101,102),producerAppId:101,mergerAppId:102};
  const api={calls,contents:"write",readBlobs:async()=>blobs,request:async(method,route,body)=>{
   calls.push({method,route,body});const path=route.slice(PREFIX.length);
@@ -47,6 +47,35 @@ function mergerFixture(){
  }};
  return {api,options,rules,pr,run};
 }
+
+test("engineering runs without PR associations stop after the read-only branch check",async()=>{
+ for(const head_branch of ["fix/engineering-change","feature/new-view","reports/not-a-producer-branch"]){
+  const {api,options,run}=mergerFixture();run.head_branch=head_branch;run.pull_requests=[];
+  // The run actor is not the PR author and is irrelevant to branch routing.
+  run.actor={type:"Bot",id:17,login:options.botLogin};
+  assert.deepEqual(await mergeReport(api,3,options),{merged:false,reason:"non_report_branch"});
+  assert.deepEqual(api.calls,[{method:"GET",route:PREFIX+"/actions/runs/3",body:undefined}]);
+ }
+});
+
+test("report runs retain strict association checks, including malformed report branches",async()=>{
+ for(const head_branch of ["report/"+main.slice(0,12)+"-"+"c".repeat(24),"report/malformed"]){
+  for(const associations of [[],null,undefined,[{number:1},{number:2}]]){
+   const {api,options,run}=mergerFixture();run.head_branch=head_branch;run.pull_requests=associations;
+   run.actor={type:"User",id:99,login:"maintainer"};
+   await assert.rejects(()=>mergeReport(api,3,options),/One associated PR required/);
+   assert.equal(api.calls.length,1);assert(api.calls.every(c=>c.method==="GET"));
+  }
+ }
+});
+
+test("missing branch evidence cannot classify a run as unrelated",async()=>{
+ for(const head_branch of [undefined,null,"",17]){
+  const {api,options,run}=mergerFixture();run.head_branch=head_branch;run.pull_requests=[];
+  await assert.rejects(()=>mergeReport(api,3,options),/CI head branch required/);
+  assert.equal(api.calls.length,1);assert(api.calls.every(c=>c.method==="GET"));
+ }
+});
 
 test("ordinary human and unrelated bot PRs are explicit read-only no-ops",async()=>{
  for(const type of ["User","Bot"])for(const reportBranch of [false,true]){
@@ -90,10 +119,11 @@ test("Producer routing ignores the CI rerun actor and keeps the exact merge gate
 });
 
 test("Producer origin, branch, head and final author changes remain errors",async()=>{
- for(const kind of ["fork","branch","head","final-author"]){
+ for(const kind of ["fork","branch","run-branch","head","final-author"]){
   const {api,options,pr,run}=mergerFixture(),request=api.request;let reads=0;
   if(kind==="fork")pr.head.repo.full_name="elsewhere/reports";
   if(kind==="branch")pr.head.ref="fix/engineering-change";
+  if(kind==="run-branch")run.head_branch="report/"+"d".repeat(12)+"-"+"e".repeat(24);
   if(kind==="head")run.head_sha=main;
   api.request=async(method,route,body)=>{
    const value=await request(method,route,body);
@@ -107,6 +137,8 @@ test("Producer origin, branch, head and final author changes remain errors",asyn
 
 test("workflow requests PR read while preserving the separate merger permissions",async()=>{
  const workflow=await readFile(".github/workflows/merge-report.yml","utf8");
+ const condition=workflow.match(/^    if: (.+)$/m)?.[1];
+ assert.equal(condition,"vars.REPORT_AUTOMERGE_ENABLED == 'true' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request' && startsWith(github.event.workflow_run.head_branch, 'report/')");
  const granted=Object.fromEntries([...workflow.matchAll(/^\s+permission-([a-z-]+): (read|write)\s*$/gm)].map(m=>[m[1],m[2]]));
  assert.deepEqual(granted,{contents:"write","pull-requests":"read",actions:"read",checks:"read"});
 });

@@ -6,12 +6,12 @@ import {verifyPublication} from "../scripts/verify-publication.mjs";
 import {REPOSITORY} from "../scripts/archive.mjs";
 import {publicationSite} from "./helpers/publication-site.mjs";
 const a="a".repeat(40),b="b".repeat(40);
-function facts(){return {main:a,botId:17,botLogin:"reports-example[bot]",workflow:{id:7,path:".github/workflows/validate.yml"},pr:{number:1,state:"open",draft:false,merged:false,base:{sha:a,ref:"main",repo:{full_name:REPOSITORY}},head:{sha:b,ref:"report/"+a.slice(0,12)+"-"+"c".repeat(24),repo:{full_name:REPOSITORY}},user:{type:"Bot",id:17,login:"reports-example[bot]"},commits:1,mergeable:true,mergeable_state:"clean"},run:{workflow_id:7,event:"pull_request",conclusion:"success",status:"completed",head_sha:b,head_repository:{full_name:REPOSITORY},pull_requests:[{number:1,base:{ref:"main",sha:a},head:{sha:b}}]}};}
+function facts(){return {main:a,botId:17,botLogin:"reports-example[bot]",workflow:{id:7,path:".github/workflows/validate.yml"},pr:{number:1,state:"open",draft:false,merged:false,base:{sha:a,ref:"main",repo:{full_name:REPOSITORY}},head:{sha:b,ref:"report/"+a.slice(0,12)+"-"+"c".repeat(24),repo:{full_name:REPOSITORY}},user:{type:"Bot",id:17,login:"reports-example[bot]"},commits:1,mergeable:true,mergeable_state:"clean"},run:{workflow_id:7,event:"pull_request",conclusion:"success",status:"completed",head_branch:"report/"+a.slice(0,12)+"-"+"c".repeat(24),head_sha:b,head_repository:{full_name:REPOSITORY},pull_requests:[{number:1,base:{ref:"main",sha:a},head:{sha:b}}]}};}
 test("exact bot/head/base/run facts accepted",()=>assert.equal(gateFacts(facts()),b));
 test("fork, spoofed identity, draft, stale head and ambiguous CI rejected",()=>{
  for(const mutate of [
  f=>f.pr.head.repo.full_name="elsewhere/reports",f=>f.pr.user.id=18,f=>f.pr.user.type="User",f=>f.pr.draft=true,
- f=>f.pr.base.sha=b,f=>f.run.head_sha=a,f=>f.run.workflow_id=8,f=>f.run.event="push",f=>f.run.conclusion="failure",
+ f=>f.pr.base.sha=b,f=>f.run.head_branch="report/mismatch",f=>f.run.head_sha=a,f=>f.run.workflow_id=8,f=>f.run.event="push",f=>f.run.conclusion="failure",
  f=>f.run.pull_requests=[],f=>f.run.pull_requests[0].base.ref="other",f=>f.run.pull_requests[0].base.sha=b,f=>f.run.pull_requests[0].head.sha=a,f=>f.pr.commits=2,f=>f.pr.mergeable=null,...["unknown","behind","dirty","unstable",null].map(state=>f=>f.pr.mergeable_state=state)
  ]){const f=facts();mutate(f);assert.throws(()=>gateFacts(f));}
 });

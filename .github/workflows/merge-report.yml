@@ -9,7 +9,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   merge:
-    if: vars.REPORT_AUTOMERGE_ENABLED == 'true' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request'
+    if: vars.REPORT_AUTOMERGE_ENABLED == 'true' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request' && startsWith(github.event.workflow_run.head_branch, 'report/')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
