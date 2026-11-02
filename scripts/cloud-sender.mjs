@@ -41,6 +41,7 @@ export class CloudRunState{
    this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;
     CREATE TABLE IF NOT EXISTS cloud_scope(id INTEGER PRIMARY KEY CHECK(id=1), hash TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS cloud_runs(id TEXT PRIMARY KEY, edition TEXT UNIQUE NOT NULL, bundle BLOB, input_hash TEXT NOT NULL, phase TEXT NOT NULL, detail TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS cloud_read_retries(run_id TEXT NOT NULL, operation TEXT NOT NULL, failures INTEGER NOT NULL, next_at INTEGER NOT NULL, first_at INTEGER NOT NULL, last_at INTEGER NOT NULL, reason TEXT NOT NULL, PRIMARY KEY(run_id,operation));
     CREATE TABLE IF NOT EXISTS cloud_ops(run_id TEXT NOT NULL, name TEXT NOT NULL, input_hash TEXT NOT NULL, phase TEXT NOT NULL, result TEXT, PRIMARY KEY(run_id,name));`);
    // Never adopt an older draft's reservations as proof of an unstarted send.
    const scopeHash=hash({schema_version:2,scope:this.scope});this.db.prepare('INSERT OR IGNORE INTO cloud_scope VALUES(1,?)').run(scopeHash);
@@ -62,6 +63,28 @@ export class CloudRunState{
   requireThat(this.op(id,name).input_hash===inputHash,'Operation inputs changed');return r.changes===1;
  }
  settle(id,name,phase,result){return this.db.prepare("UPDATE cloud_ops SET phase=?,result=? WHERE run_id=? AND name=? AND phase IN ('started','unknown')").run(phase,json(result),id,name).changes===1;}
+ readRetry(id,operation){return this.db.prepare('SELECT * FROM cloud_read_retries WHERE run_id=? AND operation=?').get(id,operation)??null;}
+ deferRead(id,operation,{now,nextAt,reason}){
+  requireThat(this.get(id)&&/^[a-z_]{1,40}$/.test(operation)&&Number.isSafeInteger(now)&&now>0&&Number.isSafeInteger(nextAt)&&nextAt>=now&&typeof reason==='string'&&reason.length<=200,'Invalid durable read retry');
+  this.db.prepare(`INSERT INTO cloud_read_retries VALUES(?,?,1,?,?,?,?) ON CONFLICT(run_id,operation) DO UPDATE SET failures=failures+1,next_at=excluded.next_at,last_at=excluded.last_at,reason=excluded.reason`).run(id,operation,nextAt,now,now,reason);
+  return this.readRetry(id,operation);
+ }
+ clearReadRetry(id,operation){this.db.prepare('DELETE FROM cloud_read_retries WHERE run_id=? AND operation=?').run(id,operation);}
+ retryAt(id){return this.db.prepare('SELECT max(next_at) AS at FROM cloud_read_retries WHERE run_id=?').get(id).at??null;}
+ deferNativeRun(id,now){
+  requireThat(Number.isSafeInteger(now)&&now>0,'Host clock unavailable');
+  this.db.exec('BEGIN IMMEDIATE');
+  try{
+   const job=this.get(id);requireThat(job&&['native_v1','native_bundle_v1'].includes(job.detail.mode),'Existing native run required');
+   const fenced=this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='native_recovery_fences'").get()&&this.db.prepare('SELECT 1 FROM native_recovery_fences WHERE run_id=?').get(id);
+   requireThat(!fenced&&!job.phase.startsWith('recovery_'),'Explicit recovery cannot be deferred by the scheduled host');
+   const readOnly=!!(this.op(id,'native:begin:command')||this.op(id,'final_complete'));
+   if(readOnly&&!['sender_reported','final_pending','native_reconcile'].includes(job.phase))requireThat(this.move(id,job.phase,'native_reconcile',job.detail),'Defer phase changed');
+   this.deferRead(id,'resume',{now,nextAt:Math.max(now+15000,this.retryAt(id)??0),reason:'execution_slice_complete'});
+   const result={run_id:id,phase:this.get(id).phase,input_hash:job.input_hash,resume_mode:readOnly?'reconcile_only':'continue_before_begin',next_attempt_at:this.retryAt(id)};
+   this.db.exec('COMMIT');return result;
+  }catch(error){this.db.exec('ROLLBACK');throw error;}
+ }
  beginCompletion(job,input,checkDue){
   this.db.exec('BEGIN IMMEDIATE');
   try{

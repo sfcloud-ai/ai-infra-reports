@@ -122,3 +122,78 @@ the report due time and a successful full preflight. After begin, expired eviden
 is refreshed in the same process; it never authorizes a second begin or completion.
 These retries do not make a stopped process resumable after begin: retain the
 original journal and use read-only reconciliation as above.
+
+### Durable read retry across execution slices
+
+Temporary publication failures are stored in `cloud_read_retries` in the **same
+SQLite journal**: operation, failure count, first/last failure time, next retry
+instant and a bounded diagnostic category. There is no overall retry-age or
+attempt-count expiry. A successful read clears that operation's retry. A process
+restart does not clear rate-limit backoff or make cached public proof fresh.
+
+The dispatcher still has a bounded per-invocation budget. At a quiescent boundary
+it sends `{"type":"defer"}` instead of abandoning the run. The CLI persists the
+wait and returns `type: deferred`, original `run_id`, `input_hash`, absolute
+`state_file`, `next_attempt_at` and `resume_mode`, then closes the journal. This is
+**not delivery success**. Near the slice deadline, no new begin is allocated.
+A timeout with an outstanding tool write is not converted into a safe retry.
+
+The existing scheduler/launcher must persist that deferred result and wake the
+same task at or after `next_attempt_at`. Resume with the same operator and bytes:
+
+```sh
+node scripts/native-host-cli.mjs /absolute/operator.json --resume ORIGINAL_RUN_ID
+```
+
+`--resume` refuses a missing journal or different run before admitting any new
+reservation. It checks journal metadata rather than reading the database into
+memory. Scheduled deferral rejects runs owned by an explicit recovery fence,
+preserving their phase and immutable evidence. The scheduler must provide
+access to the original private journal, including its SQLite WAL, plus the pinned
+operator, exact bundle and fixed scripts. Do not copy, reset or reconstruct a
+journal from the resume result. `/workspace/shared` is not by itself proof of
+cross-run persistence. This code does not create a scheduled task, transfer state,
+change credentials or provide a wakeup service. An existing daily-only schedule
+will resume only on its next wakeup unless that existing scheduler is configured
+otherwise; `next_attempt_at` alone does not run code.
+
+Before begin has been allocated, `continue_before_begin` resumes the original
+upload/reservation, and repeats the complete publication preflight before any
+send permission is consumed. After begin allocation or any final write intent,
+`reconcile_only` preserves the original file and only reconciles; it never
+reuses a grant or repeats completion. Reconciliation can keep waiting across
+slices without a total time limit. The separate explicit-recovery approval flow
+is **not** invoked by retries. Ordinary auth/content/identity failures remain
+fatal. Successful Slack and WeCom delivery continue to require their independent
+receipts.
+
+Execution slices must be 2–30 minutes (default 20); this is not a total lifetime
+limit. The final minute is reserved for completing a begin already authorized in
+the current process; a new begin is deferred before that window. Native
+post-begin pending reads retain that current-process phase while waiting. A
+resumed host's ready message does not establish a new completion grant. Native
+search reads have a bounded timeout (default 15 seconds); an unsettled read can
+be abandoned safely and polled later, but a mutation is never timeout-retried.
+Repeated deferrals always advance an expired wakeup to at least 15 seconds in
+the future, so a stale resume record cannot cause immediate wakeup loops.
+
+The scheduled CLI advertises `protocol: native_durable_retry_v1` in its ready
+message. The dispatcher sends deadlines, read-error replies and defer only to a
+host with this capability. Legacy entrypoints, including explicit recovery,
+receive plain ticks and stop for reconciliation when a read or budget expires.
+The scheduled CLI closes its input interface when a slice ends, even if the
+bridge keeps stdin open, so each deferred slice releases its process and journal.
+If a search succeeds or temporarily fails in the final five seconds, the dispatcher allows up to
+ten seconds to receive pending and acknowledge defer, including empty pipe
+chunks. This cleanup window cannot dispatch another tool or tick; an unresponsive
+host still stops for reconciliation when the bounded cleanup expires.
+Every defer also starts a ten-second acknowledgement window, even when a
+successful read delivered pending at the deadline. During acknowledgement only
+the deferred result or a stop is accepted; no tools or ticks can be dispatched.
+State and pending messages report `completion_window` from the current owner's
+persisted begin, including while its receipt is still pending. The new-begin
+margin never blocks that same owner's receipt polling, and restarting does not
+inherit this ownership or permission.
+Chained searches requested during read cleanup receive a temporary-read reply
+without invoking another tool, allowing the host to reach pending and defer.
+The original cleanup deadline and request-ID checks remain in force.
