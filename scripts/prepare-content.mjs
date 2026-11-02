@@ -2,7 +2,7 @@ import {dailyBody,articleBody,articleEvidence} from "./content-text.mjs";
 import {latestNoticeEdition,noticeManifestForBuild} from "./notice-manifest.mjs";
 import {validateRasters} from "./rasters.mjs";
 import {editionSources} from "./publication-content.mjs";
-import {publicReports,publicAssets} from "./public-reports.mjs";
+import {publicReports,publicAssets,publicSubtitle} from "./public-reports.mjs";
 import {readFile,writeFile,mkdir,rm} from "node:fs/promises";
 import path from "node:path";
 import {readReports,validateArchive,json,BASE} from "./archive.mjs";
@@ -21,7 +21,7 @@ const pages=[],assetsManifest=[],articleDirs={},publicationSources={};
 for(const r of [...publishedReports].reverse()) {
   const slug=r.date+"/r"+r.revision, source=slug+"/index";
   publicationSources[slug]=editionSources(files,slug);
-  const description=r.subtitle;
+  const description=publicSubtitle(r);
   const body=dailyBody(r,preview);
   const common={date:r.date,revision:r.revision,group:r.date,commit:"main",origin:r.path+"report.json"};
   pages.push({...common,slug,source,title:r.title,description,kind:"day"});
