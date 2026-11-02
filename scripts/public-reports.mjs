@@ -20,3 +20,11 @@ export function publicAssets(published,archive,files) {
    if(requiredHashes.has(image.sha256))paths.add(report.path+image.path);
  return [...paths].sort();
 }
+
+// Historical presentation correction only: retain the signed source metadata
+// and all evidence limits, but do not advertise an internal rewrite label.
+export function publicSubtitle(report) {
+ if(report.date==='2026-11-01' && report.revision===2)
+  return report.subtitle.replace(/^固定六大板块重写版；/, '固定六大板块；');
+ return report.subtitle;
+}
