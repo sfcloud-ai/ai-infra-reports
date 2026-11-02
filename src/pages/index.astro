@@ -13,7 +13,7 @@ const days=pages.filter(p=>p.kind==="day");
 <p class="doc-intro">AI 基础设施的每日观察。按主题拆解机制、实验条件与工程限制，保留证据和可追溯的历史。</p>
 {preview&&<p class="preview-notice">合成样例预览 · 内容仅用于检验页面与搜索，不是正式晨报。</p>}
 <div class="archive-heading"><h2>每日归档</h2><span>{days.length} 期</span></div>
-{days.length?days.map(day=><section class="day-card"><div class="day-meta"><time datetime={day.date}>{day.date}</time><span>第 {day.revision} 版</span></div><h2><a href={href(day.slug)}>{day.title}</a></h2><p>{day.description}</p><ul>{pages.filter(p=>p.parent===day.slug).map(p=><li><a href={href(p.slug)}>{p.title}<span aria-hidden="true">↗</span></a></li>)}</ul><a class="day-link" href={href(day.slug)}>阅读本期概览 →</a></section>):<div class="empty-state"><h2>等待第一期报告</h2><p>通过内容校验并发布后，这里会出现日期索引和独立文章。</p></div>}
+{days.length?days.map(day=><section class="day-card"><div class="day-meta"><time datetime={day.date}>{day.date}</time></div><h2><a href={href(day.slug)}>{day.title}</a></h2><p>{day.description}</p><ul>{pages.filter(p=>p.parent===day.slug).map(p=><li><a href={href(p.slug)}>{p.title}<span aria-hidden="true">↗</span></a></li>)}</ul><a class="day-link" href={href(day.slug)}>阅读本期概览 →</a></section>):<div class="empty-state"><h2>等待第一期报告</h2><p>通过内容校验并发布后，这里会出现日期索引和独立文章。</p></div>}
 </main>
 <aside class="table-of-contents archive-note"><span class="eyebrow">阅读方式</span><p>按日期浏览，按主题深入。</p><p>搜索覆盖正文与章节。每篇文章保留来源、实验条件与限制。</p></aside>
 </div>
