@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import {HandoffState,handoffScope} from "../scripts/handoff-state.mjs";
 import {NoticeOutbox,notificationScope} from "../scripts/notice-outbox.mjs";
+import {installNoticeRecovery} from "../scripts/notice-recovery.mjs";
 import {digest} from "../scripts/archive.mjs";
 import {planReadyMigration,stageReadyMigration,verifyReadyMigration} from "../scripts/ready-migration.mjs";
 async function fixture(){
@@ -68,5 +69,18 @@ test("unexpected triggers cannot run while rebinding a staged scope",async()=>{
   const state=new HandoffState(f.file,handoffScope(f.before));state.db.exec("CREATE TRIGGER unexpected AFTER UPDATE ON scope BEGIN DELETE FROM jobs; END");state.close();
   await assert.rejects(()=>planReadyMigration(f.before,f.after),/triggers/);
   const check=new HandoffState(f.file,handoffScope(f.before));try{assert(check.get("original-report-01"));}finally{check.close();}
+ }finally{await f.clean();}
+});
+
+test('settled recovery audit survives migration while missing or replaced audit triggers reject it',async()=>{
+ const f=await fixture();try{
+  let state=new HandoffState(f.file,handoffScope(f.before));installNoticeRecovery(state.db);
+  state.db.prepare('INSERT INTO notice_recovery_authorizations VALUES(?,?,?,?,?,?,?,?,?)').run('recovery-id','original-report-01','{}','a'.repeat(64),'{}','{}','approved',null,null);state.close();
+  await assert.rejects(()=>planReadyMigration(f.before,f.after),/Unresolved recovery/);
+  state=new HandoffState(f.file,handoffScope(f.before));state.db.exec("UPDATE notice_recovery_authorizations SET phase='consumed'");state.close();
+  const plan=await planReadyMigration(f.before,f.after);await stageReadyMigration(f.before,f.after,plan.data_sha256);
+  assert.equal((await verifyReadyMigration(f.before,f.after,plan.data_sha256)).verified,true);
+  state=new HandoffState(f.file,handoffScope(f.before));state.db.exec('DROP TRIGGER notice_recovery_no_delete');state.close();
+  await assert.rejects(()=>planReadyMigration(f.before,f.after),/recovery audit schema/);
  }finally{await f.clean();}
 });

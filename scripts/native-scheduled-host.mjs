@@ -135,7 +135,7 @@ export class NativeScheduledHost{
  }
  async control(job,action,fields={},slot=action){
   const command=await this.command(job,action,fields,slot),{bytes}=command,c=JSON.parse(bytes),config=this.config(job);
-  if(action==='begin'&&command.owner!==this.session)throw new ReconciliationRequired('Restart cannot reuse a completion grant');
+  if(['begin','recover_begin'].includes(action)&&command.owner!==this.session)throw new ReconciliationRequired('Restart cannot reuse a completion grant');
   await this.once(job.id,`native:${slot}:share`,{sha256:digest(bytes)},async()=>{
    const ticket=await this.transport.upload(bytes,'ai-notice-command.json');
    await this.transport.complete({...ticket,channel_id:config.channel_id,initial_comment:`!ai-notice submit ${c.command_id} ${digest(bytes)}`,title:'ai-notice-command.json'});
