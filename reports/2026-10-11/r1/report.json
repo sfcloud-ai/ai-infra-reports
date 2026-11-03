@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-10-11",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-10-11",
+  "subtitle": "历史整理｜多卡故障先停止错步执行",
+  "articles": [
+    {
+      "id": "inference-engines",
+      "title": "推理引擎每日变动｜多卡 worker 出错后，继续运行可能比退出更危险",
+      "summary": "vLLM #60940 针对非输出 rank 的异常传播；当期仍是未合并提案，不是自动恢复方案。",
+      "sha256": "55a7c2fc1877f011835a4f1742888a4000dfe92e757fa7a5a826791e5f18e857"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-10-11-vllm-pr-60940",
+      "event_key": "vllm-pr-60940",
+      "title": "vLLM 非输出 worker 异常传播",
+      "summary": "退出故障消费循环以避免通信错步；当期未合并，完整恢复仍需外层策略。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/60940",
+        "https://github.com/vllm-project/vllm/issues/60928",
+        "https://github.com/vllm-project/vllm/commit/1615bbdb8013b2d234a9d6b2631a667077a523c0"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    }
+  ],
+  "images": [],
+  "poster": null
+}
