@@ -312,6 +312,92 @@
     },
     {
       "schema_version": "1.0",
+      "date": "2026-10-19",
+      "revision": 1,
+      "title": "AI Infra 晨报 · 2026-10-19",
+      "subtitle": "历史整理｜异构训练与 GPU 共享，都不能停在能运行",
+      "articles": [
+        {
+          "id": "hardware-status",
+          "title": "重点硬件｜异构训练：利用硬件差异，而非复制原配方",
+          "summary": "Meta 的生产推荐模型实践强调容量、算子与训练配方协同；不同功率配置不支持通用硬件胜负结论。",
+          "sha256": "61776db844fd3ba555bc2a273cf65e9b3f278934fe2cec6320a4dca7aac4c395",
+          "path": "reports/2026-10-19/r1/articles/hardware-status.md"
+        },
+        {
+          "id": "model-serving-gpu",
+          "title": "模型服务与 GPU 超配｜GPU Fractioning：新增价值应在限额执行，而非再次包装共享",
+          "summary": "已有控制面和 device plugin 是必要基线；驱动显存限额、压力驱逐与延迟隔离必须分开评估。",
+          "sha256": "651ed5ef2a27f9d74b7ac19490c9eb7103ba2c04d9f0e096a3af9d565cf5c99b",
+          "path": "reports/2026-10-19/r1/articles/model-serving-gpu.md"
+        }
+      ],
+      "poster": null,
+      "path": "reports/2026-10-19/r1/"
+    },
+    {
+      "schema_version": "1.0",
+      "date": "2026-10-20",
+      "revision": 1,
+      "title": "AI Infra 晨报 · 2026-10-20",
+      "subtitle": "历史整理｜未正式入选：省缓存之前，先补完整服务对照",
+      "articles": [
+        {
+          "id": "model-serving-gpu",
+          "title": "模型服务与 GPU 超配｜筛选复盘：压缩和命中率为何还不够",
+          "summary": "PN-Mix、Agent KV 驻留分析与 Difflet 均未正式入选：公开实现、恢复代价和强基线仍限制结论。",
+          "sha256": "ce0a343ad8e15509f2163caa12a7cd578c7edcddacb35f9382baa6d75bda2bb2",
+          "path": "reports/2026-10-20/r1/articles/model-serving-gpu.md"
+        }
+      ],
+      "poster": null,
+      "path": "reports/2026-10-20/r1/"
+    },
+    {
+      "schema_version": "1.0",
+      "date": "2026-10-21",
+      "revision": 1,
+      "title": "AI Infra 晨报 · 2026-10-21",
+      "subtitle": "历史整理｜通信诊断与共享服务，都要明确故障边界",
+      "articles": [
+        {
+          "id": "model-serving-gpu",
+          "title": "模型服务与 GPU 超配｜看见等待，再定义怎样排队",
+          "summary": "SigmaTrace 补充 GPU 发起通信观测；llm-d 1.0 将公平排队与故障取舍纳入交付验证。",
+          "sha256": "c0d412ef25b601d229966ce4df3189b045fdf9cd8516c62a45d5d5d81a177235",
+          "path": "reports/2026-10-21/r1/articles/model-serving-gpu.md"
+        }
+      ],
+      "poster": null,
+      "path": "reports/2026-10-21/r1/"
+    },
+    {
+      "schema_version": "1.0",
+      "date": "2026-10-22",
+      "revision": 1,
+      "title": "AI Infra 晨报 · 2026-10-22",
+      "subtitle": "历史整理｜小模型提速与保密推理，都有不能省略的代价",
+      "articles": [
+        {
+          "id": "small-model-status",
+          "title": "前沿小模型｜BitMTP 把训练与多 token 执行一起优化",
+          "summary": "单请求解码提速具有质量与显存取舍，不能直接换算成平台吞吐。",
+          "sha256": "776919b182102b88bbdbd5be3700484fcd7f658e6d91a30f28eab928d7dcd7b2",
+          "path": "reports/2026-10-22/r1/articles/small-model-status.md"
+        },
+        {
+          "id": "hardware-status",
+          "title": "重点硬件｜硬件与执行栈｜Confidential G4 的可核验边界",
+          "summary": "正式可用增加单卡安全交付选项，环境证明不等于应用或端到端自动可信。",
+          "sha256": "557591c9de4e94741fbb2a94400f9decb8aa7a56c8609265108b3d7ea3e8def8",
+          "path": "reports/2026-10-22/r1/articles/hardware-status.md"
+        }
+      ],
+      "poster": null,
+      "path": "reports/2026-10-22/r1/"
+    },
+    {
+      "schema_version": "1.0",
       "date": "2026-11-01",
       "revision": 1,
       "title": "AI Infra 晨报 · 2026-11-01",
@@ -1053,6 +1139,139 @@
       "article_id": "model-serving-gpu",
       "fingerprint": "ad482ca5e1a24c22157da0f6a063e2cae3ed283aab6638fce22b120829a157b2",
       "date": "2026-10-18",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-19-arxiv-2610-22230-v1",
+      "event_key": "arxiv-2610-22230-v1",
+      "title": "Meta 异构训练协同优化",
+      "summary": "推荐模型案例强调容量与执行配方；硬件功率配置不同，不作为通用性能排名。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.22230v1"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status",
+      "fingerprint": "3ff26ca5e640b50b443c0119c7448c56c1e11994d01ae4043042a99cf357b44f",
+      "date": "2026-10-19",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-19-nvidia-runai-open-source-20261013",
+      "event_key": "nvidia-runai-open-source-20261013",
+      "title": "Run:ai GPU Fractioning 开源进展",
+      "summary": "以已有共享和控制面为基线，重点评估驱动限额、压力驱逐与维护成本。",
+      "source_urls": [
+        "https://developer.nvidia.com/blog/nvidia-runai-is-now-open-source-as-part-of-nvidia-dsx-ai-factory-platform/",
+        "https://docs.nvidia.com/deploy/mps/latest/mpsv3-memory-partitioning.html"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "67e209aa21ef2545200c95710d4987714b94a237f6bc40f5f0bca097adce390d",
+      "date": "2026-10-19",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-20-arxiv-2610-19605-v1",
+      "event_key": "arxiv-2610-19605-v1",
+      "title": "PN-Mix：精度分配仍缺服务对照",
+      "summary": "未正式入选；作者实现及分页动态批处理收益待核验。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.19605v1"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "bb034326a89810293db14180bd6610ae2aae14ed8a0baa9f65540cb37a03162f",
+      "date": "2026-10-20",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-20-arxiv-2610-22863-v1",
+      "event_key": "arxiv-2610-22863-v1",
+      "title": "Agent KV 驻留：命中不等于恢复收益",
+      "summary": "未正式入选；回放未覆盖搬运、恢复精度耗时与质量。",
+      "source_urls": [
+        "https://arxiv.org/pdf/2610.22863v1"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "ea98e69444d63817ce1224fb1b0c224e85b9f59348a31b18cb70f721bdb3bfd3",
+      "date": "2026-10-20",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-20-arxiv-2610-23047-v1",
+      "event_key": "arxiv-2610-23047-v1",
+      "title": "Difflet：强基线下去噪基本持平",
+      "summary": "未正式入选；现成 Trainium2 实现不等于完整服务普遍加速。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.23047v1",
+        "https://github.com/ai-decentralized/Difflet"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "3ad17c4751e9c94d0d3b7a696e99531801c337043827c8cb28e369092d7fb09d",
+      "date": "2026-10-20",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-21-arxiv-2610-24328-v1",
+      "event_key": "arxiv-2610-24328-v1",
+      "title": "SigmaTrace：按需观察 GPU 发起通信",
+      "summary": "不同追踪模式开销差异显著，2.13 倍是流量偏斜。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.24328v1",
+        "https://github.com/ParCoreLab/SigmaTrace/tree/8d8141a656c9e07003ed09348f07939d74b40eb6"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "411ecea79c11f9cc30798017937b4573c6262d6072aeb0d413d65bf13c149902",
+      "date": "2026-10-21",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-21-llm-d-release-v1-0-0",
+      "event_key": "llm-d-release-v1-0-0",
+      "title": "llm-d 1.0：共享服务的队列和故障边界",
+      "summary": "关注内存队列、FailOpen 与多副本公平性，不外推宣传成本倍数。",
+      "source_urls": [
+        "https://github.com/llm-d/llm-d/blob/v1.0.0/docs/architecture/router/flow-control.md",
+        "https://github.com/llm-d/llm-d/releases/tag/v1.0.0"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "31e4c1643c585547b0fe2f2e26a5832630220021625040d3774946d549e1ea1f",
+      "date": "2026-10-21",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-22-arxiv-2610-28500-v1",
+      "event_key": "arxiv-2610-28500-v1",
+      "title": "BitMTP：低比特多 token 预测",
+      "summary": "2.4 倍为 H20 单请求解码作者结果；保留原模型质量起点与显存代价。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.28500v1",
+        "https://github.com/PolyU-VCLab/BitMTP/tree/745719743bcf55ab5807840c444162428647262e"
+      ],
+      "update_of": null,
+      "article_id": "small-model-status",
+      "fingerprint": "32484b2ea66ac0d1e0498b4a3a20924495eb4fc7d6d8575f4ca7c539a4dfc028",
+      "date": "2026-10-22",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-22-google-confidential-g4-ga-2026-10-21",
+      "event_key": "google-confidential-g4-ga-2026-10-21",
+      "title": "Confidential G4 正式可用",
+      "summary": "单卡安全交付选项；保留云商信任、证明范围和多节点限制。",
+      "source_urls": [
+        "https://cloud.google.com/blog/topics/ai-infrastructure/confidential-g4-gpus-are-ga",
+        "https://docs.cloud.google.com/confidential-computing/confidential-vm/docs/attestation-overview",
+        "https://docs.cloud.google.com/confidential-computing/confidential-vm/docs/supported-configurations"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status",
+      "fingerprint": "f8d4672bd22c10283bd3276ffc5ea9155abc7c4ef57bd07b56727e72eb325d53",
+      "date": "2026-10-22",
       "revision": 1
     },
     {

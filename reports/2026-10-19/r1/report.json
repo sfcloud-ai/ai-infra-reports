@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-10-19",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-10-19",
+  "subtitle": "历史整理｜异构训练与 GPU 共享，都不能停在能运行",
+  "articles": [
+    {
+      "id": "hardware-status",
+      "title": "重点硬件｜异构训练：利用硬件差异，而非复制原配方",
+      "summary": "Meta 的生产推荐模型实践强调容量、算子与训练配方协同；不同功率配置不支持通用硬件胜负结论。",
+      "sha256": "61776db844fd3ba555bc2a273cf65e9b3f278934fe2cec6320a4dca7aac4c395"
+    },
+    {
+      "id": "model-serving-gpu",
+      "title": "模型服务与 GPU 超配｜GPU Fractioning：新增价值应在限额执行，而非再次包装共享",
+      "summary": "已有控制面和 device plugin 是必要基线；驱动显存限额、压力驱逐与延迟隔离必须分开评估。",
+      "sha256": "651ed5ef2a27f9d74b7ac19490c9eb7103ba2c04d9f0e096a3af9d565cf5c99b"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-10-19-arxiv-2610-22230-v1",
+      "event_key": "arxiv-2610-22230-v1",
+      "title": "Meta 异构训练协同优化",
+      "summary": "推荐模型案例强调容量与执行配方；硬件功率配置不同，不作为通用性能排名。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.22230v1"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status"
+    },
+    {
+      "id": "2026-10-19-nvidia-runai-open-source-20261013",
+      "event_key": "nvidia-runai-open-source-20261013",
+      "title": "Run:ai GPU Fractioning 开源进展",
+      "summary": "以已有共享和控制面为基线，重点评估驱动限额、压力驱逐与维护成本。",
+      "source_urls": [
+        "https://developer.nvidia.com/blog/nvidia-runai-is-now-open-source-as-part-of-nvidia-dsx-ai-factory-platform/",
+        "https://docs.nvidia.com/deploy/mps/latest/mpsv3-memory-partitioning.html"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    }
+  ],
+  "images": [],
+  "poster": null
+}
