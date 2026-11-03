@@ -441,6 +441,24 @@
     },
     {
       "schema_version": "1.0",
+      "date": "2026-10-25",
+      "revision": 1,
+      "title": "AI Infra 晨报 · 2026-10-25",
+      "subtitle": "历史整理｜长上下文：计算分工、缓存分片与跨机传输分开算",
+      "articles": [
+        {
+          "id": "model-serving-gpu",
+          "title": "模型服务与 GPU 超配｜GLM 长上下文的容量换通信",
+          "summary": "PCP、DCP 与 HiSparse 组合有原生路径，但八路持久 KV 分片不是总显存缩小八倍。",
+          "sha256": "4c8bb83ce746f78508a5a593aff0969680be24c29216b30e12ab6c4b1d6054f2",
+          "path": "reports/2026-10-25/r1/articles/model-serving-gpu.md"
+        }
+      ],
+      "poster": null,
+      "path": "reports/2026-10-25/r1/"
+    },
+    {
+      "schema_version": "1.0",
       "date": "2026-11-01",
       "revision": 1,
       "title": "AI Infra 晨报 · 2026-11-01",
@@ -1377,6 +1395,22 @@
       "article_id": "inference-engines",
       "fingerprint": "3d798d34f63ec7ec4d78de5fba0a4ba22f459d796b494d2ea67389e3143f5a1e",
       "date": "2026-10-24",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-25-vllm-glm53-pcp-dcp-hisparse-2026-10-23",
+      "event_key": "vllm-glm53-pcp-dcp-hisparse-2026-10-23",
+      "title": "GLM-5.3：PCP、DCP 与 HiSparse 组合",
+      "summary": "区分机内逐层汇集和完成 prefill 后跨机交接，保留合成 MTP 与峰值内存限制。",
+      "source_urls": [
+        "https://gist.github.com/LucasWilkinson/b39792adeea1cc2b1505fb6b7a2a2654/56013faf8eaab3f2089738c482aab21555bc99fe",
+        "https://github.com/vllm-project/vllm/blob/v0.32.0/vllm/v1/attention/backends/mla/flashmla_sparse.py",
+        "https://vllm.ai/blog/2026-10-23-glm53-part2-pcp-dcp-hisparse"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "e8f6bb02e8ca447408a5eb54a317f67f0b39c1259e2e7d66a5316bf89b2f05dd",
+      "date": "2026-10-25",
       "revision": 1
     },
     {
