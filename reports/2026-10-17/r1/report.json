@@ -1,0 +1,43 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-10-17",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-10-17",
+  "subtitle": "历史整理｜减少显存占用，先分清有损删减与无损压缩",
+  "articles": [
+    {
+      "id": "model-serving-gpu",
+      "title": "模型服务与 GPU 超配｜DropKV 与 LCT：两种省显存方法，两套验收标准",
+      "summary": "DropKV 牺牲部分历史信息，LCT 在 GPU 内无损压缩训练张量；局部 kernel 倍数不可当作服务收益。",
+      "sha256": "3f4d7ff35b4511fdf46258630929d8157f997912bce24fd871e6dc980816f87a"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-10-17-arxiv-2610-22130-v1",
+      "event_key": "arxiv-2610-22130-v1",
+      "title": "DropKV 有损 KV 删减",
+      "summary": "按输出扰动选择保留内容；19.8 倍属于打分 kernel，不是模型服务加速。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.22130v1",
+        "https://github.com/AozhongZhang/DropKV/tree/afb97c2af09418ca58399dba50e6f956bb8ef153"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-10-17-arxiv-2610-22179-v1",
+      "event_key": "arxiv-2610-22179-v1",
+      "title": "LCT GPU 内无损训练压缩",
+      "summary": "以编码成本换训练容量；当期公开实现与 Qwen 完整复现仍有差距。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.22179v1",
+        "https://github.com/Maxzhu123/Losslessly_Compressed_Tensors/tree/396b9d6fb725956cb0735a83b5de368319d0b823"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    }
+  ],
+  "images": [],
+  "poster": null
+}
