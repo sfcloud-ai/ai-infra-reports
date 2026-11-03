@@ -1,0 +1,53 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-10-20",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-10-20",
+  "subtitle": "历史整理｜未正式入选：省缓存之前，先补完整服务对照",
+  "articles": [
+    {
+      "id": "model-serving-gpu",
+      "title": "模型服务与 GPU 超配｜筛选复盘：压缩和命中率为何还不够",
+      "summary": "PN-Mix、Agent KV 驻留分析与 Difflet 均未正式入选：公开实现、恢复代价和强基线仍限制结论。",
+      "sha256": "ce0a343ad8e15509f2163caa12a7cd578c7edcddacb35f9382baa6d75bda2bb2"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-10-20-arxiv-2610-19605-v1",
+      "event_key": "arxiv-2610-19605-v1",
+      "title": "PN-Mix：精度分配仍缺服务对照",
+      "summary": "未正式入选；作者实现及分页动态批处理收益待核验。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.19605v1"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-10-20-arxiv-2610-22863-v1",
+      "event_key": "arxiv-2610-22863-v1",
+      "title": "Agent KV 驻留：命中不等于恢复收益",
+      "summary": "未正式入选；回放未覆盖搬运、恢复精度耗时与质量。",
+      "source_urls": [
+        "https://arxiv.org/pdf/2610.22863v1"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-10-20-arxiv-2610-23047-v1",
+      "event_key": "arxiv-2610-23047-v1",
+      "title": "Difflet：强基线下去噪基本持平",
+      "summary": "未正式入选；现成 Trainium2 实现不等于完整服务普遍加速。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.23047v1",
+        "https://github.com/ai-decentralized/Difflet"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    }
+  ],
+  "images": [],
+  "poster": null
+}
