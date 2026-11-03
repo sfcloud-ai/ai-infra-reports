@@ -1,0 +1,51 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-10-23",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-10-23",
+  "subtitle": "历史整理｜优化顺序与异构迁移，都先核清执行栈",
+  "articles": [
+    {
+      "id": "model-serving-gpu",
+      "title": "模型服务与 GPU 超配｜先降低精度，再衡量结构化稀疏",
+      "summary": "稀疏收益必须扣除索引、预处理、质量恢复和旧版本维护成本。",
+      "sha256": "575cfdc3b47ee7c3c506993d1e8a8a3413ecd8288f531c406ff20fd0c185b743"
+    },
+    {
+      "id": "hardware-status",
+      "title": "重点硬件｜硬件与执行栈｜TorchTPU 降低接口摩擦，不消除迁移工作",
+      "summary": "开源带来原生 PyTorch 入口，模型、依赖与硬件矩阵仍需逐栈验证。",
+      "sha256": "adf171ebe9392074723d60a59364bfe4dbc465551391d65426ff0d89a71c4de2"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-10-23-arxiv-2610-28947-v1",
+      "event_key": "arxiv-2610-28947-v1",
+      "title": "结构化稀疏与量化：把完整成本放回对照",
+      "summary": "H100 旧 vLLM 的约 27% 预填充收益不能视作当前主线现成能力。",
+      "source_urls": [
+        "https://arxiv.org/abs/2610.28947v1",
+        "https://github.com/PuppyQ08/24_quant_compare/tree/bfe6ffc5a315b4205e425912af55c23b2bc793cc",
+        "https://github.com/vllm-project/vllm/pull/36799"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-10-23-torchtpu-open-source-2026-10-20",
+      "event_key": "torchtpu-open-source-2026-10-20",
+      "title": "TorchTPU 开源：异构执行入口",
+      "summary": "分开核查核心与服务插件依赖，不拼接 52% MFU 和 8,192 芯片口径。",
+      "source_urls": [
+        "https://cloud.google.com/blog/topics/ai-infrastructure/torchtpu-is-now-open-source-run-native-pytorch-on-tpus",
+        "https://github.com/google-pytorch/torch_tpu/tree/005903d0ef0dde919b832530451e568912c6f464",
+        "https://pytorch.org/blog/introducing-torchtpu/"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status"
+    }
+  ],
+  "images": [],
+  "poster": null
+}
