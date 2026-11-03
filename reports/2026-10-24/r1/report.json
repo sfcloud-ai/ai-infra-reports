@@ -1,0 +1,43 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-10-24",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-10-24",
+  "subtitle": "历史整理｜弹性要算准备时间，低精度要算质量代价",
+  "articles": [
+    {
+      "id": "inference-engines",
+      "title": "推理引擎每日变动｜Elastic EP 与 Humming 的两笔成本账",
+      "summary": "扩容停顿不等于产能就绪；执行后端加速与 FP8 激活变化必须拆开。",
+      "sha256": "789e56c2ae8d67a1d81540f6004784ab6f7d670a967f26934540c764f9664cdb"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-10-24-vllm-elastic-ep-near-zero-downtime-2026-10-19",
+      "event_key": "vllm-elastic-ep-near-zero-downtime-2026-10-19",
+      "title": "Elastic EP：区分停顿和扩容总耗时",
+      "summary": "0.82 秒停顿与 92.34 秒扩容总耗时是不同口径，预留容量存在常态代价。",
+      "source_urls": [
+        "https://vllm.ai/blog/2026-10-19-elastic-ep-near-zero-downtime",
+        "https://github.com/vllm-project/vllm/pull/54985"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    },
+    {
+      "id": "2026-10-24-vllm-humming-2026-10-21",
+      "event_key": "vllm-humming-2026-10-21",
+      "title": "Humming：拆开执行后端与 FP8 激活",
+      "summary": "8×H20 公告收益同时包含精度改变，质量和完整负载仍需验证。",
+      "source_urls": [
+        "https://vllm.ai/blog/2026-10-21-humming",
+        "https://github.com/vllm-project/humming/tree/db930afa2256cba49b3e46c0589323c3e80b0bfb"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    }
+  ],
+  "images": [],
+  "poster": null
+}
