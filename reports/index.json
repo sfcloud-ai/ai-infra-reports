@@ -373,6 +373,31 @@
     },
     {
       "schema_version": "1.0",
+      "date": "2026-10-22",
+      "revision": 1,
+      "title": "AI Infra 晨报 · 2026-10-22",
+      "subtitle": "历史整理｜小模型提速与保密推理，都有不能省略的代价",
+      "articles": [
+        {
+          "id": "small-model-status",
+          "title": "前沿小模型｜BitMTP 把训练与多 token 执行一起优化",
+          "summary": "单请求解码提速具有质量与显存取舍，不能直接换算成平台吞吐。",
+          "sha256": "776919b182102b88bbdbd5be3700484fcd7f658e6d91a30f28eab928d7dcd7b2",
+          "path": "reports/2026-10-22/r1/articles/small-model-status.md"
+        },
+        {
+          "id": "hardware-status",
+          "title": "重点硬件｜硬件与执行栈｜Confidential G4 的可核验边界",
+          "summary": "正式可用增加单卡安全交付选项，环境证明不等于应用或端到端自动可信。",
+          "sha256": "557591c9de4e94741fbb2a94400f9decb8aa7a56c8609265108b3d7ea3e8def8",
+          "path": "reports/2026-10-22/r1/articles/hardware-status.md"
+        }
+      ],
+      "poster": null,
+      "path": "reports/2026-10-22/r1/"
+    },
+    {
+      "schema_version": "1.0",
       "date": "2026-11-01",
       "revision": 1,
       "title": "AI Infra 晨报 · 2026-11-01",
@@ -1216,6 +1241,37 @@
       "article_id": "model-serving-gpu",
       "fingerprint": "31e4c1643c585547b0fe2f2e26a5832630220021625040d3774946d549e1ea1f",
       "date": "2026-10-21",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-22-arxiv-2610-28500-v1",
+      "event_key": "arxiv-2610-28500-v1",
+      "title": "BitMTP：低比特多 token 预测",
+      "summary": "2.4 倍为 H20 单请求解码作者结果；保留原模型质量起点与显存代价。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.28500v1",
+        "https://github.com/PolyU-VCLab/BitMTP/tree/745719743bcf55ab5807840c444162428647262e"
+      ],
+      "update_of": null,
+      "article_id": "small-model-status",
+      "fingerprint": "32484b2ea66ac0d1e0498b4a3a20924495eb4fc7d6d8575f4ca7c539a4dfc028",
+      "date": "2026-10-22",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-22-google-confidential-g4-ga-2026-10-21",
+      "event_key": "google-confidential-g4-ga-2026-10-21",
+      "title": "Confidential G4 正式可用",
+      "summary": "单卡安全交付选项；保留云商信任、证明范围和多节点限制。",
+      "source_urls": [
+        "https://cloud.google.com/blog/topics/ai-infrastructure/confidential-g4-gpus-are-ga",
+        "https://docs.cloud.google.com/confidential-computing/confidential-vm/docs/attestation-overview",
+        "https://docs.cloud.google.com/confidential-computing/confidential-vm/docs/supported-configurations"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status",
+      "fingerprint": "f8d4672bd22c10283bd3276ffc5ea9155abc7c4ef57bd07b56727e72eb325d53",
+      "date": "2026-10-22",
       "revision": 1
     },
     {
