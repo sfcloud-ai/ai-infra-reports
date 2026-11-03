@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-10-06",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-10-06",
+  "subtitle": "历史整理｜执行器槽位与运行准入分开，收益仍要和旧参数对照",
+  "articles": [
+    {
+      "id": "inference-engines",
+      "title": "推理引擎每日变动｜vLLM 把静态容量和运行并发分开",
+      "summary": "max-num-active-seqs 细分单实例准入；不提供跨实例 GPU 隔离，也不自动改善全部延迟。",
+      "sha256": "c2796592063c4492d8886ec58d498f4a14df4287e4f1fbbc54b86626df8b5c64"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-10-06-vllm-pr-56758",
+      "event_key": "vllm-pr-56758",
+      "title": "vLLM 运行态请求准入上限",
+      "summary": "0.31.0 将 active 请求上限与静态 max-num-seqs 分开，需与旧旋钮和排队代价比较。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/releases/tag/v0.31.0",
+        "https://github.com/vllm-project/vllm/pull/56758"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    }
+  ],
+  "images": [],
+  "poster": null
+}
