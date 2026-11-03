@@ -1,0 +1,54 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-10-14",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-10-14",
+  "subtitle": "历史整理｜未正式入选：先补齐依赖、基线与适用证据",
+  "articles": [
+    {
+      "id": "model-serving-gpu",
+      "title": "模型服务与 GPU 超配｜三条效率路线，为什么当期都未正式入选",
+      "summary": "DualQuant、TokenRouter、ByteExpress 分别欠缺完整复现、可比服务基线或直接适用证据；保留比较，不改写为推荐。",
+      "sha256": "be2cfa82b2ed6459e9c2a5c57e59d73d593195172b95a2f3abc3c11ce651382a"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-10-14-arxiv-2610-13767-v1",
+      "event_key": "arxiv-2610-13767-v1",
+      "title": "DualQuant：未正式入选",
+      "summary": "当期依赖与成熟量化基线不足，短输入成绩不外推长文。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.13767v1",
+        "https://github.com/MahsaMoonlike/dualquant"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-10-14-arxiv-2610-12242-v1",
+      "event_key": "arxiv-2610-12242-v1",
+      "title": "TokenRouter：未正式入选",
+      "summary": "模型接力需要独立需求证明；最大加速受对照批处理条件影响。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.12242v1",
+        "https://github.com/thu-nics/TokenRouter"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-10-14-arxiv-2610-12815-v1",
+      "event_key": "arxiv-2610-12815-v1",
+      "title": "ByteExpress：未正式入选",
+      "summary": "参数服务器 RDMA 经验尚不能直接转为 LLM 服务收益。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.12815v1"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    }
+  ],
+  "images": [],
+  "poster": null
+}
