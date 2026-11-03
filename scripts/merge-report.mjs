@@ -17,6 +17,33 @@ function isProducer(pr,botId,botLogin){
  if(user.type!=="Bot"||user.id!==botId||user.login!==botLogin)throw Error("Untrusted author");
  return true;
 }
+async function missingAssociationNoop(api,run,botId,botLogin){
+ if(!/^report\/[a-f0-9]{12}-[a-f0-9]{24}$/.test(run.head_branch)||typeof run.head_sha!=="string"||!/^[a-f0-9]{40}$/.test(run.head_sha))throw Error("Missing association requires exact-head trusted CI");
+ const workflow=await api.request("GET",PREFIX+"/actions/workflows/validate.yml");
+ if(workflow?.path!==".github/workflows/validate.yml"||!Number.isSafeInteger(workflow.id)||workflow.id<=0||run.workflow_id!==workflow.id||run.event!=="pull_request"||run.conclusion!=="success"||run.status!=="completed"||run.head_repository?.full_name!==REPOSITORY)throw Error("Missing association requires exact-head trusted CI");
+ // Commit associations are discovery evidence only. A paginated or ambiguous
+ // result cannot authorize a no-op, and can never repair the merge gate's run.
+ const candidates=await api.request("GET",PREFIX+"/commits/"+run.head_sha+"/pulls?per_page=100",undefined,{requireSinglePage:true});
+ if(!Array.isArray(candidates)||candidates.length!==1)throw Error("One complete commit-associated PR required");
+ const candidate=candidates[0],number=candidate?.number;
+ if(!Number.isSafeInteger(number)||number<=0)throw Error("Associated PR number required");
+ const bound=p=>p?.number===number&&p.head?.sha===run.head_sha&&p.head?.ref===run.head_branch&&p.head?.repo?.full_name===REPOSITORY&&p.base?.ref==="main"&&p.base?.repo?.full_name===REPOSITORY&&typeof p.base?.sha==="string"&&/^[a-f0-9]{40}$/.test(p.base.sha);
+ if(!bound(candidate))throw Error("Commit-associated PR binding mismatch");
+ const pr=await api.request("GET",PREFIX+"/pulls/"+number);
+ if(!bound(pr)||pr.base.sha!==candidate.base.sha)throw Error("Commit-associated PR binding mismatch");
+ isProducer(candidate,botId,botLogin);
+ const producer=isProducer(pr,botId,botLogin);
+ if(["id","login","type"].some(key=>pr.user[key]!==candidate.user[key]))throw Error("PR author changed during lookup");
+ if(!["open","closed"].includes(pr.state)||typeof pr.merged!=="boolean")throw Error("Explicit PR state required");
+ if(pr.merged){
+  if(pr.state!=="closed"||typeof pr.merged_at!=="string"||!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3})?(?:Z|[+-]\d\d:\d\d)$/.test(pr.merged_at)||!Number.isFinite(Date.parse(pr.merged_at)))throw Error("Complete PR merge evidence required");
+  // Fresh terminal state proves a no-op; no merge or merge SHA is claimed here.
+  return {merged:false,reason:"already_merged_pr",number};
+ }
+ if(pr.merged_at!==null)throw Error("Consistent PR merge evidence required");
+ if(!producer)return {merged:false,reason:"non_producer_pr",number};
+ throw Error("One associated PR required for an unmerged Producer");
+}
 export function gateFacts({pr,run,workflow,main,botId,botLogin}) {
  requireBotIdentity(botId,botLogin);
  if(pr.state!=="open"||pr.draft||pr.merged||pr.base.ref!=="main"||pr.base.repo.full_name!==REPOSITORY||pr.head.repo.full_name!==REPOSITORY)throw Error("PR state/repository mismatch");
@@ -59,7 +86,8 @@ export async function mergeReport(api,runId,{enabled,botId,botLogin,trustedSha,p
  // namespace; malformed report branches still face every strict merge gate.
  // Engineering workflow_run records can legitimately omit PR associations.
  if(!run.head_branch.startsWith("report/"))return {merged:false,reason:"non_report_branch"};
- if(run?.pull_requests?.length!==1)throw Error("One associated PR required");
+ if(Array.isArray(run.pull_requests)&&run.pull_requests.length===0)return missingAssociationNoop(api,run,botId,botLogin);
+ if(!Array.isArray(run.pull_requests)||run.pull_requests.length!==1)throw Error("One associated PR required");
  const number=run.pull_requests[0].number;
  if(!Number.isSafeInteger(number)||number<=0)throw Error("Associated PR number required");
  const pr=await api.request("GET",PREFIX+"/pulls/"+number);
