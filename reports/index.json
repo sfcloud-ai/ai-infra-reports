@@ -459,6 +459,24 @@
     },
     {
       "schema_version": "1.0",
+      "date": "2026-10-26",
+      "revision": 1,
+      "title": "AI Infra 晨报 · 2026-10-26",
+      "subtitle": "历史整理｜小模型压缩：省下的空间能否改变并发档位",
+      "articles": [
+        {
+          "id": "small-model-status",
+          "title": "前沿小模型｜OPTIC 的百倍压缩，先看最后一点空间值多少",
+          "summary": "PLE 表压缩降低容量压力，收益取决于并发档位、质量和接入成本，而非压缩倍数本身。",
+          "sha256": "4edcf67fad979d4198ca71b744dbf7dee33b018e7b854bab976c2397bc3e581e",
+          "path": "reports/2026-10-26/r1/articles/small-model-status.md"
+        }
+      ],
+      "poster": null,
+      "path": "reports/2026-10-26/r1/"
+    },
+    {
+      "schema_version": "1.0",
       "date": "2026-11-01",
       "revision": 1,
       "title": "AI Infra 晨报 · 2026-11-01",
@@ -1411,6 +1429,21 @@
       "article_id": "model-serving-gpu",
       "fingerprint": "e8f6bb02e8ca447408a5eb54a317f67f0b39c1259e2e7d66a5316bf89b2f05dd",
       "date": "2026-10-25",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-26-arxiv-2610-31309-v1",
+      "event_key": "arxiv-2610-31309-v1",
+      "title": "OPTIC：跨层共享 PLE 压缩码",
+      "summary": "百倍仅针对 PLE；与温和 PQ 比较边际容量、任务质量和 TP=1 接入限制。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.31309v1",
+        "https://github.com/VILA-Lab/optic/tree/344c712aeb6620e39eb78930fb922447f0e123f3"
+      ],
+      "update_of": null,
+      "article_id": "small-model-status",
+      "fingerprint": "622ae7f0cb1eae53dcb0c264bdc875e229337a54a700e0ff333e1b02761fffd3",
+      "date": "2026-10-26",
       "revision": 1
     },
     {
