@@ -240,6 +240,24 @@
     },
     {
       "schema_version": "1.0",
+      "date": "2026-10-15",
+      "revision": 1,
+      "title": "AI Infra 晨报 · 2026-10-15",
+      "subtitle": "历史整理｜自动调参先建立不能绕过的验收",
+      "articles": [
+        {
+          "id": "model-serving-gpu",
+          "title": "模型服务与 GPU 超配｜ATTUNE：让 AI 提候选，让独立程序决定能否采用",
+          "summary": "训练自动调优的可借鉴部分是测量、参数核对和成本记录；公开包尚不构成完整预算准入与发布门禁。",
+          "sha256": "e15393bfe27add20cd02b07cf7a3ffe045f3c33b41e7ee457ee8f355506a7943",
+          "path": "reports/2026-10-15/r1/articles/model-serving-gpu.md"
+        }
+      ],
+      "poster": null,
+      "path": "reports/2026-10-15/r1/"
+    },
+    {
+      "schema_version": "1.0",
       "date": "2026-11-01",
       "revision": 1,
       "title": "AI Infra 晨报 · 2026-11-01",
@@ -875,6 +893,21 @@
       "article_id": "model-serving-gpu",
       "fingerprint": "3a302f1ab84c0f86077c59fc91ec615cab5f76daf0a2290c998148c0777ae546",
       "date": "2026-10-14",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-15-arxiv-2610-17528-v1",
+      "event_key": "arxiv-2610-17528-v1",
+      "title": "ATTUNE 自动调参与独立验收",
+      "summary": "公开测量、参数核对和记账可借鉴；预算准入和发布门禁不完整，短 loss 检查有漏检。",
+      "source_urls": [
+        "https://arxiv.org/abs/2610.17528v1",
+        "https://github.com/amazon-science/attune/tree/b1adde2f741353574ee6794b9f3b2c31516ccd94"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "180c004eb4a1471dffd5bd2cca155ad6c1feea455e06341a0308ef001dbd8863",
+      "date": "2026-10-15",
       "revision": 1
     },
     {
