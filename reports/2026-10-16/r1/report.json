@@ -1,0 +1,42 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-10-16",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-10-16",
+  "subtitle": "历史整理｜CPU 会话增量分词，先省掉重复工作",
+  "articles": [
+    {
+      "id": "model-serving-gpu",
+      "title": "模型服务与 GPU 超配｜Delta Tokenizer：历史只追加一点，分词不必全部重做",
+      "summary": "稳定前缀与尾部重编码面向 CPU 会话状态；与 GPU 分词是不同取舍，高并发不保证任一路线更快。",
+      "sha256": "93832e7fa4225d9aefb226d37d2b5ba680e3a0dca0c1c446b0479bdb04305825"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-10-16-arxiv-2610-19801-v1",
+      "event_key": "arxiv-2610-19801-v1",
+      "title": "Delta Tokenizer CPU 增量分词",
+      "summary": "复用稳定会话前缀并重算尾部，冷长文与 GPU 主导负载收益有限。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.19801v1"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-10-16-toktier-release-v0-3-0",
+      "event_key": "toktier-release-v0-3-0",
+      "title": "TokTier 0.3.0 接入实现",
+      "summary": "提供 SGLang adapter 与 CPU 池；优化需主动开启，append_patch 仍有全量交接成本。",
+      "source_urls": [
+        "https://github.com/asu-idi/toktier/releases/tag/v0.3.0",
+        "https://github.com/asu-idi/toktier/blob/v0.3.0/docs/releases/v0.3.0.md"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    }
+  ],
+  "images": [],
+  "poster": null
+}
