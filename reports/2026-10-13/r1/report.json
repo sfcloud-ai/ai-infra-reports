@@ -1,0 +1,43 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-10-13",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-10-13",
+  "subtitle": "历史整理｜分词与量化都要算完整请求账",
+  "articles": [
+    {
+      "id": "model-serving-gpu",
+      "title": "模型服务与 GPU 超配｜GraphTok 与 AlignQuant：局部更快，服务未必更快",
+      "summary": "GPU 分词须计入共享 GPU 争用；混合量化的生成吞吐、首字延迟、质量和显存不能混成一个收益。",
+      "sha256": "d7812a89b3cb87d68d662325726fd0bf2d53f5293d37ac2576f783166286c8c5"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-10-13-arxiv-2610-13325-v1",
+      "event_key": "arxiv-2610-13325-v1",
+      "title": "GraphTok GPU 分词",
+      "summary": "模拟后端前端容量不可换算模型吞吐；强 CPU 热缓存与同卡争用是必要对照。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.13325v1",
+        "https://github.com/Msiavashi/GraphTok/tree/8bd40e1e9d09cc684f2579415072db9516e36b3b"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-10-13-arxiv-2610-07457-v1",
+      "event_key": "arxiv-2610-07457-v1",
+      "title": "AlignQuant 混合精度执行",
+      "summary": "4090 作者结果生成更快但首字更慢；当期许可及引擎接入仍待明确。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.07457v1",
+        "https://github.com/HanzhiZhang-Ulrica/AlignQuant/tree/0ad8206971fbfe0e5a6c573de3bae96d572e46d7"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    }
+  ],
+  "images": [],
+  "poster": null
+}
