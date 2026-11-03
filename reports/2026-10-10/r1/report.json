@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-10-10",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-10-10",
+  "subtitle": "历史整理｜预算兑现与请求取消，都要观察真正完成的工作",
+  "articles": [
+    {
+      "id": "model-serving-gpu",
+      "title": "模型服务与 GPU 超配｜按 GPU 时间分配预算，先区分可恢复任务",
+      "summary": "Ai2 的调度实践改善预算与排队，资源占用率不能当计算效率，常驻服务也不能直接套用抢占。",
+      "sha256": "ffa2fad2c8f17ddb88eaf71722353e8338629aec1cf7e44fd5fd04bfa7eab159"
+    },
+    {
+      "id": "inference-engines",
+      "title": "推理引擎每日变动｜客户端断开后，引擎里的请求停了吗",
+      "summary": "vLLM Rust gRPC 的取消提案同时监听输出和断连，复用已有引擎取消机制。",
+      "sha256": "806e9969f0ad612fcc0b0e2d55b3c9e7a6c53edf0d21547cc47a65337ac27438"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-10-10-ai2-impactful-scheduling-202610",
+      "event_key": "ai2-impactful-scheduling-202610",
+      "title": "Ai2 GPU 时间预算调度",
+      "summary": "以可恢复任务的预算兑现和排队为重点，98% 占用率不代表算力效率提高。",
+      "source_urls": [
+        "https://huggingface.co/blog/allenai/impactful-scheduling"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-10-10-vllm-pr-60922",
+      "event_key": "vllm-pr-60922",
+      "title": "Rust gRPC 断连取消提案",
+      "summary": "在无输出时也监听断连并传播取消，当期尚未合并，适用 Rust gRPC 路径。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/60922"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    }
+  ],
+  "images": [],
+  "poster": null
+}
