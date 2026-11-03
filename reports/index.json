@@ -186,6 +186,24 @@
     },
     {
       "schema_version": "1.0",
+      "date": "2026-10-12",
+      "revision": 1,
+      "title": "AI Infra 晨报 · 2026-10-12",
+      "subtitle": "历史整理｜请求不能失踪，闲置显存应在加载边界归还",
+      "articles": [
+        {
+          "id": "inference-engines",
+          "title": "推理引擎每日变动｜健康检查之外，还要守住请求与显存生命周期",
+          "summary": "SGLang 补回抢占后的重新入队；vLLM 在加载边界清理闲置 allocator 缓存，均不能仅凭合入判断镜像已包含。",
+          "sha256": "5e47a758f04a806548713f6735826c40ae1c1d0b782dd0211f59eae6c68a02bf",
+          "path": "reports/2026-10-12/r1/articles/inference-engines.md"
+        }
+      ],
+      "poster": null,
+      "path": "reports/2026-10-12/r1/"
+    },
+    {
+      "schema_version": "1.0",
       "date": "2026-11-01",
       "revision": 1,
       "title": "AI Infra 晨报 · 2026-11-01",
@@ -716,6 +734,37 @@
       "article_id": "inference-engines",
       "fingerprint": "8afa4baa707cf6a1a4a52c6c447fa280b35f7d673e60dfef83582ede166dcb13",
       "date": "2026-10-11",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-12-sglang-pr-43298",
+      "event_key": "sglang-pr-43298",
+      "title": "SGLang 抢占请求重新入队",
+      "summary": "补齐 no-admit 提前返回路径，防止旧请求离开所有队列。",
+      "source_urls": [
+        "https://github.com/sgl-project/sglang/commit/448759b2358eb38e2a244fbe7d5a293a69dd314c",
+        "https://github.com/sgl-project/sglang/pull/43298"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "5f1cba58168c86b6c3b5a308a53821d680707f6836aab6169b43332278a8b2cf",
+      "date": "2026-10-12",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-12-vllm-pr-57516",
+      "event_key": "vllm-pr-57516",
+      "title": "vLLM 加载边界归还闲置缓存",
+      "summary": "清理临时权重处理后的 allocator 缓存，不释放活跃权重或 KV。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/commit/ef42b4385f8512567703692a5bfbb9c0edc59c89",
+        "https://github.com/vllm-project/vllm/issues/57440",
+        "https://github.com/vllm-project/vllm/pull/57516"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "7594063012fff8210e8203a239322dd42c27fc7385bc4fe1c60e94a21d70dd85",
+      "date": "2026-10-12",
       "revision": 1
     },
     {
