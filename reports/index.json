@@ -28,6 +28,24 @@
     },
     {
       "schema_version": "1.0",
+      "date": "2026-10-04",
+      "revision": 1,
+      "title": "AI Infra 晨报 · 2026-10-04",
+      "subtitle": "历史整理｜把局部优化兑现为容量，必须同时记录体验和维护成本",
+      "articles": [
+        {
+          "id": "model-serving-gpu",
+          "title": "模型服务与 GPU 超配｜局部优化怎样兑现为交付收益",
+          "summary": "从诊断、请求集中到专家副本与通信运行时，统一核算延迟、显存和维护成本。",
+          "sha256": "0aff16ea931794c4cb63bbe14082d0256e2224ae8ce720f6c1380d915b65d1c0",
+          "path": "reports/2026-10-04/r1/articles/model-serving-gpu.md"
+        }
+      ],
+      "poster": null,
+      "path": "reports/2026-10-04/r1/"
+    },
+    {
+      "schema_version": "1.0",
       "date": "2026-11-01",
       "revision": 1,
       "title": "AI Infra 晨报 · 2026-11-01",
@@ -297,6 +315,63 @@
       "article_id": "inference-engines",
       "fingerprint": "f9e848fcc654db331d40b9cab22020cc87548540a714be6717680b9694df3a83",
       "date": "2026-10-03",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-04-arxiv-2609-40247-v1",
+      "event_key": "arxiv-2609-40247-v1",
+      "title": "Herschel 按需诊断闭环",
+      "summary": "诊断与修复验证串联，但采集扰动和修改维护仍需计价。",
+      "source_urls": [
+        "https://arxiv.org/html/2609.40247v1"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "cce6a8213231a67a631f40ffc85c7842f11576dfc703362976447cd3f80a045d",
+      "date": "2026-10-04",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-04-arxiv-2609-33224-v1",
+      "event_key": "arxiv-2609-33224-v1",
+      "title": "PackServe 用延迟余量集中请求",
+      "summary": "实例数下降同时伴随 TTFT 增长，活跃 GPU 小时与付费容量需要区分。",
+      "source_urls": [
+        "https://arxiv.org/html/2609.33224v1"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "eb539f51d717fbc41bb1acfda0340902cf7cbf03548c13085757c4de94085b56",
+      "date": "2026-10-04",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-04-arxiv-2610-00671-v1",
+      "event_key": "arxiv-2610-00671-v1",
+      "title": "MegaFlux 动态专家副本",
+      "summary": "专家复制需显式计算 HBM 和传输代价，层级与端到端实验分开解释。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.00671v1"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "1c7adcc7661ccb18a3f4405bd4097f730045a8fd2f846a8509f3de055562bd6c",
+      "date": "2026-10-04",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-04-arxiv-2609-36954-v1",
+      "event_key": "arxiv-2609-36954-v1",
+      "title": "Purlin 集合通信分层",
+      "summary": "公开实现支持后端试验，现有规模内证据不能直接外推跨节点。",
+      "source_urls": [
+        "https://arxiv.org/html/2609.36954v1",
+        "https://github.com/purlin-project/purlin"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "a9f903b47693be30f9aa895cafe5b0b3b2d9fa3fa45d2ac20eea30084bba0389",
+      "date": "2026-10-04",
       "revision": 1
     },
     {
