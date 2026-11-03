@@ -1,0 +1,43 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-10-21",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-10-21",
+  "subtitle": "历史整理｜通信诊断与共享服务，都要明确故障边界",
+  "articles": [
+    {
+      "id": "model-serving-gpu",
+      "title": "模型服务与 GPU 超配｜看见等待，再定义怎样排队",
+      "summary": "SigmaTrace 补充 GPU 发起通信观测；llm-d 1.0 将公平排队与故障取舍纳入交付验证。",
+      "sha256": "c0d412ef25b601d229966ce4df3189b045fdf9cd8516c62a45d5d5d81a177235"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-10-21-arxiv-2610-24328-v1",
+      "event_key": "arxiv-2610-24328-v1",
+      "title": "SigmaTrace：按需观察 GPU 发起通信",
+      "summary": "不同追踪模式开销差异显著，2.13 倍是流量偏斜。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.24328v1",
+        "https://github.com/ParCoreLab/SigmaTrace/tree/8d8141a656c9e07003ed09348f07939d74b40eb6"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-10-21-llm-d-release-v1-0-0",
+      "event_key": "llm-d-release-v1-0-0",
+      "title": "llm-d 1.0：共享服务的队列和故障边界",
+      "summary": "关注内存队列、FailOpen 与多副本公平性，不外推宣传成本倍数。",
+      "source_urls": [
+        "https://github.com/llm-d/llm-d/releases/tag/v1.0.0",
+        "https://github.com/llm-d/llm-d/blob/v1.0.0/docs/architecture/router/flow-control.md"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    }
+  ],
+  "images": [],
+  "poster": null
+}
