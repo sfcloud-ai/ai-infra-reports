@@ -1,0 +1,52 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-10-29",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-10-29",
+  "subtitle": "历史整理｜未正式入选：寿命、解码与短步收益不等于完整交付",
+  "articles": [
+    {
+      "id": "model-serving-gpu",
+      "title": "模型服务与 GPU 超配｜筛选复盘：Gandalf、ZipFusion 与 HyScale 的证据缺口",
+      "summary": "保留三项研究方向，但未正式入选；完整实现、基线和全流程收益仍不足。",
+      "sha256": "c6c17483be8db78c6e8ebb9f7701fa63bdb02e863aecd7125476ce3a59df04f0"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-10-29-arxiv-2610-30791-v1",
+      "event_key": "arxiv-2610-30791-v1",
+      "title": "Gandalf：按复用与磨损成本选择落盘",
+      "summary": "未正式入选；寿命倍数来自回放和写入量模型。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.30791v1"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-10-29-arxiv-2610-33719-v1",
+      "event_key": "arxiv-2610-33719-v1",
+      "title": "ZipFusion：融合无损 KV 解压",
+      "summary": "未正式入选；排除预填充和初次压缩的解码测试不能代表服务收益。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.33719v1"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-10-29-arxiv-2610-32057-v2",
+      "event_key": "arxiv-2610-32057-v2",
+      "title": "HyScale：减少长上下文训练重复打分",
+      "summary": "未正式入选；大规模单步计时不等于同质量训练成本。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.32057v2"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    }
+  ],
+  "images": [],
+  "poster": null
+}

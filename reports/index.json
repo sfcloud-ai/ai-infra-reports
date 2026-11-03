@@ -477,6 +477,110 @@
     },
     {
       "schema_version": "1.0",
+      "date": "2026-10-27",
+      "revision": 1,
+      "title": "AI Infra 晨报 · 2026-10-27",
+      "subtitle": "历史整理｜减少存储等待与迁移冗余，先用现成能力作对照",
+      "articles": [
+        {
+          "id": "model-serving-gpu",
+          "title": "模型服务与 GPU 超配｜KVStream 与 TrainBridge 的条件性增量",
+          "summary": "跨层动态读取和编译证据迁移各有价值，不能忽略已有缓存与目标原生执行栈。",
+          "sha256": "0f06c8d0a02bd943b8dc3252e041aa86f72e3c514dfaab5fa4e0e8c14b817258",
+          "path": "reports/2026-10-27/r1/articles/model-serving-gpu.md"
+        }
+      ],
+      "poster": null,
+      "path": "reports/2026-10-27/r1/"
+    },
+    {
+      "schema_version": "1.0",
+      "date": "2026-10-28",
+      "revision": 1,
+      "title": "AI Infra 晨报 · 2026-10-28",
+      "subtitle": "历史整理｜过载时还能响应，不等于仍按约交付",
+      "articles": [
+        {
+          "id": "model-serving-gpu",
+          "title": "模型服务与 GPU 超配｜HiLO 把降级变成预先验证的配置",
+          "summary": "优先复用限流与扩缩容，仅在确有跨服务失配和允许降级空间时评估联合策略。",
+          "sha256": "7e1e8f628712ecb56e5c48e9e28cd39d5deb3d862a3b8ad44bad92f6c181d52a",
+          "path": "reports/2026-10-28/r1/articles/model-serving-gpu.md"
+        }
+      ],
+      "poster": null,
+      "path": "reports/2026-10-28/r1/"
+    },
+    {
+      "schema_version": "1.0",
+      "date": "2026-10-29",
+      "revision": 1,
+      "title": "AI Infra 晨报 · 2026-10-29",
+      "subtitle": "历史整理｜未正式入选：寿命、解码与短步收益不等于完整交付",
+      "articles": [
+        {
+          "id": "model-serving-gpu",
+          "title": "模型服务与 GPU 超配｜筛选复盘：Gandalf、ZipFusion 与 HyScale 的证据缺口",
+          "summary": "保留三项研究方向，但未正式入选；完整实现、基线和全流程收益仍不足。",
+          "sha256": "c6c17483be8db78c6e8ebb9f7701fa63bdb02e863aecd7125476ce3a59df04f0",
+          "path": "reports/2026-10-29/r1/articles/model-serving-gpu.md"
+        }
+      ],
+      "poster": null,
+      "path": "reports/2026-10-29/r1/"
+    },
+    {
+      "schema_version": "1.0",
+      "date": "2026-10-30",
+      "revision": 1,
+      "title": "AI Infra 晨报 · 2026-10-30",
+      "subtitle": "历史整理｜工具返回前的调度，与仿真到真机的同制品评测",
+      "articles": [
+        {
+          "id": "model-serving-gpu",
+          "title": "模型服务与 GPU 超配｜TAO 将工具返回纳入副本选择",
+          "summary": "调度器需要工具状态才能预判下一轮，缓存价值与容量必须一起看。",
+          "sha256": "4a0a5fa4d2503de1db9c6f16458ca238406fb41e57406abf0014c64f920b58e3",
+          "path": "reports/2026-10-30/r1/articles/model-serving-gpu.md"
+        },
+        {
+          "id": "embodied-training",
+          "title": "制造业具身训练｜同一镜像从仿真走到真机",
+          "summary": "Nebius × Positronic 将固定制品、资源上限和推理耗时纳入评测，比赛指标仍不等于工业可靠性。",
+          "sha256": "eb83b758a0787877ad7e6e0a58a277629e4ed9790ec716a16b2d189eea20c9b4",
+          "path": "reports/2026-10-30/r1/articles/embodied-training.md"
+        }
+      ],
+      "poster": null,
+      "path": "reports/2026-10-30/r1/"
+    },
+    {
+      "schema_version": "1.0",
+      "date": "2026-10-31",
+      "revision": 1,
+      "title": "AI Infra 晨报 · 2026-10-31",
+      "subtitle": "历史整理｜缓存恢复、投机长度与休眠成本，连同引擎故障边界一起验收",
+      "articles": [
+        {
+          "id": "model-serving-gpu",
+          "title": "模型服务与 GPU 超配｜命中之后、休眠之后，还剩多少等待",
+          "summary": "FlatCake、TableTune 与 PhOSv1 分别优化恢复、核验和上下文开销，收益需放回完整服务口径。",
+          "sha256": "aa91b487a8c3bca4a56bb00dca332d111b2dc79ece96e40348e94dd6cd13ea6e",
+          "path": "reports/2026-10-31/r1/articles/model-serving-gpu.md"
+        },
+        {
+          "id": "inference-engines",
+          "title": "推理引擎每日变动｜备份内存、缓存导入与不可恢复请求",
+          "summary": "保留 10 月 31 日截止时状态：三项已合并变动与一项仍 open 提案，不反投射后续发布。",
+          "sha256": "961434032e9742db9a76626f63117d4abf604ef8e97ccb818224e9d4c17880c0",
+          "path": "reports/2026-10-31/r1/articles/inference-engines.md"
+        }
+      ],
+      "poster": null,
+      "path": "reports/2026-10-31/r1/"
+    },
+    {
+      "schema_version": "1.0",
       "date": "2026-11-01",
       "revision": 1,
       "title": "AI Infra 晨报 · 2026-11-01",
@@ -1444,6 +1548,225 @@
       "article_id": "small-model-status",
       "fingerprint": "622ae7f0cb1eae53dcb0c264bdc875e229337a54a700e0ff333e1b02761fffd3",
       "date": "2026-10-26",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-27-arxiv-2610-31827-v1",
+      "event_key": "arxiv-2610-31827-v1",
+      "title": "KVStream：跨层动态分担读取",
+      "summary": "保留 Mooncake 强基线、双写成本及低复用反例，不称首次异步缓存。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.31827v1",
+        "https://docs.lmcache.ai/kv_cache/async_loading.html",
+        "https://github.com/kvcache-ai/Mooncake"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "e44ce9ee5cdfc38216bbd24e72d65711fc4459496e15b6beb9fc4371edf1a846",
+      "date": "2026-10-27",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-27-arxiv-2610-29171-v1",
+      "event_key": "arxiv-2610-29171-v1",
+      "title": "TrainBridge：用编译差异指导 NPU 优化",
+      "summary": "固定预算下优于普通代理调优结果，但未与成熟 NPU 原生训练栈比较，公开案例也不完整。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.29171v1",
+        "https://github.com/YChen-zzz/TrainBridge/tree/d309c2cd6b78ee53fd3668c56bf6cc6a49564009"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "2c9bc117af4d50801f53d2c9bea6a05edbea4088224a2554b87d7c768cd8b2c4",
+      "date": "2026-10-27",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-28-arxiv-2610-34844-v1",
+      "event_key": "arxiv-2610-34844-v1",
+      "title": "HiLO：预先验证跨服务降级",
+      "summary": "生产可用性伴随质量取舍，复用既有保护与扩容，避免不必要控制器。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.34844v1",
+        "https://kubernetes.io/docs/concepts/workloads/autoscaling/horizontal-pod-autoscale/",
+        "https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/operations/overload_manager"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "34096de3153bc15d92aa6dc7978923974ab4a9421e4b8ffcad0a7f5bbfa16fe5",
+      "date": "2026-10-28",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-29-arxiv-2610-30791-v1",
+      "event_key": "arxiv-2610-30791-v1",
+      "title": "Gandalf：按复用与磨损成本选择落盘",
+      "summary": "未正式入选；寿命倍数来自回放和写入量模型。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.30791v1"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "3ca36f27dd9f21553723d585a80fa8d4c8568eadb66c489328d0e1b2b19e35ea",
+      "date": "2026-10-29",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-29-arxiv-2610-33719-v1",
+      "event_key": "arxiv-2610-33719-v1",
+      "title": "ZipFusion：融合无损 KV 解压",
+      "summary": "未正式入选；排除预填充和初次压缩的解码测试不能代表服务收益。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.33719v1"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "c38647fc17219ed0a9f7bf10a2fc9580c37424f4466718a12055deed804f0ad6",
+      "date": "2026-10-29",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-29-arxiv-2610-32057-v2",
+      "event_key": "arxiv-2610-32057-v2",
+      "title": "HyScale：减少长上下文训练重复打分",
+      "summary": "未正式入选；大规模单步计时不等于同质量训练成本。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.32057v2"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "c2e6a17377bcbba3bedfc03ab6241c27db00ec6828adb586f21c3818f4909822",
+      "date": "2026-10-29",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-30-arxiv-2610-37230-v1",
+      "event_key": "arxiv-2610-37230-v1",
+      "title": "TAO：工具感知联合调度",
+      "summary": "以缓存价值、工具返回和副本容量共同选会话与位置；有负收益反例。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.37230v1"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "4ff76f1f33dd1975bc1d2cf3ab97166c83dbe5752f892abf645b9cb78df05459",
+      "date": "2026-10-30",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-30-nebius-positronic-physical-ai-competition-2026-10-26",
+      "event_key": "nebius-positronic-physical-ai-competition-2026-10-26",
+      "title": "Nebius × Positronic：同制品仿真到真机",
+      "summary": "固定容器和资源，正式计时含推理；相关性检查与工业可靠性有明确边界。",
+      "source_urls": [
+        "https://competition.phail.ai/rules",
+        "https://positronic.ro/nebius-positronic-physical-ai-competition"
+      ],
+      "update_of": null,
+      "article_id": "embodied-training",
+      "fingerprint": "975176d99b5cbff98a0b57b7fdd4a7a55b2a90116906cae25a73267dd8ce8468",
+      "date": "2026-10-30",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-31-arxiv-2610-38355-v1",
+      "event_key": "arxiv-2610-38355-v1",
+      "title": "FlatCake：平级缓存与合并恢复",
+      "summary": "区分主实验与 GDS 对照、总 token 吞吐与生成速度。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.38355v1",
+        "https://huggingface.co/datasets/semianalysisai/cc-traces-weka-062126"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "c0d519e6b281e02362a2dfabf47d5ea134bb8ebf084ef024ee9da2eb467bf7ab",
+      "date": "2026-10-31",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-31-arxiv-2610-38968-v1",
+      "event_key": "arxiv-2610-38968-v1",
+      "title": "TableTune：实测投机草稿长度表",
+      "summary": "完整 CUDA Graph 和长度切换行为是条件，仍需关闭投机基线。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.38968v1",
+        "https://github.com/asm582/tabletune"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "150e5738c4607f48c7e98a03cbb9a0fa4706f1a3a99b7a3ac1211f8f6bb954c4",
+      "date": "2026-10-31",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-31-arxiv-2610-39999-v1",
+      "event_key": "arxiv-2610-39999-v1",
+      "title": "PhOSv1：共享休眠模型 context",
+      "summary": "减少 context 而非共享模型权重；互信与无 CUDA Graph 是当期边界。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.39999v1",
+        "https://github.com/blitz-serving/PhoenixOSv1"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "b39c2a32c0778acd5ad25dce61ad70e568dea846d075d288fd343ec48aa460cf",
+      "date": "2026-10-31",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-31-vllm-pr-64630",
+      "event_key": "vllm-pr-64630",
+      "title": "vLLM SleepMode 精确大小主机备份",
+      "summary": "10/30 已合并，稳定版未核实；GB200 测试不能外推其他硬件。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/64630"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "b2a4ed9bfe4668a7bd67cf3e0df891bd3dee9604a8a3c13f19cca395c63141a0",
+      "date": "2026-10-31",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-31-vllm-pr-62979",
+      "event_key": "vllm-pr-62979",
+      "title": "vLLM HiSparse 预留在途导入页",
+      "summary": "10/30 已合并；修复并发导入死锁，容量不足仍会等待。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/62979"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "90b3a148bd3d9b85f72baed69603e4829c40f1ef09ca3cf66442a7830fc83827",
+      "date": "2026-10-31",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-31-sglang-pr-47521",
+      "event_key": "sglang-pr-47521",
+      "title": "SGLang 无法恢复的 PD 请求返回 503",
+      "summary": "10/30 已合并；暴露失败不等于完整恢复。",
+      "source_urls": [
+        "https://github.com/sgl-project/sglang/pull/47521"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "bd0b3a73796c28922f4179dea2eb8bba05d04735c2f02c38df9bd52a76c4fe57",
+      "date": "2026-10-31",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-31-deepinfer-pr-251",
+      "event_key": "deepinfer-pr-251",
+      "title": "DeepInfer 超池容量分配检查提案",
+      "summary": "截至 10/31 00:00 UTC 仍 open，不记为已发布修复。",
+      "source_urls": [
+        "https://github.com/deepseek-ai/DeepInfer/pull/251"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "10c3ac2c106dccc3db20871cefc8902b2a2b40e3f202eff979133c0de8f59195",
+      "date": "2026-10-31",
       "revision": 1
     },
     {

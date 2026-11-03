@@ -1,0 +1,44 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-10-27",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-10-27",
+  "subtitle": "历史整理｜减少存储等待与迁移冗余，先用现成能力作对照",
+  "articles": [
+    {
+      "id": "model-serving-gpu",
+      "title": "模型服务与 GPU 超配｜KVStream 与 TrainBridge 的条件性增量",
+      "summary": "跨层动态读取和编译证据迁移各有价值，不能忽略已有缓存与目标原生执行栈。",
+      "sha256": "0f06c8d0a02bd943b8dc3252e041aa86f72e3c514dfaab5fa4e0e8c14b817258"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-10-27-arxiv-2610-31827-v1",
+      "event_key": "arxiv-2610-31827-v1",
+      "title": "KVStream：跨层动态分担读取",
+      "summary": "保留 Mooncake 强基线、双写成本及低复用反例，不称首次异步缓存。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.31827v1",
+        "https://github.com/kvcache-ai/Mooncake",
+        "https://docs.lmcache.ai/kv_cache/async_loading.html"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-10-27-arxiv-2610-29171-v1",
+      "event_key": "arxiv-2610-29171-v1",
+      "title": "TrainBridge：用编译差异指导 NPU 优化",
+      "summary": "固定预算下优于普通代理调优结果，但未与成熟 NPU 原生训练栈比较，公开案例也不完整。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.29171v1",
+        "https://github.com/YChen-zzz/TrainBridge/tree/d309c2cd6b78ee53fd3668c56bf6cc6a49564009"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    }
+  ],
+  "images": [],
+  "poster": null
+}

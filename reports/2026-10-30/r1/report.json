@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-10-30",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-10-30",
+  "subtitle": "历史整理｜工具返回前的调度，与仿真到真机的同制品评测",
+  "articles": [
+    {
+      "id": "model-serving-gpu",
+      "title": "模型服务与 GPU 超配｜TAO 将工具返回纳入副本选择",
+      "summary": "调度器需要工具状态才能预判下一轮，缓存价值与容量必须一起看。",
+      "sha256": "4a0a5fa4d2503de1db9c6f16458ca238406fb41e57406abf0014c64f920b58e3"
+    },
+    {
+      "id": "embodied-training",
+      "title": "制造业具身训练｜同一镜像从仿真走到真机",
+      "summary": "Nebius × Positronic 将固定制品、资源上限和推理耗时纳入评测，比赛指标仍不等于工业可靠性。",
+      "sha256": "eb83b758a0787877ad7e6e0a58a277629e4ed9790ec716a16b2d189eea20c9b4"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-10-30-arxiv-2610-37230-v1",
+      "event_key": "arxiv-2610-37230-v1",
+      "title": "TAO：工具感知联合调度",
+      "summary": "以缓存价值、工具返回和副本容量共同选会话与位置；有负收益反例。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.37230v1"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-10-30-nebius-positronic-physical-ai-competition-2026-10-26",
+      "event_key": "nebius-positronic-physical-ai-competition-2026-10-26",
+      "title": "Nebius × Positronic：同制品仿真到真机",
+      "summary": "固定容器和资源，正式计时含推理；相关性检查与工业可靠性有明确边界。",
+      "source_urls": [
+        "https://positronic.ro/nebius-positronic-physical-ai-competition",
+        "https://competition.phail.ai/rules"
+      ],
+      "update_of": null,
+      "article_id": "embodied-training"
+    }
+  ],
+  "images": [],
+  "poster": null
+}
