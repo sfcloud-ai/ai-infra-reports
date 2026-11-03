@@ -9,6 +9,7 @@ import {installNoticeRecovery} from "../scripts/notice-recovery.mjs";
 import {REMOTE_JOURNAL_SCHEMA} from "../scripts/remote-native-journal.mjs";
 import {installRecoverySuccessor} from '../scripts/recovery-control-successor.mjs';
 import {digest} from "../scripts/archive.mjs";
+import {SCHEDULED_SCHEMA,installScheduledTables} from '../scripts/scheduled-delivery-state.mjs';
 import {planReadyMigration,stageReadyMigration,verifyReadyMigration} from "../scripts/ready-migration.mjs";
 async function fixture(){
  const root=await mkdtemp(path.join(os.tmpdir(),"readiness-migration-")),oldDir=path.join(root,"old");await mkdir(oldDir,{mode:0o700});
@@ -18,6 +19,23 @@ async function fixture(){
  state.admit({request_id:"original-report-01",source_ts:"1793448000.000001",hash:digest(bytes)},bytes);state.move("original-report-01","received","receipt_sent",{commit:"a".repeat(40),receipt_ts:"1793448500.000001"});state.close();await chmod(file,0o600);
  return {root,file,before,after,clean:()=>rm(root,{recursive:true,force:true})};
 }
+test('scheduler tables survive staging while pending handoffs and uncertain replies block it',async()=>{
+ const f=await fixture();try{
+  const edit=fn=>{const s=new HandoffState(f.file,handoffScope(f.before));try{fn(s.db);}finally{s.close();}};
+  edit(db=>{
+   installScheduledTables(db,Object.keys(SCHEDULED_SCHEMA));
+   db.exec("INSERT INTO scheduled_bridge_scope VALUES(1,'scope'); INSERT INTO scheduled_handoffs VALUES('original-report-01','binding','observed',NULL,1)");
+  });
+  await assert.rejects(()=>planReadyMigration(f.before,f.after),/Unresolved scheduled/);
+  edit(db=>db.exec("UPDATE scheduled_handoffs SET phase='complete'; INSERT INTO scheduled_status_replies VALUES('1793448001.000001','hash','unknown','receipt',NULL,0)"));
+  await assert.rejects(()=>planReadyMigration(f.before,f.after),/Unresolved scheduled/);
+  edit(db=>db.exec("UPDATE scheduled_status_replies SET phase='sent',reply_ts='1793448002.000001'"));
+  const plan=await planReadyMigration(f.before,f.after);await stageReadyMigration(f.before,f.after,plan.data_sha256);
+  assert.equal((await verifyReadyMigration(f.before,f.after,plan.data_sha256)).verified,true);
+  edit(db=>db.exec('ALTER TABLE scheduled_handoffs ADD COLUMN unexpected TEXT'));
+  await assert.rejects(()=>planReadyMigration(f.before,f.after),/scheduled delivery schema/);
+ }finally{await f.clean();}
+});
 test("staging preserves original bytes, jobs and scope; copied state accepts ready config only",async()=>{
  const f=await fixture();try{
   const original=await readFile(f.file),plan=await planReadyMigration(f.before,f.after);

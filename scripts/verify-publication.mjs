@@ -9,6 +9,12 @@ const requireThat=(ok,message)=>{if(!ok)throw Error(message);};
 const object=v=>v!==null&&typeof v==="object"&&!Array.isArray(v);
 const same=(a,b)=>JSON.stringify(Object.entries(a).sort())===JSON.stringify(Object.entries(b).sort());
 const exact=(v,keys)=>object(v)&&Object.keys(v).sort().join()===keys.sort().join();
+// Opaque, process-local capability. Only a completed verification below can
+// populate it; serialized proofs and caller-provided maps are never trusted.
+const sourceCaches=new WeakMap();
+export function createPublicationSourceCache(){
+ const token=Object.freeze({});sourceCaches.set(token,new Map());return token;
+}
 async function bytesAt(url,limit,fetcher,type){
  const response=await fetcher(url,{redirect:"error",signal:AbortSignal.timeout(15000),cache:"no-store"});
  requireThat(response.ok,"Publication resource unavailable");
@@ -50,6 +56,14 @@ async function sourceAt(commit,slug,fetcher){
  requireThat(entries.length===Object.keys(sources).length&&sha(sources["report.json"]),"Missing or ambiguous source edition");
  return sources;
 }
+// Historical bookkeeping only: validates an immutable source snapshot, never
+// claims that a webpage exists or that a notification may be sent.
+export async function verifyImmutableSource(commit,date,revision,files,fetcher=fetch){
+ requireThat(sha(commit)&&typeof date==='string'&&/^\d{4}-\d\d-\d\d$/.test(date)&&Number.isSafeInteger(revision)&&revision>0&&files instanceof Map,'Exact immutable source identity required');
+ const slug=`${date}/r${revision}`,sources=await sourceAt(commit,slug,fetcher);
+ requireThat(same(sources,editionSources(files,slug)),'Historical bundle differs from source commit');
+ return {source_commit:commit,edition:slug,source_only:true,delivery_allowed:false};
+}
 export async function verifyPublicationUnchanged(proof,fetcher=fetch){
  const before=await manifest(fetcher);
  requireThat(before.hash===proof.publication_sha256&&before.value.commit===proof.deployment_commit,"Deployment changed during publication verification");
@@ -58,16 +72,21 @@ export async function verifyPublicationUnchanged(proof,fetcher=fetch){
  const after=await manifest(fetcher);
  requireThat(after.hash===before.hash,"Deployment changed during publication verification");
 }
-export async function verifyPublication(expectedCommit,date,revision,fetcher=fetch,expectedFiles){
+export async function verifyPublication(expectedCommit,date,revision,fetcher=fetch,expectedFiles,sourceCache){
  requireThat(sha(expectedCommit)&&typeof date==="string"&&/^\d{4}-\d\d-\d\d$/.test(date)&&Number.isSafeInteger(revision)&&revision>0,"Exact publication identity required");
  const slug=`${date}/r${revision}`,published=await manifest(fetcher),m=published.value;
  requireThat(m.reports.includes(slug),"Publication is stale or missing the edition");
  const artifact=await editionProof(slug,m.commit,fetcher),edition=artifact.value;
- if(m.commit!==expectedCommit){
+ const cache=sourceCache===undefined?undefined:sourceCaches.get(sourceCache);
+ requireThat(sourceCache===undefined||cache,"Invalid publication source cache");
+ // A different deployment must prove ancestry again. No live Pages response,
+ // bundle check, image check or freshness decision is cached.
+ const key=`${expectedCommit}:${slug}:${m.commit}`,cached=cache?.get(key);
+ if(!cached&&m.commit!==expectedCommit){
   const {value:c}=await documentAt(`${api}/compare/${expectedCommit}...${m.commit}?per_page=1`,16*1024*1024,fetcher);
   requireThat(c.status==="ahead"&&c.base_commit?.sha===expectedCommit&&c.merge_base_commit?.sha===expectedCommit&&c.behind_by===0&&Number.isSafeInteger(c.ahead_by)&&c.ahead_by>0,"Deployment is not a descendant of the report source commit");
  }
- const sources=await sourceAt(expectedCommit,slug,fetcher);
+ const sources=cached??await sourceAt(expectedCommit,slug,fetcher);
  requireThat(same(sources,edition.sources),"Published edition source differs from the report source commit");
  if(expectedFiles)requireThat(same(sources,editionSources(expectedFiles,slug)),"Report bundle differs from the source commit");
  const paths=[slug,...Object.keys(sources).filter(p=>p.startsWith("articles/")).map(p=>slug+"/"+p.slice(9,-3))].sort();
@@ -78,6 +97,11 @@ export async function verifyPublication(expectedCommit,date,revision,fetcher=fet
   requireThat(html.includes(`data-report-id="${path}"`)&&(path===slug||html.includes("data-report-sources")),"Unexpected report page identity/evidence");
  }
  const proof={publication_status:"verified",commit:expectedCommit,deployment_commit:m.commit,edition:slug,publication_sha256:published.hash,edition_proof_sha256:artifact.hash,url:`${origin}/${slug}/`,checked_at:new Date().toISOString(),delivery_allowed:false,reason:"Slack and WeCom receipts remain separate"};
- await verifyPublicationUnchanged(proof,fetcher);return proof;
+ await verifyPublicationUnchanged(proof,fetcher);
+ if(cache&&!cached){
+  if(cache.size>=32)cache.delete(cache.keys().next().value);
+  cache.set(key,Object.freeze({...sources}));
+ }
+ return proof;
 }
 if(import.meta.url===pathToFileURL(process.argv[1]||"").href)console.log(JSON.stringify(await verifyPublication(process.argv[2],process.argv[3],Number(process.argv[4]))));

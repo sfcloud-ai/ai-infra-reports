@@ -1,3 +1,4 @@
+import {createPublicationSourceCache} from "./verify-publication.mjs";
 // Ephemeral cloud execution, with authoritative operation state on Publisher.
 // No credentials, local journal reconstruction, replacement file or grant reuse.
 import {digest} from './archive.mjs';
@@ -57,6 +58,7 @@ export async function readRemoteBundle(callTool,config,entry){
  return bytes;
 }
 export class RemoteNativeRuntime{
+ #publicationSources=createPublicationSourceCache();
  constructor(control,binding,bundleBytes,{allowFinal=false,fetchPublic=fetch}={}){
   this.control=control;this.config=control.config;this.transport=control.transport;this.now=control.now;
   this.fixed=Object.freeze(Object.fromEntries(['report_request_id','bundle_sha256','attempt_id','file_id'].map(k=>[k,binding[k]])));
@@ -91,7 +93,7 @@ export class RemoteNativeRuntime{
    }
    return response;
   };
-  return verifyReportPublication(this.journal.binding.report_commit,bundle,fetchPublic);
+  return verifyReportPublication(this.journal.binding.report_commit,bundle,fetchPublic,this.#publicationSources);
  }
  async intent(operation,input){
   while(true){
