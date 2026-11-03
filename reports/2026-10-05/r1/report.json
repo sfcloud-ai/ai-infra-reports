@@ -1,0 +1,60 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-10-05",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-10-05",
+  "subtitle": "历史整理｜共享缓存先核对身份，请求取消先检查旧执行是否退出",
+  "articles": [
+    {
+      "id": "model-serving-gpu",
+      "title": "模型服务与 GPU 超配｜共享缓存和取消请求，都要追踪状态身份",
+      "summary": "相同输入不代表 KV 可复用；Retire 的增量是版本切换执行协议，已有安全回收机制仍是强基线。",
+      "sha256": "3543be6c917b8c51435897a81d0e10cb45d08ea804a011a6aa40024b89a13eec"
+    },
+    {
+      "id": "hardware-status",
+      "title": "重点硬件｜Ascend 开源内核栈，先确认型号与依赖",
+      "summary": "拆分计算、专家通信和配套算子，950 系列与 PoC HDK 的证据不能直接套到存量硬件。",
+      "sha256": "03e8c33f1ed7a15f61d5903619873bd9e13351fc77b5f46232ed7b8a5571c829"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-10-05-arxiv-2609-38706-v1",
+      "event_key": "arxiv-2609-38706-v1",
+      "title": "共享 KV 的来源身份",
+      "summary": "隔离域与计算版本需随缓存读写保留；先确认实际存在跨请求共享。",
+      "source_urls": [
+        "https://arxiv.org/html/2609.38706v1"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-10-05-arxiv-2610-01160-v1",
+      "event_key": "arxiv-2610-01160-v1",
+      "title": "Retire 版本化请求取消",
+      "summary": "对照现有安全回收与完整前缀缓存，新增协议的收益并非普遍成立。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.01160v1"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-10-05-deepseek-ascend-stack-20260930",
+      "event_key": "deepseek-ascend-stack-20260930",
+      "title": "DeepSeek Ascend 计算与通信栈",
+      "summary": "公开实现提供适配入口，目标型号与 PoC 依赖仍限制直接交付。",
+      "source_urls": [
+        "https://github.com/deepseek-ai/DeepGEMM-Ascend/blob/8491bbb4b8c02a094a2318965f50c70438a3e73c/README.md",
+        "https://github.com/deepseek-ai/DeepEP-Ascend/blob/3b25377d04b24fc6154698ded78a2bcb2c59afff/README.md",
+        "https://github.com/deepseek-ai/TileKernels/blob/66258df6175d2f630ffecb04c5ab66bff8a2ae6a/README.md"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status"
+    }
+  ],
+  "images": [],
+  "poster": null
+}
