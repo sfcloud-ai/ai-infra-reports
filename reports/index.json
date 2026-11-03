@@ -3,6 +3,31 @@
   "reports": [
     {
       "schema_version": "1.0",
+      "date": "2026-10-03",
+      "revision": 1,
+      "title": "AI Infra 晨报 · 2026-10-03",
+      "subtitle": "历史整理｜算力分工、状态保留与失败回收，先把依赖讲清楚",
+      "articles": [
+        {
+          "id": "model-serving-gpu",
+          "title": "模型服务与 GPU 超配｜拆分计算，也要给共享资源留预算",
+          "summary": "RapidMoE、GPU 发起通信与 Leto 分别改变计算位置、通信控制和状态寿命；收益取决于资源竞争与故障边界。",
+          "sha256": "d18e50f824815b945777522bedada443ffb0d3ef888b37a4f20f1c3cd3ff74d9",
+          "path": "reports/2026-10-03/r1/articles/model-serving-gpu.md"
+        },
+        {
+          "id": "inference-engines",
+          "title": "推理引擎每日变动｜请求报错之后，KV 何时才能复用",
+          "summary": "SGLang 0.5.21 的延迟释放与 ACK 生命周期修复，将 API 结束、传输排空和资源复用分开。",
+          "sha256": "a6b5e7c29175f727ac2a1df73cdfc632482c1e4475126fd64e32767ac6faf964",
+          "path": "reports/2026-10-03/r1/articles/inference-engines.md"
+        }
+      ],
+      "poster": null,
+      "path": "reports/2026-10-03/r1/"
+    },
+    {
+      "schema_version": "1.0",
       "date": "2026-11-01",
       "revision": 1,
       "title": "AI Infra 晨报 · 2026-11-01",
@@ -215,6 +240,65 @@
     }
   ],
   "entries": [
+    {
+      "id": "2026-10-03-arxiv-2610-01265-v1",
+      "event_key": "arxiv-2610-01265-v1",
+      "title": "RapidMoE 的 CPU/GPU 专家分工",
+      "summary": "低并发 MoE 的计算拆分需联合计算质量、CPU 和 HBM 预算，batch 聚合吞吐不能替代单请求速度。",
+      "source_urls": [
+        "https://arxiv.org/abs/2610.01265v1"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "3076af74057eec535c804b9d22baab78e622d1cf5db0a062206da83fccf919ae",
+      "date": "2026-10-03",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-03-arxiv-2610-01380-v1",
+      "event_key": "arxiv-2610-01380-v1",
+      "title": "GPU 发起通信的执行代价",
+      "summary": "direct 与 tuned proxy 的空载、带载及计算扰动需分别比较。",
+      "source_urls": [
+        "https://arxiv.org/abs/2610.01380v1"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "98e3bc46975627fc173d4599af06c874bc586315ddd76200e593d230721677be",
+      "date": "2026-10-03",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-03-arxiv-2610-00687-v1",
+      "event_key": "arxiv-2610-00687-v1",
+      "title": "Leto 原地恢复的前提",
+      "summary": "只在硬件仍可用的故障类别内讨论原地恢复，超大规模结果为仿真。",
+      "source_urls": [
+        "https://arxiv.org/abs/2610.00687v1"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "d098596884d26ba43a50b77a05676ac80aa94a053882c4abe60e6bd6cdb099a1",
+      "date": "2026-10-03",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-03-sglang-release-0-5-21",
+      "event_key": "sglang-release-0-5-21",
+      "title": "SGLang 0.5.21 失败路径与延迟释放",
+      "summary": "等待远端 writer 排空后复用资源，保留 ACK、超时和后端能力的差异。",
+      "source_urls": [
+        "https://github.com/sgl-project/sglang/pull/40645",
+        "https://github.com/sgl-project/sglang/pull/41023",
+        "https://github.com/sgl-project/sglang/pull/41404",
+        "https://github.com/sgl-project/sglang/releases/tag/v0.5.21"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "f9e848fcc654db331d40b9cab22020cc87548540a714be6717680b9694df3a83",
+      "date": "2026-10-03",
+      "revision": 1
+    },
     {
       "id": "2026-11-01-vllm-pr-64841",
       "event_key": "vllm-pr-64841",
