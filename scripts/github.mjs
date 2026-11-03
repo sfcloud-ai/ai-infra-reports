@@ -5,11 +5,12 @@ export class GitHub {
  constructor(token){if(!token)throw Error("A short-lived installation token is required");this.token=token;this.objects=new GitObjects();}
  async readBlobs(sha,entries){return this.objects.read(sha,entries);}
  async close(){await this.objects.close();}
- async request(method,route,body) {
+ async request(method,route,body,{requireSinglePage=false}={}) {
   if(!route.startsWith(PREFIX+"/"))throw Error("Repository scope mismatch");
   const response=await fetch("https://api.github.com"+route,{method,headers:{accept:"application/vnd.github+json",authorization:"Bearer "+this.token,"x-github-api-version":"2026-03-10","content-type":"application/json"},body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(30000),redirect:"error"});
   if(response.status===404)return null;
   if(!response.ok)throw Error("GitHub "+method+" failed: "+response.status+"; reconcile before retrying");
+  if(requireSinglePage&&response.headers.has("link"))throw Error("Complete single-page response required");
   return response.status===204?{}:response.json();
  }
 }
