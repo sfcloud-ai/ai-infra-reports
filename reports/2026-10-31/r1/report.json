@@ -1,0 +1,105 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-10-31",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-10-31",
+  "subtitle": "历史整理｜缓存恢复、投机长度与休眠成本，连同引擎故障边界一起验收",
+  "articles": [
+    {
+      "id": "model-serving-gpu",
+      "title": "模型服务与 GPU 超配｜命中之后、休眠之后，还剩多少等待",
+      "summary": "FlatCake、TableTune 与 PhOSv1 分别优化恢复、核验和上下文开销，收益需放回完整服务口径。",
+      "sha256": "aa91b487a8c3bca4a56bb00dca332d111b2dc79ece96e40348e94dd6cd13ea6e"
+    },
+    {
+      "id": "inference-engines",
+      "title": "推理引擎每日变动｜备份内存、缓存导入与不可恢复请求",
+      "summary": "保留 10 月 31 日截止时状态：三项已合并变动与一项仍 open 提案，不反投射后续发布。",
+      "sha256": "961434032e9742db9a76626f63117d4abf604ef8e97ccb818224e9d4c17880c0"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-10-31-arxiv-2610-38355-v1",
+      "event_key": "arxiv-2610-38355-v1",
+      "title": "FlatCake：平级缓存与合并恢复",
+      "summary": "区分主实验与 GDS 对照、总 token 吞吐与生成速度。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.38355v1",
+        "https://huggingface.co/datasets/semianalysisai/cc-traces-weka-062126"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-10-31-arxiv-2610-38968-v1",
+      "event_key": "arxiv-2610-38968-v1",
+      "title": "TableTune：实测投机草稿长度表",
+      "summary": "完整 CUDA Graph 和长度切换行为是条件，仍需关闭投机基线。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.38968v1",
+        "https://github.com/asm582/tabletune"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-10-31-arxiv-2610-39999-v1",
+      "event_key": "arxiv-2610-39999-v1",
+      "title": "PhOSv1：共享休眠模型 context",
+      "summary": "减少 context 而非共享模型权重；互信与无 CUDA Graph 是当期边界。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.39999v1",
+        "https://github.com/blitz-serving/PhoenixOSv1"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-10-31-vllm-pr-64630",
+      "event_key": "vllm-pr-64630",
+      "title": "vLLM SleepMode 精确大小主机备份",
+      "summary": "10/30 已合并，稳定版未核实；GB200 测试不能外推其他硬件。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/64630"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    },
+    {
+      "id": "2026-10-31-vllm-pr-62979",
+      "event_key": "vllm-pr-62979",
+      "title": "vLLM HiSparse 预留在途导入页",
+      "summary": "10/30 已合并；修复并发导入死锁，容量不足仍会等待。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/62979"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    },
+    {
+      "id": "2026-10-31-sglang-pr-47521",
+      "event_key": "sglang-pr-47521",
+      "title": "SGLang 无法恢复的 PD 请求返回 503",
+      "summary": "10/30 已合并；暴露失败不等于完整恢复。",
+      "source_urls": [
+        "https://github.com/sgl-project/sglang/pull/47521"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    },
+    {
+      "id": "2026-10-31-deepinfer-pr-251",
+      "event_key": "deepinfer-pr-251",
+      "title": "DeepInfer 超池容量分配检查提案",
+      "summary": "截至 10/31 00:00 UTC 仍 open，不记为已发布修复。",
+      "source_urls": [
+        "https://github.com/deepseek-ai/DeepInfer/pull/251"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    }
+  ],
+  "images": [],
+  "poster": null
+}

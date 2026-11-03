@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-10-28",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-10-28",
+  "subtitle": "历史整理｜过载时还能响应，不等于仍按约交付",
+  "articles": [
+    {
+      "id": "model-serving-gpu",
+      "title": "模型服务与 GPU 超配｜HiLO 把降级变成预先验证的配置",
+      "summary": "优先复用限流与扩缩容，仅在确有跨服务失配和允许降级空间时评估联合策略。",
+      "sha256": "7e1e8f628712ecb56e5c48e9e28cd39d5deb3d862a3b8ad44bad92f6c181d52a"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-10-28-arxiv-2610-34844-v1",
+      "event_key": "arxiv-2610-34844-v1",
+      "title": "HiLO：预先验证跨服务降级",
+      "summary": "生产可用性伴随质量取舍，复用既有保护与扩容，避免不必要控制器。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.34844v1",
+        "https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/operations/overload_manager",
+        "https://kubernetes.io/docs/concepts/workloads/autoscaling/horizontal-pod-autoscale/"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    }
+  ],
+  "images": [],
+  "poster": null
+}
