@@ -107,6 +107,24 @@
     },
     {
       "schema_version": "1.0",
+      "date": "2026-10-08",
+      "revision": 1,
+      "title": "AI Infra 晨报 · 2026-10-08",
+      "subtitle": "历史整理｜启动、精度与失败恢复，要分别建立验收证据",
+      "articles": [
+        {
+          "id": "inference-engines",
+          "title": "推理引擎每日变动｜少读权重、压缩 KV，与正确报告失败",
+          "summary": "三项工程变化分别作用于加载、低精度和故障协议，不能合成一个通用加速结论。",
+          "sha256": "faff397b8fdd7b434ea25a892e75a5caba02fbf529d3fae9629f58622a02d02d",
+          "path": "reports/2026-10-08/r1/articles/inference-engines.md"
+        }
+      ],
+      "poster": null,
+      "path": "reports/2026-10-08/r1/"
+    },
+    {
+      "schema_version": "1.0",
       "date": "2026-11-01",
       "revision": 1,
       "title": "AI Infra 晨报 · 2026-11-01",
@@ -508,6 +526,48 @@
       "article_id": "model-serving-gpu",
       "fingerprint": "15f8ee08d97099dbfe9fd10c7cd73898119d5771429df14d1584674096bbfac6",
       "date": "2026-10-07",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-08-vllm-pr-60152",
+      "event_key": "vllm-pr-60152",
+      "title": "MTP 加载过滤无用 checkpoint 分片",
+      "summary": "减少草稿头重复读取整模型权重，收益限于受支持加载路径与模型。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/60152"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "acf32f159722b0b865801004917ec72f8f5331f8a54dcb53e2ecce2ff5569095",
+      "date": "2026-10-08",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-08-vllm-pr-46963",
+      "event_key": "vllm-pr-46963",
+      "title": "NVFP4 KV 的 FlashInfer 设备路径",
+      "summary": "缓存容量收益伴随质量和组合兼容性边界，不是默认上线建议。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/46963"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "ebcebf380b52d12379626925e32fd52b3a71e53e45b4d0b938cff63af08c9c91",
+      "date": "2026-10-08",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-08-lmcache-pr-5469",
+      "event_key": "lmcache-pr-5469",
+      "title": "多 KV 组失败改用请求级上报",
+      "summary": "复用 vLLM 的既有恢复策略，CPU 契约测试不替代 GPU 故障验收。",
+      "source_urls": [
+        "https://github.com/LMCache/LMCache/pull/5469"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "66df209a2de97bd0e076e3892fed0d7e7089c262bb63201afdeb3e7a619ef618",
+      "date": "2026-10-08",
       "revision": 1
     },
     {
