@@ -89,6 +89,24 @@
     },
     {
       "schema_version": "1.0",
+      "date": "2026-10-07",
+      "revision": 1,
+      "title": "AI Infra 晨报 · 2026-10-07",
+      "subtitle": "历史整理｜配额足够不代表节点放得下，把可行性判断提前",
+      "articles": [
+        {
+          "id": "model-serving-gpu",
+          "title": "模型服务与 GPU 超配｜Kueue 补充节点可行性检查，仍需看清记账层级",
+          "summary": "0.20.0 补齐部分非 hostname 拓扑的节点可行性检查；已有 TAS 占用仍按域记账，升级还涉及 v1beta1 移除。",
+          "sha256": "02fa6a64b84cefcc5410d8a4d42c16997aed24a838ab177770609000abd7aaca",
+          "path": "reports/2026-10-07/r1/articles/model-serving-gpu.md"
+        }
+      ],
+      "poster": null,
+      "path": "reports/2026-10-07/r1/"
+    },
+    {
+      "schema_version": "1.0",
       "date": "2026-11-01",
       "revision": 1,
       "title": "AI Infra 晨报 · 2026-11-01",
@@ -474,6 +492,22 @@
       "article_id": "inference-engines",
       "fingerprint": "effab985c14f518cf6203e316cbacbf02122697d46cc6bc8773449f4f309b378",
       "date": "2026-10-06",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-07-kueue-pr-14191",
+      "event_key": "kueue-pr-14191",
+      "title": "Kueue 非 hostname 拓扑准入检查",
+      "summary": "非 hostname 拓扑补充逐节点可行性检查，但已有 TAS 占用仍按域记账；API 迁移与真实放置验证不能省略。",
+      "source_urls": [
+        "https://github.com/kubernetes-sigs/kueue/blob/v0.20.0/pkg/cache/scheduler/tas_flavor_snapshot.go",
+        "https://github.com/kubernetes-sigs/kueue/pull/14191",
+        "https://github.com/kubernetes-sigs/kueue/releases/tag/v0.20.0"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "15f8ee08d97099dbfe9fd10c7cd73898119d5771429df14d1584674096bbfac6",
+      "date": "2026-10-07",
       "revision": 1
     },
     {
