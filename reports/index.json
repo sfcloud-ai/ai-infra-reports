@@ -423,6 +423,24 @@
     },
     {
       "schema_version": "1.0",
+      "date": "2026-10-24",
+      "revision": 1,
+      "title": "AI Infra 晨报 · 2026-10-24",
+      "subtitle": "历史整理｜弹性要算准备时间，低精度要算质量代价",
+      "articles": [
+        {
+          "id": "inference-engines",
+          "title": "推理引擎每日变动｜Elastic EP 与 Humming 的两笔成本账",
+          "summary": "扩容停顿不等于产能就绪；执行后端加速与 FP8 激活变化必须拆开。",
+          "sha256": "789e56c2ae8d67a1d81540f6004784ab6f7d670a967f26934540c764f9664cdb",
+          "path": "reports/2026-10-24/r1/articles/inference-engines.md"
+        }
+      ],
+      "poster": null,
+      "path": "reports/2026-10-24/r1/"
+    },
+    {
+      "schema_version": "1.0",
       "date": "2026-11-01",
       "revision": 1,
       "title": "AI Infra 晨报 · 2026-11-01",
@@ -1329,6 +1347,36 @@
       "article_id": "hardware-status",
       "fingerprint": "23cbedbfa075afab58b4f1d2513133a82a3fa7184ddc22cb1da46c08277240ad",
       "date": "2026-10-23",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-24-vllm-elastic-ep-near-zero-downtime-2026-10-19",
+      "event_key": "vllm-elastic-ep-near-zero-downtime-2026-10-19",
+      "title": "Elastic EP：区分停顿和扩容总耗时",
+      "summary": "0.82 秒停顿与 92.34 秒扩容总耗时是不同口径，预留容量存在常态代价。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/54985",
+        "https://vllm.ai/blog/2026-10-19-elastic-ep-near-zero-downtime"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "c1e7f586966e01824c885b6212cef1f77211e19e87f399a22334203a36062dba",
+      "date": "2026-10-24",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-24-vllm-humming-2026-10-21",
+      "event_key": "vllm-humming-2026-10-21",
+      "title": "Humming：拆开执行后端与 FP8 激活",
+      "summary": "8×H20 公告收益同时包含精度改变，质量和完整负载仍需验证。",
+      "source_urls": [
+        "https://github.com/vllm-project/humming/tree/db930afa2256cba49b3e46c0589323c3e80b0bfb",
+        "https://vllm.ai/blog/2026-10-21-humming"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "3d798d34f63ec7ec4d78de5fba0a4ba22f459d796b494d2ea67389e3143f5a1e",
+      "date": "2026-10-24",
       "revision": 1
     },
     {
