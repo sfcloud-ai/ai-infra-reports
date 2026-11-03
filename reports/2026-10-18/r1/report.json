@@ -1,0 +1,45 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-10-18",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-10-18",
+  "subtitle": "历史整理｜远端命中不等于更快，训练预测不等于实测",
+  "articles": [
+    {
+      "id": "model-serving-gpu",
+      "title": "模型服务与 GPU 超配｜缓存与训练配置：先与现成强基线比较",
+      "summary": "远端 KV 应对照本机 RAM、亲和路由与重算；Primus 的配置预筛价值不能混同换精度收益。",
+      "sha256": "5ed3c9df33d93b51b42282c59733626f74541a0f9ca4e9f892538bbc2b992208"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-10-18-arxiv-2610-21500-v1",
+      "event_key": "arxiv-2610-21500-v1",
+      "title": "远端 KV 分片与异步加载复盘",
+      "summary": "当期六个提案未合并；高命中回放中位仍输重算，未证明胜过 HiCache。",
+      "source_urls": [
+        "https://arxiv.org/html/2610.21500v1",
+        "https://github.com/LMCache/LMCache/pull/5545",
+        "https://github.com/LMCache/LMCache/pull/5548",
+        "https://github.com/LMCache/LMCache/pull/5553"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-10-18-arxiv-2610-19423-v1",
+      "event_key": "arxiv-2610-19423-v1",
+      "title": "Primus Projection 训练配置预筛",
+      "summary": "小规模测量辅助筛选；27% 示例混入 BF16 到 FP8，最终集群仍需验证。",
+      "source_urls": [
+        "https://arxiv.org/abs/2610.19423v1",
+        "https://github.com/AMD-AGI/Primus/tree/cf1a75a5bb5b12d3a37ff3d1a3cb328aac7ec98e"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    }
+  ],
+  "images": [],
+  "poster": null
+}
