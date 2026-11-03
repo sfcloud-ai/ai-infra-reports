@@ -115,6 +115,31 @@ class LedgerTests(unittest.TestCase):
             database.execute("UPDATE jobs SET bytes=X'0201'")
         self.assertNotEqual(cd.snapshot(self.database), before)
 
+    def test_scheduled_schema_is_snapshotted_and_unsettled_work_blocks_cutover(self):
+        with connection(self.database) as database:
+            for sql in cd.SCHEDULED_SCHEMA.values():
+                database.execute(sql)
+        empty = cd.snapshot(self.database)
+        with connection(self.database) as database:
+            database.execute("INSERT INTO scheduled_bridge_scope VALUES(1,'pinned')")
+            database.execute("INSERT INTO scheduled_handoffs VALUES('report','binding','observed',NULL,1)")
+        with self.assertRaises(cd.Deferred):
+            cd.snapshot(self.database)
+        pending = cd.snapshot(self.database, settled=False)
+        self.assertNotEqual(empty, pending)
+        with connection(self.database) as database:
+            database.execute("UPDATE scheduled_handoffs SET phase='complete'")
+            database.execute("INSERT INTO scheduled_status_replies VALUES('ts','hash','unknown','receipt',NULL,0)")
+        with self.assertRaises(cd.Deferred):
+            cd.snapshot(self.database)
+        with connection(self.database) as database:
+            database.execute("UPDATE scheduled_status_replies SET phase='sent'")
+        self.assertNotEqual(cd.snapshot(self.database), pending)
+        with connection(self.database) as database:
+            database.execute('ALTER TABLE scheduled_handoffs ADD COLUMN unexpected TEXT')
+        with self.assertRaisesRegex(ValueError, 'unsupported_scheduled_schema'):
+            cd.snapshot(self.database)
+
     def test_remote_journal_schema_and_unresolved_operation_gate(self):
         with connection(self.database) as database:
             for sql in sorted(cd.REMOTE_JOURNAL_SCHEMA, key=lambda s: not s.startswith('CREATE TABLE')):

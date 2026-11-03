@@ -9,14 +9,19 @@ import {requireThat} from "./report-handoff.mjs";
 import {recoverySchemaObjects} from "./notice-recovery.mjs";
 import {remoteJournalSchemaObjects} from "./remote-native-journal.mjs";
 import {successorSchemaObjects} from './recovery-control-successor.mjs';
+import {SCHEDULED_SCHEMA,scheduledSchemaObjects} from './scheduled-delivery-state.mjs';
 import {validateConfig,privateFile,privateDirectory} from "./run-handoff.mjs";
-const known=new Set(["scope","jobs","notice_scope","notices","notice_commands","ready_migrations","notice_recovery_authorizations","remote_native_runs","remote_native_ops","recovery_control_successors"]);
+const known=new Set(["scope","jobs","notice_scope","notices","notice_commands","ready_migrations","notice_recovery_authorizations","remote_native_runs","remote_native_ops","recovery_control_successors",...Object.keys(SCHEDULED_SCHEMA)]);
 function inspect(db){
  requireThat(db.prepare("PRAGMA integrity_check").get().integrity_check==="ok","State integrity failed");
  const tables=db.prepare("SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all();
  const recoveryObjects=recoverySchemaObjects(db),journalObjects=remoteJournalSchemaObjects(db),successorObjects=successorSchemaObjects(db),allowedTriggers=new Set([...recoveryObjects,...journalObjects,...successorObjects].filter(o=>o.type==='trigger').map(o=>o.name));
  requireThat(db.prepare("SELECT name FROM sqlite_master WHERE type IN ('trigger','view')").all().every(o=>allowedTriggers.has(o.name)),"Unexpected state triggers/views");
  requireThat(tables.every(t=>known.has(t.name))&&tables.some(t=>t.name==="jobs")&&tables.some(t=>t.name==="scope"),"Unknown state schema");
+ scheduledSchemaObjects(db);
+ for(const [name,phase] of [['scheduled_handoffs','complete'],['scheduled_status_replies','sent']]){
+  if(tables.some(t=>t.name===name))requireThat(db.prepare(`SELECT count(*) AS n FROM ${name} WHERE phase!=?`).get(phase).n===0,'Unresolved scheduled delivery prevents migration');
+ }
  requireThat(db.prepare("SELECT count(*) AS n FROM jobs WHERE phase!='receipt_sent'").get().n===0,"Pending report state prevents migration");
  if(tables.some(t=>t.name==="notices"))requireThat(db.prepare("SELECT count(*) AS n FROM notices WHERE phase!='sender_reported'").get().n===0,"Unresolved notification prevents migration");
  if(tables.some(t=>t.name==="notice_commands"))requireThat(db.prepare("SELECT count(*) AS n FROM notice_commands WHERE phase!='response_sent'").get().n===0,"Unresolved control receipt prevents migration");

@@ -1,3 +1,4 @@
+import {createPublicationSourceCache} from "./verify-publication.mjs";
 // Native MCP transport + scheduled-host steps. The existing CloudRunState is the
 // client write-intent journal; the Publisher remains the reservation authority.
 import {randomUUID} from 'node:crypto';
@@ -98,6 +99,7 @@ export async function prepareNativeRun(state,{bundleBytes,reportCommit,workspace
  return state.admit(b.data.request_id,`${b.report.date}/r${b.report.revision}`,bundleBytes,detail,'native_prepared',detail);
 }
 export class NativeScheduledHost{
+ #publicationSources=createPublicationSourceCache();
  #cache=new Map();
  constructor(state,transport,{allowFinal=false,now=Date.now,fetchPublic=fetch}={}){
   this.state=state;this.transport=transport;this.allowFinal=allowFinal;this.now=now;this.fetchPublic=fetchPublic;this.session=randomUUID();
@@ -123,7 +125,7 @@ export class NativeScheduledHost{
    }
    return response;
   };
-  try{await verifyReportPublication(job.detail.report_commit,b,fetchPublic);}catch(error){
+  try{await verifyReportPublication(job.detail.report_commit,b,fetchPublic,this.#publicationSources);}catch(error){
    // Include failures while streaming a response, not just response headers.
    const code=error?.cause?.code??error?.code;
    if(error?.name==='TimeoutError'||['ECONNRESET','ETIMEDOUT','EAI_AGAIN','ECONNREFUSED','UND_ERR_CONNECT_TIMEOUT','UND_ERR_SOCKET','UND_ERR_HEADERS_TIMEOUT','UND_ERR_BODY_TIMEOUT'].includes(code)){

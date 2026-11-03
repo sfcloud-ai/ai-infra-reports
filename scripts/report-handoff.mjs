@@ -93,6 +93,17 @@ export function acceptDataCommand(message,config,prefix,pattern,now=Date.now()){
 export function acceptMessage(message,config,now=Date.now()){
  return acceptDataCommand(message,config,"!ai-report ",/^!ai-report publish ([a-z0-9][a-z0-9-]{7,79}) ([a-f0-9]{64})$/,now);
 }
+// Same authenticated channel and sender contract, but deliberately no file.
+export function acceptReportStatus(message,config,now=Date.now()){
+ if(!message?.text?.startsWith("!ai-report status "))return null;
+ const appSender=config.sender_bot_id!==undefined||config.sender_app_id!==undefined,userApp=config.sender_user_app_id!==undefined;
+ const identity=message.user===config.sender_user_id&&(userApp?!appSender&&!message.bot_id&&message.app_id===config.sender_user_app_id:appSender?message.bot_id===config.sender_bot_id&&message.app_id===config.sender_app_id:!message.bot_id&&!message.app_id);
+ requireThat(message.type==="message"&&(message.subtype===undefined||appSender&&message.subtype==="bot_message")&&!message.edited&&!message.hidden&&(!message.thread_ts||message.thread_ts===message.ts)&&identity&&(message.files===undefined||Array.isArray(message.files)&&message.files.length===0)&&(message.attachments===undefined||Array.isArray(message.attachments)&&message.attachments.length===0),"Untrusted report status message");
+ requireThat(/^\d{10}\.\d{6}$/.test(message.ts)&&Number(message.ts)*1000<=now+30000&&Number(message.ts)*1000>=now-15*60000,"Status message outside intake window");
+ const command=userApp?connectorCommand(message,config):message.text,match=/^!ai-report status ([a-z0-9][a-z0-9-]{7,79})$/.exec(command);
+ requireThat(match,"Exact status command required");
+ return {request_id:match[1],source_ts:message.ts,hash:digest(command)};
+}
 export async function boundedBytes(response,limit){
  requireThat(response.ok,"Remote read failed");
  const length=response.headers.get("content-length");requireThat(length===null||(/^\d+$/.test(length)&&Number(length)<=limit),"Remote byte limit");
@@ -101,8 +112,8 @@ export async function boundedBytes(response,limit){
  for await(const chunk of response.body){size+=chunk.length;requireThat(size<=limit,"Remote byte limit");chunks.push(chunk);}
  return Buffer.concat(chunks);
 }
-export async function verifyReportPublication(commit,bundle,fetcher=fetch){
- const {report:r}=bundle,proof=await verifyPublication(commit,r.date,r.revision,fetcher,bundle.files);
+export async function verifyReportPublication(commit,bundle,fetcher=fetch,sourceCache){
+ const {report:r}=bundle,proof=await verifyPublication(commit,r.date,r.revision,fetcher,bundle.files,sourceCache);
  const slug=`${r.date}/r${r.revision}`,origin="https://sfcloud-ai.github.io/ai-infra-reports";
  const get=url=>fetcher(url,{redirect:"error",cache:"no-store",signal:AbortSignal.timeout(15000)});
  for(const i of r.images){

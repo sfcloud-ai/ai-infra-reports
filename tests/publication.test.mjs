@@ -5,7 +5,7 @@ import {spawnSync} from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
-import {verifyPublication,verifyPublicationUnchanged} from "../scripts/verify-publication.mjs";
+import {verifyPublication,verifyPublicationUnchanged,createPublicationSourceCache} from "../scripts/verify-publication.mjs";
 import {contentHash,gitBlobHash,editionSources} from "../scripts/publication-content.mjs";
 import {publicationSite,ORIGIN,API} from "./helpers/publication-site.mjs";
 const source="a".repeat(40),later="b".repeat(40),slug="2026-11-01/r1",prefix=`reports/${slug}/`;
@@ -87,4 +87,38 @@ test("post-build proof binds final HTML without changing root or notice schemas"
   const p=JSON.parse(await readFile(path.join(dir,"dist/reports",slug,"publication-proof.json")));assert.deepEqual(p.sources,editionSources(files,slug));assert.equal(p.deployment_commit,later);
   for(const page of [slug,slug+"/item"])assert.equal(p.pages[page],contentHash(await readFile(path.join(dir,"dist",page,"index.html"))));
  }finally{await rm(dir,{recursive:true,force:true});}
+});
+
+// The cache is a capability owned by the verifier, not caller-authored evidence.
+test("warm source cache survives API throttling but keeps every live page check",async()=>{
+ for(const status of [403,429]){
+  const s=site(),cache=createPublicationSourceCache();let blocked=false,apiCalls=0;
+  const fetcher=(u,o)=>{if(u.startsWith(API)){apiCalls++;if(blocked)return new Response(null,{status});}return s.fetcher(u,o);};
+  const check=()=>verifyPublication(source,"2026-11-01",1,fetcher,files,cache);
+  await check();assert.equal(apiCalls,3);blocked=true;
+  s.calls.length=0;await check();assert.equal(apiCalls,3);
+  assert.ok(s.calls.some(c=>c.url===`${ORIGIN}/${slug}/item/`));
+  s.pages.set(slug,s.pages.get(slug)+"tampered");await assert.rejects(check,/page hash/);
+ }
+});
+test("warm cache does not authorize changed bundles, proofs, or deployment",async()=>{
+ for(const mutate of [s=>s.proof.sources["report.json"]="c".repeat(40),s=>delete s.proof.pages[slug+"/item"],s=>s.root.preview=true]){
+  const s=site(),cache=createPublicationSourceCache();await verifyPublication(source,"2026-11-01",1,s.fetcher,files,cache);
+  mutate(s);await assert.rejects(()=>verifyPublication(source,"2026-11-01",1,s.fetcher,files,cache));
+ }
+ const s=site(),cache=createPublicationSourceCache();await verifyPublication(source,"2026-11-01",1,s.fetcher,files,cache);
+ const changed=new Map(files);changed.set(prefix+"report.json",Buffer.from("changed"));
+ await assert.rejects(()=>verifyPublication(source,"2026-11-01",1,s.fetcher,changed,cache),/bundle differs/);
+ const next="f".repeat(40);s.root.commit=next;s.proof.deployment_commit=next;
+ let compared=false;const fetcher=(u,o)=>{if(u.includes("/compare/")){compared=true;return new Response(null,{status:429});}return s.fetcher(u,o);};
+ await assert.rejects(()=>verifyPublication(source,"2026-11-01",1,fetcher,files,cache),/unavailable/);assert.equal(compared,true);
+});
+test("failed verification, fresh process capability and forged cache cannot seed trust",async()=>{
+ const s=site(),cache=createPublicationSourceCache();s.tree.truncated=true;
+ await assert.rejects(()=>verifyPublication(source,"2026-11-01",1,s.fetcher,files,cache),/Incomplete/);
+ const blocked=(u,o)=>u.startsWith(API)?new Response(null,{status:403}):s.fetcher(u,o);
+ await assert.rejects(()=>verifyPublication(source,"2026-11-01",1,blocked,files,cache),/unavailable/);
+ for(const forged of [{},new Map(),JSON.parse(JSON.stringify(cache))])await assert.rejects(()=>verifyPublication(source,"2026-11-01",1,s.fetcher,files,forged),/Invalid publication source cache/);
+ s.tree.truncated=false;await verifyPublication(source,"2026-11-01",1,s.fetcher,files,cache);
+ await assert.rejects(()=>verifyPublication(source,"2026-11-01",1,blocked,files,createPublicationSourceCache()),/unavailable/);
 });

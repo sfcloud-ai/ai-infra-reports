@@ -24,7 +24,13 @@ REPOSITORY = "sfcloud-ai/ai-infra-reports"
 SERVICE = "ai-report-publisher.service"
 CONFIG = Path("/etc/ai-report-publisher-cd.json")
 SHA = re.compile(r"[0-9a-f]{40}")
-TABLES = {"scope", "jobs", "ready_migrations", "notice_scope", "notices", "notice_commands", "notice_recovery_authorizations", "remote_native_runs", "remote_native_ops", "recovery_control_successors"}
+TABLES = {"scope", "jobs", "ready_migrations", "notice_scope", "notices", "notice_commands", "notice_recovery_authorizations", "remote_native_runs", "remote_native_ops", "recovery_control_successors", "scheduled_handoffs", "scheduled_bridge_scope", "scheduled_status_replies"}
+
+SCHEDULED_SCHEMA = {
+    "scheduled_handoffs": "CREATE TABLE scheduled_handoffs (request_id TEXT PRIMARY KEY, binding TEXT NOT NULL, phase TEXT NOT NULL, result TEXT, poll_order INTEGER NOT NULL DEFAULT 0)",
+    "scheduled_bridge_scope": "CREATE TABLE scheduled_bridge_scope (id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL)",
+    "scheduled_status_replies": "CREATE TABLE scheduled_status_replies (source_ts TEXT PRIMARY KEY, hash TEXT NOT NULL, phase TEXT NOT NULL, text TEXT NOT NULL, reply_ts TEXT, poll_order INTEGER NOT NULL DEFAULT 0)",
+}
 
 
 RECOVERY_SCHEMA = {
@@ -227,6 +233,10 @@ def snapshot(path, settled=True):
         tables = database.execute("SELECT name,sql FROM sqlite_master WHERE type='table' ORDER BY name").fetchall()
         if not {"scope", "jobs"} <= {row[0] for row in tables} <= TABLES:
             raise ValueError("unsupported_ledger_schema")
+        scheduled = {name: sql for name, sql in tables if name in SCHEDULED_SCHEMA}
+        if (any(SCHEDULED_SCHEMA[name] != sql for name, sql in scheduled.items())
+                or ("scheduled_handoffs" in scheduled) != ("scheduled_bridge_scope" in scheduled)):
+            raise ValueError("unsupported_scheduled_schema")
         result = [["recovery_schema", recovery]] if recovery else []
         if journal:
             result.append(["remote_journal_schema", journal])
@@ -241,7 +251,7 @@ def snapshot(path, settled=True):
             result.append([name, sql, [[{"base64": base64.b64encode(value).decode()} if isinstance(value, bytes) else value
                                       for value in row] for row in rows]])
         if settled:
-            for name, phase in (("jobs", "receipt_sent"), ("notices", "sender_reported"), ("notice_commands", "response_sent"), ("notice_recovery_authorizations", "consumed"), ("remote_native_runs", "complete"), ("remote_native_ops", "acknowledged")):
+            for name, phase in (("jobs", "receipt_sent"), ("notices", "sender_reported"), ("notice_commands", "response_sent"), ("notice_recovery_authorizations", "consumed"), ("remote_native_runs", "complete"), ("remote_native_ops", "acknowledged"), ("scheduled_handoffs", "complete"), ("scheduled_status_replies", "sent")):
                 if name in {row[0] for row in tables} and database.execute("SELECT count(*) FROM " + name + " WHERE phase!=?", (phase,)).fetchone()[0]:
                     raise Deferred("in_flight_or_unknown_operation")
         return hashlib.sha256(json.dumps(result, separators=(",", ":")).encode()).hexdigest()

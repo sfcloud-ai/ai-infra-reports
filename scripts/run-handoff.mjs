@@ -1,3 +1,4 @@
+import {validateScheduledConfig,advanceScheduledDelivery,advanceScheduledStatus} from "./scheduled-delivery-bridge.mjs";
 // Single bounded tick, suitable for a separately approved 120-second service timer.
 // No default config, environment token, daemon, scheduler or deployment is installed.
 import {open,lstat,realpath} from "node:fs/promises";
@@ -7,7 +8,7 @@ import {pathToFileURL} from "node:url";
 import {HandoffState,handoffScope} from "./handoff-state.mjs";
 import {NoticeOutbox,notificationScope,acceptNoticeCommand,decodeNoticeCommand,advanceNotice,MAX_NOTICE_COMMAND,remoteReceiptCanWait} from "./notice-outbox.mjs";
 import {SlackHandoff,publicGitHub,publicMergeCommit} from "./slack-handoff.mjs";
-import {acceptMessage,decodeBundle,requireThat,verifyReportPublication} from "./report-handoff.mjs";
+import {acceptMessage,acceptReportStatus,decodeBundle,requireThat,verifyReportPublication} from "./report-handoff.mjs";
 import {advanceHandoff} from "./handoff-worker.mjs";
 import {proposeWithApp} from "./propose-with-app.mjs";
 import {validateCheckerConfig,runNoticeChecker} from "./notice-checker.mjs";
@@ -34,6 +35,7 @@ export function validateConfig(c){
   keys.push("notification_checker");validateCheckerConfig(c.notification_checker);
   requireThat(Object.hasOwn(c,"notification_destination")&&Object.hasOwn(c,"notification_not_before"),"Checker requires configured notices");
  }
+ if(c&&Object.hasOwn(c,"scheduled_delivery")){keys.push("scheduled_delivery");validateScheduledConfig(c.scheduled_delivery);}
  requireThat(c&&Object.keys(c).sort().join()===keys.sort().join(),"Unexpected publisher config");
  for(const [key,prefix]of [["team_id","T"],["channel_id","[CG]"],["sender_user_id","U"],["bot_user_id","U"],["bot_id","B"]])requireThat(new RegExp("^"+prefix+"[A-Z0-9]+$").test(c[key]),"Publisher identity config");
  requireThat(c.sender_user_id!==c.bot_user_id&&typeof c.ready_for_review==="boolean"&&Number.isSafeInteger(c.producer_app_id)&&c.producer_app_id>0&&Number.isSafeInteger(c.merger_app_id)&&c.merger_app_id>0&&c.producer_app_id!==c.merger_app_id,"Independent publisher identities required");
@@ -45,8 +47,17 @@ export function validateConfig(c){
 // Dependencies here are supplied only by trusted runtime code, never the payload.
 export async function handoffTick(state,config,slack,io){
   const notices=config.notification_destination?new NoticeOutbox(state,notificationScope(config)):null;
-  const messages=await slack.history();
+  const messages=await slack.history(),statusEvents=[];
   for(const message of messages){
+   let status=null;
+   if(config.scheduled_delivery&&message?.text?.startsWith("!ai-report status ")){
+    try{status=acceptReportStatus(message,config);}catch{continue;}
+   }
+   if(status){
+    // Admit every report before the separately bounded advisory status lane.
+    statusEvents.push(status);
+    continue;
+   }
    const command=notices?acceptNoticeCommand(message,config):null;
    if(command){
     const prior=notices.command(command.request_id);
@@ -62,7 +73,10 @@ export async function handoffTick(state,config,slack,io){
   }
   // Bound each lane to one operation. A later PR must not starve completed-report
   // notices; a premature claim waits while its publication continues advancing.
-  const id=state.pending()[0];let commandId,noticeResult,waitingRemoteReceipt;
+  // T4 admission/status progresses independently of a lost Slack publication
+  // receipt. No original receipt is resent and no native completion is recreated.
+  const scheduled=config.scheduled_delivery?await advanceScheduledDelivery(state,config,io.scheduleQuery):null;
+  const id=state.pending().find(id=>!config.scheduled_delivery||!["sending","receipt_unknown"].includes(state.get(id).phase));let commandId,noticeResult,waitingRemoteReceipt;
   for(const candidate of notices?.pending()??[]){
    const operation=notices.command(candidate);
    // Reconcile any uncertain write before another reply, even if a previously
@@ -84,8 +98,11 @@ export async function handoffTick(state,config,slack,io){
    await advanceNotice(notices,commandId,{verify:io.verify,checkNotice:io.checkNotice,verifyAsset:io.verifyAsset,receipt:(thread,text)=>slack.controlReceipt(thread,text),findReceipt:(thread,text)=>slack.findControlReceipt(thread,text)});
    noticeResult={command_id:commandId,phase:notices.command(commandId).phase};
   }
-  if(id){await advanceHandoff(state,id,io);return {request_id:id,phase:state.get(id).phase,...(noticeResult?{notice:noticeResult}:{})};}
-  return noticeResult??{phase:"idle"};
+  if(id)await advanceHandoff(state,id,io);
+  if(config.scheduled_delivery){
+   try{await advanceScheduledStatus(state,config,statusEvents,slack,io.scheduleQuery);}catch{console.error("Scheduled status read/reconciliation pending; original source retained");}
+  }
+  return id?{request_id:id,phase:state.get(id).phase,...(noticeResult?{notice:noticeResult}:{}),...(scheduled?{scheduled}:{})}:noticeResult?{...noticeResult,...(scheduled?{scheduled}:{})}:{phase:"idle",...(scheduled?{scheduled}:{})};
 }
 export async function runHandoff(configFile){
  requireThat(process.platform==="linux","Live publisher requires the reviewed Linux service layout");
