@@ -125,6 +125,24 @@
     },
     {
       "schema_version": "1.0",
+      "date": "2026-10-09",
+      "revision": 1,
+      "title": "AI Infra 晨报 · 2026-10-09",
+      "subtitle": "历史整理｜恢复状态、容量记账和注册范围，必须对应真实资源",
+      "articles": [
+        {
+          "id": "inference-engines",
+          "title": "推理引擎每日变动｜服务空闲以后，为什么仍然拒绝请求",
+          "summary": "Dynamo 恢复路径、指定 worker 容量记账与 Ray/NIXL 注册检查，都在修复逻辑状态和实际资源的不一致。",
+          "sha256": "8e37a6d76f73caa3293cf58e3928e48bb54b766ff35de8057e570ae9d424b428",
+          "path": "reports/2026-10-09/r1/articles/inference-engines.md"
+        }
+      ],
+      "poster": null,
+      "path": "reports/2026-10-09/r1/"
+    },
+    {
+      "schema_version": "1.0",
       "date": "2026-11-01",
       "revision": 1,
       "title": "AI Infra 晨报 · 2026-11-01",
@@ -568,6 +586,49 @@
       "article_id": "inference-engines",
       "fingerprint": "66df209a2de97bd0e076e3892fed0d7e7089c262bb63201afdeb3e7a619ef618",
       "date": "2026-10-08",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-09-dynamo-release-1-5-1",
+      "event_key": "dynamo-release-1-5-1",
+      "title": "Dynamo 拒绝状态与首次加载超时",
+      "summary": "版本修复改善恢复边界，不提供新的吞吐实测结论。",
+      "source_urls": [
+        "https://github.com/ai-dynamo/dynamo/pull/14877",
+        "https://github.com/ai-dynamo/dynamo/releases/tag/v1.5.1"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "f11daf47853153fc3950b8354f0c95b7af5bb3d32fa9d7850621453639978a5e",
+      "date": "2026-10-09",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-09-dynamo-pr-15290",
+      "event_key": "dynamo-pr-15290",
+      "title": "ThunderAgent 绑定 worker 的准入记账",
+      "summary": "请求按实际 hard-pin 目的地计入，逻辑额度不等于物理隔离。",
+      "source_urls": [
+        "https://github.com/ai-dynamo/dynamo/pull/15290"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "da1ac9743f81f508cb922a114dd119578dc839c39a6897b355c41041a41cdfc0",
+      "date": "2026-10-09",
+      "revision": 1
+    },
+    {
+      "id": "2026-10-09-ray-pr-66777",
+      "event_key": "ray-pr-66777",
+      "title": "NIXL 注册范围预检查",
+      "summary": "地址重用后检查 storage 大小，提前暴露生命周期错误。",
+      "source_urls": [
+        "https://github.com/ray-project/ray/pull/66777"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "708450e3d11955ec37a3b78a0d4182e0e612a8ed7ec0a29df67fba2bb7db5c1b",
+      "date": "2026-10-09",
       "revision": 1
     },
     {
