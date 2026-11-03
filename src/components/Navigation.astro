@@ -2,10 +2,35 @@
 // Adapted directly from MetriCraft's grouped navigation and native details. See NOTICE.
 import {localizedGroups,href} from "../data/navigation.mjs";
 const {current}=Astro.props;
-const groups=localizedGroups();
+const groups=localizedGroups(current);
 ---
-<nav aria-label="报告索引">
+<nav class="archive-navigation" aria-label="报告索引">
  <div class="nav-group"><p>AI INFRA / ARCHIVE</p><ul><li><a href={href()} aria-current={!current?"page":undefined}>全部报告</a></li></ul></div>
- {groups.map((group,i)=><div class="nav-group"><details class="api-nav" open={current?.startsWith(group.slug)||(!current&&i===0)}><summary>{group.title}</summary><ul>{group.pages.map(page=><li><a href={href(page.slug)} aria-current={current===page.slug?"page":undefined}>{page.kind==="day"?"本期概览":page.title}</a></li>)}</ul></details></div>)}
+ <div class="nav-group archive-groups">
+  <ul class="archive-tree">
+   {groups.map(year => <li>
+    <details class="archive-year" open={year.open}>
+     <summary>{year.year} 年</summary>
+     <ul>
+      {year.months.map(month => <li>
+       <details class="archive-month" open={month.open}>
+        <summary aria-label={`${year.year} 年 ${month.month} 月`}>{month.month} 月</summary>
+        <ul>
+         {month.days.map(day => <li>
+          <details class="archive-day" open={day.open}>
+           <summary aria-label={`${year.year} 年 ${month.month} 月 ${day.day} 日`}>{day.day} 日</summary>
+           <ul class="archive-pages">
+            {day.pages.map(page => <li><a href={href(page.slug)} aria-current={current===page.slug?"page":undefined}>{page.kind==="day"?"本期概览":page.title}</a></li>)}
+           </ul>
+          </details>
+         </li>)}
+        </ul>
+       </details>
+      </li>)}
+     </ul>
+    </details>
+   </li>)}
+  </ul>
+ </div>
  {!groups.length&&<p class="empty-nav">正式报告发布后按日期归档。</p>}
 </nav>
