@@ -68,6 +68,14 @@ test("network failures, wrong types, excessive lengths and malformed JSON are no
   const s=site(),fetcher=s.fetcher;s.fetcher=(u,o)=>u===API+`/git/commits/${source}`?response():fetcher(u,o);await assert.rejects(()=>verify(s));
  }
 });
+test('publication source reads retain rate-limit deadlines without exposing response bodies',async()=>{
+ for(const route of ['/compare/','/git/commits/','/git/trees/'])for(const kind of ['retry-after','reset','secondary']){
+  const s=site(),fetcher=s.fetcher,reset=Math.ceil(Date.now()/1000)+3600,before=Date.now();
+  s.fetcher=(url,options)=>url.startsWith(API+route)?Response.json({message:'You have exceeded a secondary rate limit.',private_detail:'secret'},{status:kind==='retry-after'?429:403,headers:kind==='retry-after'?{'retry-after':'60'}:kind==='reset'?{'x-ratelimit-remaining':'0','x-ratelimit-reset':String(reset)}:{'x-ratelimit-remaining':'99'}}):fetcher(url,options);
+  await assert.rejects(()=>verify(s),error=>error.diagnostic.stage==='publication_github_read'&&error.diagnostic.code==='rate_limited'&&error.diagnostic.retryable===true&&(kind==='reset'?error.diagnostic.retry_at===reset*1000:error.diagnostic.retry_at>=before+60000&&error.diagnostic.retry_at<=Date.now()+60000)&&!JSON.stringify(error.diagnostic).includes('secret'));
+ }
+});
+
 test("Git blob identity matches Git's binary object encoding",()=>{
  for(const bytes of [Buffer.alloc(0),Buffer.from("你好\n"),Buffer.from([0,255,13,10])]){
   const r=spawnSync("git",["hash-object","--stdin"],{input:bytes});assert.equal(r.status,0);assert.equal(gitBlobHash(bytes),r.stdout.toString().trim());

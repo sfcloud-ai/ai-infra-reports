@@ -1,17 +1,22 @@
 // The service manager pins the non-root account, release directory and config.
-// SIGTERM drains the current tick; a failed/unknown write never starts another tick.
+// SIGTERM drains the current tick. Durable unknown writes are reconciled by the
+// worker, while an unavailable dependency does not silently stop the supervisor.
 import path from "node:path";
 import {writeFile,rename} from "node:fs/promises";
 import {pathToFileURL} from "node:url";
 import {setTimeout as delay} from "node:timers/promises";
 import {randomUUID} from "node:crypto";
 import {runHandoff,privateFile,privateDirectory,validateConfig} from "./run-handoff.mjs";
+import {safeDiagnostic} from './handoff-recovery.mjs';
 
-export async function serialTicks(tick,report,wait,signal){
+export async function serialTicks(tick,report,wait,signal,onError){
  while(!signal.aborted){
-  const result=await tick();await report(result);
+  let result;
+  try{result=await tick();}catch(error){if(!onError)throw error;await onError(error);}
+  if(result!==undefined)await report(result);
   if(signal.aborted)break;
-  try{await wait(120000,signal);}catch(error){if(error.name!=="AbortError"||!signal.aborted)throw error;}
+  const interval=Number.isFinite(result?.next_delay_ms)?Math.max(1000,Math.min(120000,result.next_delay_ms)):120000;
+  try{await wait(interval,signal);}catch(error){if(error.name!=="AbortError"||!signal.aborted)throw error;}
  }
 }
 export function releaseIdentity(directory){
@@ -24,6 +29,16 @@ export async function writeHealth(directory,health){
  await writeFile(temporary,JSON.stringify(health)+"\n",{mode:0o600,flag:"wx"});
  await rename(temporary,path.join(directory,"health.json"));
 }
+export async function superviseTicks(tick,report,wait,signal,identity){
+ let count=0;
+ await serialTicks(tick,async result=>{
+  const healthy=result.healthy===true;count=healthy?count+1:0;
+  await report({...result,...identity,healthy,successful_checks:count,checked_at:new Date().toISOString()});
+ },wait,signal,async error=>{
+  count=0;
+  await report({...identity,healthy:false,successful_checks:count,checked_at:new Date().toISOString(),phase:'tick_failed',error:safeDiagnostic(error,'tick')});
+ });
+}
 async function main(){
  const [configFile,flag,...extra]=process.argv.slice(2);
  if(process.platform!=="linux"||process.getuid()<=0||!configFile||flag!=="--live"||extra.length)throw Error("Explicit non-root Linux service required");
@@ -31,12 +46,12 @@ async function main(){
  const config=validateConfig(JSON.parse((await privateFile(configFile,16384)).toString("utf8")));
  await privateDirectory(config.state_dir);
  const stop=new AbortController();process.once("SIGTERM",()=>stop.abort());process.once("SIGINT",()=>stop.abort());
- let count=0;const started_at=new Date().toISOString();
- await serialTicks(()=>runHandoff(configFile),async result=>{
-  const health={...result,healthy:true,mode:"live",consumption_enabled:true,commit,successful_checks:++count,checked_at:new Date().toISOString(),started_at,pid:process.pid};
+ const started_at=new Date().toISOString();
+ await writeHealth(config.state_dir,{healthy:false,mode:'live',consumption_enabled:true,commit,successful_checks:0,checked_at:started_at,started_at,pid:process.pid,phase:'starting'});
+ await superviseTicks(()=>runHandoff(configFile),async health=>{
   await writeHealth(config.state_dir,health);
-  console.log(JSON.stringify(health));
- },(ms,signal)=>delay(ms,undefined,{signal}),stop.signal);
+  (health.error?console.error:console.log)(JSON.stringify(health));
+ },(ms,signal)=>delay(ms,undefined,{signal}),stop.signal,{mode:'live',consumption_enabled:true,commit,started_at,pid:process.pid});
 }
 if(import.meta.url===pathToFileURL(process.argv[1]||"").href){
  main().catch(()=>{console.error("Publisher stopped. Reconcile durable state before restarting; uncertain writes are never retried automatically.");process.exitCode=1;});

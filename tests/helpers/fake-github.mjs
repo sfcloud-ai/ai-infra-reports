@@ -25,7 +25,7 @@ export class FakeGitHub {
   if(method==="POST"&&p==="/git/refs"){const name=body.ref.slice(11);if(this.refs.has(name))throw Error("exists");this.refs.set(name,body.sha);if(this.raceEquivalent){this.raceEquivalent=false;const winner="d".repeat(40);this.commits.set(winner,{...this.commits.get(body.sha),sha:winner});this.refs.set(name,winner);throw Error("concurrent create");}if(this.unknownRef){this.unknownRef=false;throw Error("connection lost");}return {object:{sha:body.sha}};}
   if(method==="GET"&&p.startsWith("/pulls?"))return this.pulls;
   if(method==="POST"&&p==="/pulls"){
-   this.pulls.push({number:1,state:"open",head:{sha:this.refs.get(body.head)},html_url:"https://github.com/"+REPOSITORY+"/pull/1",draft:body.draft});
+   this.pulls.push({number:1,state:"open",head:{sha:this.refs.get(body.head),ref:body.head,repo:{full_name:REPOSITORY}},base:{ref:"main",repo:{full_name:REPOSITORY}},html_url:"https://github.com/"+REPOSITORY+"/pull/1",draft:body.draft});
    if(this.unknownPR){this.unknownPR=false;if(this.mergeAfterUnknownPR){this.pulls[0].state="closed";this.pulls[0].merged_at="2026-10-31T00:00:00Z";}throw Error("unknown result");}return this.pulls[0];
   }
   throw Error("Unexpected mock call "+method+" "+p);

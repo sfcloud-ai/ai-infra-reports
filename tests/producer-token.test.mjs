@@ -2,9 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {generateKeyPairSync,verify} from "node:crypto";
 import {producerJWT,withProducerToken} from "../scripts/producer-token.mjs";
-import {proposeWithApp} from "../scripts/propose-with-app.mjs";
+import {proposeWithApp,reconcileProposalWithApp} from "../scripts/propose-with-app.mjs";
 import {readReports,REPOSITORY} from "../scripts/archive.mjs";
 import {FakeGitHub} from "./helpers/fake-github.mjs";
+import {operationError} from '../scripts/github.mjs';
 
 // Ephemeral, in-memory test key: never registered with GitHub or written to disk.
 const {privateKey,publicKey}=generateKeyPairSync("rsa",{modulusLength:2048});
@@ -99,4 +100,75 @@ test("invalid arguments avoid issuance; stale main closes the client and revokes
  const api=new FakeGitHub();let closed=false;api.close=async()=>{closed=true;};
  await assert.rejects(()=>proposeWithApp(bundle,"b".repeat(40),identity,{...f,now,createAPI:()=>api}),/Main moved/);
  assert(closed);assert(!api.calls.some(c=>c.method!=="GET"));assert.equal(f.calls.at(-1).method,"DELETE");
+});
+
+test("proposal reconciliation reads public state without issuing or revoking any credential",async()=>{
+ const f=authFixture(),api=new FakeGitHub();let closed=false;
+ api.close=async()=>{closed=true;assert(!f.calls.some(c=>c.method==="DELETE"));};
+ const result=await reconcileProposalWithApp(bundle,api.base,identity,{...f,now,createAPI:()=>api});
+ assert.equal(result.outcome,"absent");assert(closed);assert(api.calls.every(c=>c.method==="GET"));
+ assert.equal(f.calls.length,0);
+});
+
+test("authentication failures retain bounded diagnostics before any proposal write",async()=>{
+ for(const kind of ["deny","fail"]){
+  const f=authFixture();f[kind]="/repos/"+REPOSITORY+"/installation";
+  await assert.rejects(()=>withProducerToken(identity,()=>assert.fail("must not publish"),{...f,now}),error=>error.diagnostic.stage==="installation_read"&&error.diagnostic.outcome==="not_started"&&error.diagnostic.retryable===(kind==="fail")&&!JSON.stringify(error.diagnostic).includes(token));
+ }
+});
+
+test("explicit 403 rate limits remain retryable before the proposal starts",async()=>{
+ for(const route of ["/repos/"+REPOSITORY+"/installation","/app/installations/9/access_tokens","/installation/repositories?per_page=2"]){
+  for(const headers of [{"x-ratelimit-remaining":"0"},{"retry-after":"60"}]){
+   const f=authFixture(),fetcher=f.fetcher;let rejected=0;
+   f.fetcher=async(url,options)=>new URL(url).pathname+new URL(url).search===route?(rejected++,{ok:false,status:403,headers:new Headers(headers),json:()=>assert.fail('never read an authentication error body')}):fetcher(url,options);
+   await assert.rejects(()=>withProducerToken(identity,()=>assert.fail('no proposal'),{...f,now}),error=>error.diagnostic.code==='rate_limited'&&error.diagnostic.retryable===true&&error.diagnostic.outcome==='not_started');
+   assert.equal(rejected,1);
+   if(route.startsWith('/installation/'))assert.equal(f.calls.at(-1).method,'DELETE');
+  }
+ }
+});
+
+test("explicit 429 issuance rejection is retryable but uncertain issuance is not",async()=>{
+ for(const status of [429,403,408,503]){
+  const f=authFixture(),fetcher=f.fetcher;let rejected=0;
+  f.fetcher=async(url,options)=>options.method==='POST'?(rejected++,{ok:false,status,headers:new Headers(),json:()=>assert.fail('never read error body')}):fetcher(url,options);
+  await assert.rejects(()=>withProducerToken(identity,()=>assert.fail('no proposal'),{...f,now}),error=>error.diagnostic.stage==='token_issue'&&error.diagnostic.retryable===(status===429));
+  assert.equal(rejected,1);
+ }
+});
+
+test('authentication retains the later retry/reset deadline through token cleanup',async()=>{
+ for(const route of ['/repos/'+REPOSITORY+'/installation','/app/installations/9/access_tokens','/installation/repositories?per_page=2']){
+  const f=authFixture(),fetcher=f.fetcher;
+  f.fetcher=async(url,options)=>new URL(url).pathname+new URL(url).search===route?{ok:false,status:403,headers:new Headers({'retry-after':'60','x-ratelimit-remaining':'0','x-ratelimit-reset':String(time/1000+3600)}),json:()=>assert.fail('never read error body')}:fetcher(url,options);
+  await assert.rejects(()=>withProducerToken(identity,()=>assert.fail('no proposal'),{...f,now}),error=>error.diagnostic.retryable===true&&error.diagnostic.retry_at===time+3600000&&error.diagnostic.provider_scope===(route.startsWith('/installation/')?'github.producer':'github.app'));
+ }
+});
+
+test('headerless secondary throttling is recoverable at every pre-proposal authentication stage',async()=>{
+ for(const route of ['/repos/'+REPOSITORY+'/installation','/app/installations/9/access_tokens','/installation/repositories?per_page=2']){
+  const f=authFixture(),fetcher=f.fetcher;
+  f.fetcher=async(url,options)=>new URL(url).pathname+new URL(url).search===route?Response.json({message:'You have exceeded a secondary rate limit.',private_detail:token},{status:403,headers:{'x-ratelimit-remaining':'100'}}):fetcher(url,options);
+  await assert.rejects(()=>withProducerToken(identity,()=>assert.fail('no proposal'),{...f,now}),error=>error.diagnostic.code==='rate_limited'&&error.diagnostic.retryable===true&&error.diagnostic.retry_at===time+60000&&!JSON.stringify(error.diagnostic).includes(token));
+  if(route.startsWith('/installation/'))assert.equal(f.calls.at(-1).method,'DELETE');
+ }
+});
+
+test("rate-limited revocation cannot authorize another proposal",async()=>{
+ const f=authFixture(),fetcher=f.fetcher;let proposals=0,revocations=0;
+ f.fetcher=async(url,options)=>options.method==='DELETE'?(revocations++,{ok:false,status:403,headers:new Headers({'x-ratelimit-remaining':'0'})}):fetcher(url,options);
+ await assert.rejects(()=>withProducerToken(identity,()=>{proposals++;return 'created';},{...f,now}),error=>error.diagnostic.stage==='token_revoke'&&error.diagnostic.retryable===false&&error.diagnostic.outcome==='unknown');
+ assert.equal(proposals,1);assert.equal(revocations,1);
+});
+
+test('transient pre-write failure plus failed cleanup waits for validated token expiry without becoming permanent',async()=>{
+ for(const site of ['scope','proposal']){
+  const f=authFixture(),fetcher=f.fetcher;let used=0;
+  f.fetcher=async(url,options)=>{if(options.method==='DELETE'||site==='scope'&&new URL(url).pathname==='/installation/repositories')throw Error('fixture outage '+token);return fetcher(url,options);};
+  await assert.rejects(withProducerToken(identity,()=>{used++;throw operationError('fixture read outage',{stage:'read_main',code:'transport',outcome:'not_started',retryable:true});},{...f,now}),error=>error.diagnostic.stage==='token_revoke'&&error.diagnostic.retryable===true&&error.diagnostic.outcome==='not_started'&&error.diagnostic.cleanup_after===time+3660000&&!JSON.stringify(error.diagnostic).includes(token));
+  assert.equal(used,site==='scope'?0:1);
+ }
+ const f=authFixture();f.fail='/installation/token';
+ await assert.rejects(withProducerToken(identity,()=>{throw operationError('permanent validation',{stage:'read_main',code:'identity_mismatch'});},{...f,now}),error=>error.diagnostic.retryable===false);
 });

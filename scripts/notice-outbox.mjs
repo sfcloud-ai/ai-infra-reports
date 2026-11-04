@@ -7,6 +7,7 @@ import {noticeIdentityReserved,noticeRecovery,activateNoticeRecovery,checkRecove
 import {checkedNoticeResult} from "./notice-checker.mjs";
 import {JOURNAL_FIELDS,validateJournalCommand,applyJournalCommand,guardJournalOperation,remoteJournal,remoteCatalog} from "./remote-native-journal.mjs";
 import {recoveryCommandAllowed} from './recovery-control-successor.mjs';
+import {isLocalSlackCooldown} from './handoff-recovery.mjs';
 export const MAX_NOTICE_COMMAND=16384;
 export function notificationScope(config){
  const {ready_for_review,...scope}=handoffScope(config);
@@ -211,10 +212,16 @@ export async function advanceNotice(outbox,id,io){
   operation=outbox.command(id);
  }
  requireThat(operation.phase==="response_ready","Unknown notice response phase");
+ // A known local cooldown is not an uncertain send. Preserve the prepared
+ // response and its original grant until the method can actually be attempted.
+ io.receiptReady?.();
  if(!outbox.move(id,"response_ready","response_sending"))return;
  try{
   const ts=await io.receipt(operation.source_ts,noticeResponseText(operation.response));
   requireThat(typeof ts==="string"&&TS.test(ts),"Notice response timestamp missing");
   outbox.move(id,"response_sending","response_sent",ts);
- }catch{outbox.move(id,"response_sending","response_unknown");if(remoteReceiptCanWait(outbox,operation))return;throw Error("Notice response outcome unknown; read original thread, never resend");}
+ }catch(error){
+  if(isLocalSlackCooldown(error)){outbox.move(id,'response_sending','response_ready');throw error;}
+  outbox.move(id,"response_sending","response_unknown");if(remoteReceiptCanWait(outbox,operation))return;throw Error("Notice response outcome unknown; read original thread, never resend");
+ }
 }

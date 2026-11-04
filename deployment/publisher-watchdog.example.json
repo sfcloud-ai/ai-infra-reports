@@ -1,0 +1,7 @@
+{
+  "publisher_config": "/var/lib/report-publisher/config/publisher.json",
+  "state_dir": "/var/lib/report-publisher/watchdog",
+  "unit": "ai-report-publisher.service",
+  "heartbeat_max_age_seconds": 300,
+  "deadline_grace_seconds": 60
+}

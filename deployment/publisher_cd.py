@@ -24,7 +24,11 @@ REPOSITORY = "sfcloud-ai/ai-infra-reports"
 SERVICE = "ai-report-publisher.service"
 CONFIG = Path("/etc/ai-report-publisher-cd.json")
 SHA = re.compile(r"[0-9a-f]{40}")
-TABLES = {"scope", "jobs", "ready_migrations", "notice_scope", "notices", "notice_commands", "notice_recovery_authorizations", "remote_native_runs", "remote_native_ops", "recovery_control_successors", "scheduled_handoffs", "scheduled_bridge_scope", "scheduled_status_replies"}
+TABLES = {"scope", "jobs", "ready_migrations", "notice_scope", "notices", "notice_commands", "notice_recovery_authorizations", "remote_native_runs", "remote_native_ops", "recovery_control_successors", "scheduled_handoffs", "scheduled_bridge_scope", "scheduled_status_replies", "job_replacement_audit"}
+
+# Authorized pre-publication corrections retain the complete original payload.
+# This historical evidence is not an unresolved live job and is never migrated.
+JOB_REPLACEMENT_SCHEMA = "CREATE TABLE job_replacement_audit (request_id TEXT NOT NULL, original_hash TEXT NOT NULL, original_source_ts TEXT NOT NULL, original_bytes BLOB NOT NULL, original_phase TEXT NOT NULL, original_detail TEXT NOT NULL, replacement_hash TEXT NOT NULL, replacement_commit TEXT NOT NULL, replaced_at TEXT NOT NULL, reason TEXT NOT NULL, PRIMARY KEY(request_id, original_hash))"
 
 SCHEDULED_SCHEMA = {
     "scheduled_handoffs": "CREATE TABLE scheduled_handoffs (request_id TEXT PRIMARY KEY, binding TEXT NOT NULL, phase TEXT NOT NULL, result TEXT, poll_order INTEGER NOT NULL DEFAULT 0)",
@@ -233,6 +237,11 @@ def snapshot(path, settled=True):
         tables = database.execute("SELECT name,sql FROM sqlite_master WHERE type='table' ORDER BY name").fetchall()
         if not {"scope", "jobs"} <= {row[0] for row in tables} <= TABLES:
             raise ValueError("unsupported_ledger_schema")
+        replacement = database.execute("SELECT type,name,sql FROM sqlite_master WHERE tbl_name='job_replacement_audit'").fetchall()
+        if replacement and set(replacement) != {
+                ("table", "job_replacement_audit", JOB_REPLACEMENT_SCHEMA),
+                ("index", "sqlite_autoindex_job_replacement_audit_1", None)}:
+            raise ValueError("unsupported_job_replacement_schema")
         scheduled = {name: sql for name, sql in tables if name in SCHEDULED_SCHEMA}
         if (any(SCHEDULED_SCHEMA[name] != sql for name, sql in scheduled.items())
                 or ("scheduled_handoffs" in scheduled) != ("scheduled_bridge_scope" in scheduled)):

@@ -115,6 +115,84 @@ class LedgerTests(unittest.TestCase):
             database.execute("UPDATE jobs SET bytes=X'0201'")
         self.assertNotEqual(cd.snapshot(self.database), before)
 
+    def replacement_audit(self, database):
+        # Match the one-time recovery CREATE exactly, including SQLite's removal
+        # of IF NOT EXISTS in sqlite_master. The old unknown phase is history.
+        database.execute(cd.JOB_REPLACEMENT_SCHEMA.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS ", 1))
+        original = b"\x00\xfforiginal bundle bytes\n"
+        database.execute("INSERT INTO job_replacement_audit VALUES(?,?,?,?,?,?,?,?,?,?)",
+                         ("report", hashlib.sha256(original).hexdigest(), "1793749034.937879",
+                          original, "proposal_unknown", "{}", "a" * 64, "b" * 40,
+                          "2026-11-04T00:34:33.000Z", "authorized correction before publication"))
+        return original
+
+    def test_exact_replacement_audit_schema_preserves_complete_original_bytes(self):
+        without = cd.snapshot(self.database)
+        with connection(self.database) as database:
+            original = self.replacement_audit(database)
+            self.assertEqual(database.execute("SELECT sql FROM sqlite_master WHERE name='job_replacement_audit'").fetchone()[0],
+                             cd.JOB_REPLACEMENT_SCHEMA)
+        before = cd.snapshot(self.database)
+        self.assertNotEqual(before, without)
+        with connection(self.database) as database:
+            self.assertEqual(database.execute("SELECT original_bytes FROM job_replacement_audit").fetchone()[0], original)
+            database.execute("UPDATE job_replacement_audit SET original_bytes=?", (original.replace(b"\xff", b"\xfe"),))
+        # Same row count, schema and byte length: every original byte still
+        # participates in the snapshot rather than only the recorded hash.
+        self.assertNotEqual(cd.snapshot(self.database), before)
+
+    def test_replacement_audit_rejects_changed_schema_and_additional_constraints(self):
+        variants = [cd.JOB_REPLACEMENT_SCHEMA.replace("original_bytes BLOB", "original_bytes TEXT"),
+                    cd.JOB_REPLACEMENT_SCHEMA.replace("request_id TEXT NOT NULL", "request_id TEXT"),
+                    cd.JOB_REPLACEMENT_SCHEMA.replace("PRIMARY KEY(request_id, original_hash)", "PRIMARY KEY(request_id)"),
+                    cd.JOB_REPLACEMENT_SCHEMA.replace("reason TEXT NOT NULL", "reason TEXT NOT NULL, extra TEXT")]
+        for sql in variants:
+            with self.subTest(sql=sql):
+                with connection(self.database) as database:
+                    database.execute("DROP TABLE IF EXISTS job_replacement_audit")
+                    database.execute(sql)
+                with self.assertRaisesRegex(ValueError, "unsupported_job_replacement_schema"):
+                    cd.snapshot(self.database)
+        with connection(self.database) as database:
+            database.execute("DROP TABLE job_replacement_audit")
+            self.replacement_audit(database)
+            database.execute("CREATE UNIQUE INDEX foreign_replacement_constraint ON job_replacement_audit(replacement_hash)")
+        with self.assertRaisesRegex(ValueError, "unsupported_job_replacement_schema"):
+            cd.snapshot(self.database)
+
+    def test_compatibility_probe_retains_audit_and_detects_any_original_byte_change(self):
+        with connection(self.database) as database:
+            original = self.replacement_audit(database)
+        config_file = self.root / "publisher.json"
+        config_file.write_text('{}')
+        operation = self.root / "operation"
+        operation.mkdir()
+        config = {"state": str(self.root), "publisher_config": str(config_file), "uid": 996, "gid": 996}
+        before = cd.snapshot(self.database)
+        def copied_database(kwargs):
+            mount = kwargs["extra"][1]
+            prefix, suffix = "type=bind,src=", ",dst=/probe"
+            self.assertTrue(mount.startswith(prefix) and mount.endswith(suffix))
+            return Path(mount[len(prefix):-len(suffix)]) / "handoff.sqlite"
+        def probe(config, release, arguments, **kwargs):
+            with connection(copied_database(kwargs)) as database:
+                self.assertEqual(database.execute("SELECT original_bytes FROM job_replacement_audit").fetchone()[0], original)
+                database.execute("INSERT OR IGNORE INTO scope VALUES(1,'pinned')")
+        with patch.object(cd, "container", side_effect=probe), \
+                patch.object(cd, "legacy_dependency_mount", return_value=[]), patch.object(os, "chown", create=True):
+            cd.compatibility(config, self.root, operation, before)
+        self.assertEqual(cd.snapshot(self.database), before)
+
+        def mutating_probe(config, release, arguments, **kwargs):
+            probe(config, release, arguments, **kwargs)
+            with connection(copied_database(kwargs)) as database:
+                database.execute("UPDATE job_replacement_audit SET original_bytes=?", (original + b"changed",))
+        with patch.object(cd, "container", side_effect=mutating_probe), \
+                patch.object(cd, "legacy_dependency_mount", return_value=[]), patch.object(os, "chown", create=True):
+            with self.assertRaisesRegex(ValueError, "automatic_state_migration_not_supported"):
+                cd.compatibility(config, self.root, operation, before)
+        self.assertEqual(cd.snapshot(self.database), before)
+
     def test_scheduled_schema_is_snapshotted_and_unsettled_work_blocks_cutover(self):
         with connection(self.database) as database:
             for sql in cd.SCHEDULED_SCHEMA.values():

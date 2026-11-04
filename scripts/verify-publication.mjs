@@ -1,5 +1,6 @@
 import {pathToFileURL} from "node:url";
 import {contentHash,editionSources} from "./publication-content.mjs";
+import {operationError,rateLimitInfo} from "./github.mjs";
 const origin="https://sfcloud-ai.github.io/ai-infra-reports";
 const api="https://api.github.com/repos/sfcloud-ai/ai-infra-reports";
 const SHA=/^[a-f0-9]{40}$/,HASH=/^[a-f0-9]{64}$/;
@@ -17,6 +18,10 @@ export function createPublicationSourceCache(){
 }
 async function bytesAt(url,limit,fetcher,type){
  const response=await fetcher(url,{redirect:"error",signal:AbortSignal.timeout(15000),cache:"no-store"});
+ if(!response.ok&&url.startsWith(api+'/')){
+  const {limited,retry_at}=await rateLimitInfo(response);
+  throw operationError('Publication resource unavailable',{stage:'publication_github_read',provider_scope:limited?'github.public':undefined,code:limited?'rate_limited':'http_'+response.status,http_status:response.status,request_id:response.headers?.get?.('x-github-request-id'),retryable:limited||response.status===408||response.status>=500,retry_at});
+ }
  requireThat(response.ok,"Publication resource unavailable");
  if(type)requireThat(response.headers.get("content-type")?.split(";")[0]===type,"Unexpected publication content type");
  const length=response.headers.get("content-length");

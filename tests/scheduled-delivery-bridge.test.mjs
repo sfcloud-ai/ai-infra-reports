@@ -5,12 +5,53 @@ import {digest} from '../scripts/archive.mjs';
 import {HandoffState,handoffScope} from '../scripts/handoff-state.mjs';
 import {advanceScheduledDelivery,validateScheduledConfig} from '../scripts/scheduled-delivery-bridge.mjs';
 import {handoffTick,validateConfig} from '../scripts/run-handoff.mjs';
+import {SlackHandoff} from '../scripts/slack-handoff.mjs';
 import {FILES,MERGE} from './helpers/cloud-sender-fixture.mjs';
 const id='scheduled-bridge-fixture',bytes=await encodeBundle(FILES,id,'a'.repeat(40),'b'.repeat(40)),hash=digest(bytes);
 const scheduled={activation_date:'2026-11-01',executable:'/usr/bin/python3',args:['/trusted/scheduled_client.py','--socket','/run/relay/scheduled.sock','--reader-uid','1002']};
 const config={team_id:'T123',channel_id:'C123',sender_user_id:'U123',bot_user_id:'U456',bot_id:'B456',producer_app_id:10,merger_app_id:11,slack_token_file:'/private/token',producer_key_file:'/private/key',state_dir:'/private/state',ready_for_review:false,scheduled_delivery:scheduled};
 const state=()=>{const s=new HandoffState(':memory:',handoffScope(config));s.admit({request_id:id,hash,source_ts:'1793491200.000001'},bytes);s.move(id,'received','receipt_unknown',{commit:MERGE,proof:{publication_status:'verified',commit:MERGE,bundle_sha256:hash}});return s;};
 const queued={request_id:id,report_date:'2026-11-01',report_commit:MERGE,bundle_sha256:hash,status:'queued',phase:'pending',parts_total:2,parts_sent:0};
+
+test('status cooldown creates no uncertain send and the same command resumes at its deadline',async()=>{
+ const s=state(),event={request_id:id,source_ts:'1793491202.000001',hash:'query-hash'};let clock=1000,posts=0;
+ const slack=new SlackHandoff(config,'synthetic',()=>assert.fail('fixture only'),{now:()=>clock,cooldowns:{deadline:()=>5000}});
+ slack.controlReceipt=async()=>{posts++;return '1793491203.000001';};
+ const query=async()=>({status:'not_found'});
+ try{
+  await assert.rejects(replyScheduledStatus(s,config,event,slack,query),error=>error.diagnostic.outcome==='not_started');
+  assert.equal(s.db.prepare('SELECT phase FROM scheduled_status_replies').get().phase,'ready');assert.equal(posts,0);
+  clock=5000;await replyScheduledStatus(s,config,event,slack,query);
+  assert.equal(s.db.prepare('SELECT phase FROM scheduled_status_replies').get().phase,'sent');assert.equal(posts,1);
+  await replyScheduledStatus(s,config,event,slack,query);assert.equal(posts,1);
+ }finally{s.close();}
+});
+
+test('a cooldown appearing after status intent cannot create a nonexistent unknown receipt',async()=>{
+ const s=state(),event={request_id:id,source_ts:'1793491202.000001',hash:'query-hash'};let clock=1000,deadline=0,posts=0;
+ const slack=new SlackHandoff(config,'synthetic',()=>assert.fail('no live HTTP'),{now:()=>clock,cooldowns:{deadline:()=>deadline}});
+ slack.controlReceipt=async()=>{deadline=5000;slack.assertReady('chat.postMessage');posts++;return '1793491203.000001';};
+ try{
+  await assert.rejects(replyScheduledStatus(s,config,event,slack,async()=>({status:'not_found'})));
+  assert.equal(posts,0);assert.equal(s.db.prepare('SELECT phase FROM scheduled_status_replies').get().phase,'ready');
+  clock=5000;await replyScheduledStatus(s,config,event,slack,async()=>({status:'not_found'}));assert.equal(posts,1);assert.equal(s.db.prepare('SELECT phase FROM scheduled_status_replies').get().phase,'sent');
+ }finally{s.close();}
+});
+
+test('admitted status survives long cooldown and transient query failure beyond the intake window',async()=>{
+ for(const failure of ['cooldown','query']){
+  const s=state(),event={request_id:id,source_ts:'1793491202.000001',hash:'query-hash'};let clock=1000,queries=0,posts=0;
+  const slack=new SlackHandoff(config,'synthetic',()=>assert.fail('fixture only'),{now:()=>clock,cooldowns:{deadline:()=>failure==='cooldown'?1801000:0}});
+  slack.controlReceipt=async()=>{posts++;return '1793491203.000001';};
+  const query=async()=>{if(++queries===1&&failure==='query')throw Error('fixture unavailable');return {status:'not_found'};};
+  try{
+   await assert.rejects(advanceScheduledStatus(s,config,[event],slack,query));
+   assert.equal(s.db.prepare('SELECT phase FROM scheduled_status_replies').get().phase,failure==='cooldown'?'ready':'queued');assert.equal(posts,0);
+   clock=1801000;await advanceScheduledStatus(s,config,[],slack,query);assert.equal(posts,1);
+   await advanceScheduledStatus(s,config,[],slack,query);assert.equal(posts,1);assert.equal(s.db.prepare('SELECT phase FROM scheduled_status_replies').get().phase,'sent');
+  }finally{s.close();}
+ }
+});
 test('explicit opt-in config leaves existing handoff scope unchanged',()=>{
  assert.equal(validateConfig(config),config);const {scheduled_delivery,...old}=config;assert.deepEqual(handoffScope(config),handoffScope(old));
  for(const patch of [{activation_date:'2026-02-30'},{destination:'other'},{executable:'relative'}])assert.throws(()=>validateScheduledConfig({...scheduled,...patch}));
@@ -52,8 +93,17 @@ test('complete requires all real parts and rejects wrong binding',async()=>{
  const s=state();try{
   assert.equal((await advanceScheduledDelivery(s,config,async()=>({...queued,bundle_sha256:'f'.repeat(64)}))).phase,'reconcile_pending');
   assert.equal((await advanceScheduledDelivery(s,config,async()=>({...queued,status:'sent',phase:'complete',parts_sent:1}))).phase,'reconcile_pending');
-  assert.equal((await advanceScheduledDelivery(s,config,async()=>({...queued,status:'sent',phase:'complete',parts_sent:2}))).phase,'complete');
+  assert.equal((await advanceScheduledDelivery(s,config,async()=>({...queued,status:'sent',phase:'complete',parts_sent:2}))).phase,'reconcile_pending');
+  assert.equal((await advanceScheduledDelivery(s,config,async()=>({...queued,status:'sent',phase:'complete',parts_sent:2,images:[{file_id:'scheduled-poster',status:'sent',error:null}]}))).phase,'complete');
   assert.equal((await advanceScheduledDelivery(s,config,()=>assert.fail('completed report must not query or send again'))).phase,'idle');
+ }finally{s.close();}
+});
+test('status distinguishes admitted Publisher from absent scheduler and includes safe diagnostics',async()=>{
+ const s=state();let reply;
+ try{
+  const job=s.get(id);s.move(id,job.phase,'proposal_unknown',{recovery:{next_at:123,last_error:{stage:'create_ref',code:'transport',outcome:'unknown',retryable:false,message:'must-not-leak'}}});
+  await replyScheduledStatus(s,config,{request_id:id,source_ts:'1793491202.000001',hash:'query-hash'},{controlReceipt:async(_ts,text)=>{reply=JSON.parse(text.slice('!ai-report status-receipt '.length));return '1793491203.000001';}},async()=>({status:'not_found'}));
+  assert.equal(reply.status,'not_found');assert.equal(reply.publisher_phase,'proposal_unknown');assert.equal(reply.publisher_bundle_sha256,hash);assert.equal(reply.publisher_next_attempt_at,123);assert.equal(reply.publisher_diagnostic.code,'transport');assert(!JSON.stringify(reply).includes('must-not-leak'));
  }finally{s.close();}
 });
 test('lost Slack publication receipt does not block T4 scheduling or get resent',async()=>{

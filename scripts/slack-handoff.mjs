@@ -1,16 +1,28 @@
 import {REPOSITORY} from "./archive.mjs";
 import {digest} from "./archive.mjs";
 import {requireThat,boundedBytes,MAX_BUNDLE,SHA,acceptControlFile} from "./report-handoff.mjs";
+import {operationError,rateLimitInfo} from "./github.mjs";
+import {localSlackCooldown} from './handoff-recovery.mjs';
 export class SlackHandoff{
- constructor(config,token,fetcher=fetch){this.config=config;this.token=token;this.fetcher=fetcher;}
+ constructor(config,token,fetcher=fetch,{now=Date.now,cooldowns}={}){this.config=config;this.token=token;this.fetcher=fetcher;this.now=now;this.cooldowns=cooldowns;}
+ assertReady(method){
+  const deadline=this.cooldowns?.deadline(method)??0;
+  if(deadline>this.now())throw localSlackCooldown(operationError('Slack method cooldown',{stage:'slack.'+method,code:'rate_limited',outcome:'not_started',retryable:true,retry_at:deadline}));
+ }
  async call(method,params={},write=false){
   const url=new URL("https://slack.com/api/"+method);
   if(!write)for(const [k,v]of Object.entries(params))url.searchParams.set(k,String(v));
-  const response=await this.fetcher(url.href,{method:write?"POST":"GET",headers:{authorization:"Bearer "+this.token,"content-type":"application/json; charset=utf-8"},body:write?JSON.stringify(params):undefined,redirect:"error",signal:AbortSignal.timeout(30000)});
-  // No retries here: the runner is invoked at most once per two minutes; writes
-  // have durable unknown states. A rate limit stops this invocation.
+  const failure=(code,outcome,retryable,http_status,retry_at)=>operationError('Slack operation failed; reconcile writes before retrying',{stage:'slack.'+method,code,outcome,retryable,http_status,retry_at});
+  this.assertReady(method);
+  let response;
+  try{response=await this.fetcher(url.href,{method:write?"POST":"GET",headers:{authorization:"Bearer "+this.token,"content-type":"application/json; charset=utf-8"},body:write?JSON.stringify(params):undefined,redirect:"error",signal:AbortSignal.timeout(30000)});}catch{throw failure('transport',write?'unknown':'not_started',!write);}
+  const retryAt=()=>{const seconds=response.headers?.get?.('retry-after');return this.now()+(/^\d{1,6}$/.test(seconds??'')?Number(seconds)*1000:60000);};
+  const limited=async()=>{const deadline=retryAt();await this.cooldowns?.defer(method,deadline);return deadline;};
+  if(!response.ok)throw failure('http_error',write&&response.status>=500?'unknown':'not_started',response.status===429||(!write&&response.status>=500),response.status,response.status===429?await limited():undefined);
+  // No inline write retry. The durable worker decides whether reconciliation
+  // or a bounded retry is safe; only allowlisted error identifiers are logged.
   const data=JSON.parse((await boundedBytes(response,1024*1024)).toString("utf8"));
-  requireThat(data.ok===true,"Slack operation failed; reconcile writes before retrying");
+  if(data.ok!==true){const codes=['ratelimited','invalid_auth','token_revoked','missing_scope','not_authed','account_inactive','channel_not_found','not_in_channel','is_archived'];const code=codes.includes(data.error)?data.error:'api_error';throw failure(code,write&&code==='api_error'?'unknown':'not_started',code==='ratelimited',undefined,code==='ratelimited'?await limited():undefined);}
   return {data,scopes:response.headers.get("x-oauth-scopes")};
  }
  async preflight(){
@@ -64,19 +76,29 @@ export class SlackHandoff{
  }
 }
 // Public reads only. No long-lived token is minted while waiting for a merge.
-export async function publicGitHub(route,fetcher=fetch){
+async function publicRead(route,fetcher,now){
+ let response;
+ try{response=await fetcher("https://api.github.com/repos/"+REPOSITORY+route,{headers:{accept:"application/vnd.github+json","x-github-api-version":"2026-03-10"},redirect:"error",signal:AbortSignal.timeout(30000)});}
+ catch{throw operationError('Remote read failed',{stage:'public_github_read',code:'transport',retryable:true});}
+ const evidence={stage:'public_github_read',http_status:response.status,request_id:response.headers?.get?.('x-github-request-id')};
+ if(!response.ok){
+  const {limited,retry_at}=await rateLimitInfo(response,now());
+  throw operationError('Remote read failed',{...evidence,provider_scope:limited?'github.public':undefined,code:limited?'rate_limited':'http_'+response.status,retryable:limited||response.status===408||response.status>=500,retry_at});
+ }
+ try{return {response,data:JSON.parse((await boundedBytes(response,2*1024*1024)).toString('utf8'))};}
+ catch{throw operationError('Remote read failed',{...evidence,code:'invalid_response',retryable:true});}
+}
+export async function publicGitHub(route,fetcher=fetch,now=Date.now){
  requireThat(/^\/(pulls\/[1-9]\d*|git\/commits\/[a-f0-9]{40})$/.test(route),"GitHub read route");
- const response=await fetcher("https://api.github.com/repos/"+REPOSITORY+route,{headers:{accept:"application/vnd.github+json","x-github-api-version":"2026-03-10"},redirect:"error",signal:AbortSignal.timeout(30000)});
- return JSON.parse((await boundedBytes(response,2*1024*1024)).toString("utf8"));
+ return (await publicRead(route,fetcher,now)).data;
 }
 // Read the repository's own merge event, never a commit mentioned in a comment
 // or the current branch tip. Some PR representations omit merge_commit_sha.
-export async function publicMergeCommit(number,pr,fetcher=fetch){
+export async function publicMergeCommit(number,pr,fetcher=fetch,now=Date.now){
  requireThat(/^[1-9]\d*$/.test(String(number))&&Number.isSafeInteger(Number(number))&&pr?.number===Number(number)&&pr.merged===true&&pr.state==="closed","Merged PR identity required");
  requireThat(typeof pr.merged_at==="string"&&/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test(pr.merged_at)&&Number.isSafeInteger(pr.merged_by?.id)&&pr.merged_by.id>0,"Merged PR event metadata required");
  const origin="https://api.github.com/repos/"+REPOSITORY;
- const response=await fetcher(`${origin}/issues/${number}/timeline?per_page=100`,{headers:{accept:"application/vnd.github+json","x-github-api-version":"2026-03-10"},redirect:"error",signal:AbortSignal.timeout(30000)});
- const events=JSON.parse((await boundedBytes(response,2*1024*1024)).toString("utf8"));
+ const {response,data:events}=await publicRead(`/issues/${number}/timeline?per_page=100`,fetcher,now);
  // A partial page cannot prove uniqueness. Leave the durable phase unchanged
  // for operator reconciliation instead of following arbitrary pagination URLs.
  requireThat(!response.headers.get("link")&&Array.isArray(events)&&events.length<=100&&events.every(e=>e&&typeof e==="object"&&!Array.isArray(e)),"Incomplete merge timeline; reconcile first");

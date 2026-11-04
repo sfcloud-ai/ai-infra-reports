@@ -2,17 +2,27 @@
 import {readFile} from "node:fs/promises";
 import {pathToFileURL} from "node:url";
 import {readReports} from "./archive.mjs";
-import {GitHub} from "./github.mjs";
-import {propose} from "./propose.mjs";
+import {GitHub,operationError} from "./github.mjs";
+import {propose,reconcileProposal} from "./propose.mjs";
 import {withProducerToken} from "./producer-token.mjs";
 
 export async function proposeWithApp(bundle,expectedBase,identity,{ready=false,fetcher=fetch,now=Date.now,createAPI=token=>new GitHub(token)}={}) {
- if(!/^[a-f0-9]{40}$/.test(expectedBase)||!(bundle instanceof Map)||bundle.size===0||typeof ready!=="boolean")throw Error("Report bundle, exact main SHA and explicit readiness required");
+ if(!/^[a-f0-9]{40}$/.test(expectedBase)||!(bundle instanceof Map)||bundle.size===0||typeof ready!=="boolean")throw operationError("Report bundle, exact main SHA and explicit readiness required",{stage:"proposal_input",code:"validation"});
  return withProducerToken(identity,async token=>{
   const api=createAPI(token);
   try {return await propose(api,bundle,expectedBase,{ready});}
   finally {await api.close();}
  },{fetcher,now});
+}
+
+// Historical name retained for callers. Public evidence needs no installation
+// token, including when the previous attempt could not confirm token revocation.
+export async function reconcileProposalWithApp(bundle,expectedBase,identity,{fetcher=fetch,createAPI=()=>new GitHub(undefined,{readOnly:true,fetcher})}={}) {
+ if(!/^[a-f0-9]{40}$/.test(expectedBase)||!(bundle instanceof Map)||bundle.size===0)throw operationError("Report bundle and exact main SHA required",{stage:"proposal_input",code:"validation"});
+ if(!Number.isSafeInteger(identity?.appId)||identity.appId<=0||!Number.isSafeInteger(identity?.mergerAppId)||identity.mergerAppId<=0||identity.appId===identity.mergerAppId)throw operationError("Independent pinned Producer and Merger App IDs required",{stage:"proposal_input",code:"identity_mismatch"});
+ const api=createAPI();
+ try {return await reconcileProposal(api,bundle,expectedBase);}
+ finally {await api.close();}
 }
 
 if(import.meta.url===pathToFileURL(process.argv[1]||"").href){

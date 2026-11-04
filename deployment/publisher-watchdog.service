@@ -1,0 +1,25 @@
+[Unit]
+Description=Independently check report publication and actual delivery
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=/var/lib/report-publisher/config/watchdog.json
+
+[Service]
+Type=oneshot
+# Replace these administrator-owned paths with the reviewed immutable runtime
+# and watchdog release. Do not follow the Publisher's mutable current symlink.
+User=ai-report-publisher
+Group=ai-report-publisher
+ExecStart=/opt/report-publisher/runtime/node/bin/node /opt/report-publisher/watchdog-release/scripts/publisher-watchdog.mjs /var/lib/report-publisher/config/watchdog.json --live
+UMask=0077
+TimeoutStartSec=3min
+Restart=no
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/report-publisher/watchdog
+# Only quota metadata is shared writable; Publisher report state stays read-only.
+ReadWritePaths=/var/lib/report-publisher/state/provider-cooldowns
+PrivateTmp=yes
+StandardOutput=journal
+StandardError=journal
