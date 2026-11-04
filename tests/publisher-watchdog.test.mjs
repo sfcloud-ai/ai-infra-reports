@@ -59,6 +59,35 @@ test('read-only Publisher ledger works with an active WAL and after its writer c
  }
 });
 
+test('CANTOPEN uses a locked snapshot retaining committed WAL rows without changing the source',{skip:process.platform!=='linux'||process.getuid()===0},async()=>{
+ const directory=await mkdtemp(path.join(os.tmpdir(),'watchdog-cantopen-')),filename=path.join(directory,'handoff.sqlite');
+ const exec=DatabaseSync.prototype.exec;let state,first=true;
+ try{
+  await writeFile(filename,'',{mode:0o600});
+  await withHandoffLock(directory,async()=>{
+   state=new HandoffState(filename,{});
+   const bytes=await encodeBundle(FILES,'cantopen-wal',BASE,'b'.repeat(40));
+   state.admit({request_id:'cantopen-wal',hash:digest(bytes),source_ts:'1793491200.000001'},bytes);
+  });
+  const before=await readFile(filename),wal=await readFile(filename+'-wal');assert(wal.length>0);
+  DatabaseSync.prototype.exec=function(sql){
+   if(first&&sql==='BEGIN'){first=false;throw Object.assign(Error('unable to open database file'),{code:'ERR_SQLITE_ERROR',errcode:14});}
+   return exec.call(this,sql);
+  };
+  const result=await readDayBindings({state_dir:directory},'2026-11-01');
+  assert.equal(first,false);assert.equal(result.length,1);assert.equal(result[0].request_id,'cantopen-wal');
+  assert.deepEqual(await readFile(filename),before);assert.deepEqual(await readFile(filename+'-wal'),wal);
+  // A snapshot must still respect an active writer, and corruption must not
+  // be reclassified as the recoverable missing-sidecar condition.
+  first=true;await withHandoffLock(directory,async()=>{
+   await assert.rejects(readDayBindings({state_dir:directory},'2026-11-01'),error=>error.code==='SQLITE_BUSY');
+  });
+  const corrupt=Object.assign(Error('database disk image is malformed'),{code:'ERR_SQLITE_ERROR',errcode:11});
+  DatabaseSync.prototype.exec=function(sql){if(sql==='BEGIN')throw corrupt;return exec.call(this,sql);};
+  await assert.rejects(readDayBindings({state_dir:directory},'2026-11-01'),error=>error===corrupt);
+ }finally{DatabaseSync.prototype.exec=exec;state?.close();await rm(directory,{recursive:true,force:true});}
+});
+
 test('watchdog rejects an excessive daily backlog before fetching any bundle payload',async()=>{
  const directory=await mkdtemp(path.join(os.tmpdir(),'watchdog-backlog-')),filename=path.join(directory,'handoff.sqlite');
  const prepare=DatabaseSync.prototype.prepare;let state,payloads=0;

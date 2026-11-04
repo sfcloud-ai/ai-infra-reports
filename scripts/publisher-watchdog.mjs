@@ -58,8 +58,9 @@ export async function readDayBindings(config,date){
  try{return await queryDayBindings(filename,config,date);}
  catch(error){
   // A closed WAL writer removes its sidecars. SQLite may need writable sidecars
-  // even for a read-only connection; never grant that access to Publisher state.
-  if(error.code!=='ERR_SQLITE_ERROR'||!Number.isInteger(error.errcode)||(error.errcode&255)!==8)throw error;
+  // even for a read-only connection. A read-only mount can report CANTOPEN
+  // instead of READONLY; both use a locked copy, never writable Publisher state.
+  if(error.code!=='ERR_SQLITE_ERROR'||!Number.isInteger(error.errcode)||![8,14].includes(error.errcode&255))throw error;
  }
  const directory=await mkdtemp(path.join(os.tmpdir(),'publisher-watchdog-snapshot-'));
  try{
