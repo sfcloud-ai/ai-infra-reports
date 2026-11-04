@@ -790,6 +790,59 @@
       ],
       "poster": "assets/overview.png",
       "path": "reports/2026-11-03/r1/"
+    },
+    {
+      "schema_version": "1.0",
+      "date": "2026-11-04",
+      "revision": 1,
+      "title": "AI Infra 晨报 · 2026-11-04",
+      "subtitle": "缓存扩容与兼容边界，机器人延迟回到任务成功率",
+      "articles": [
+        {
+          "id": "model-serving-gpu",
+          "title": "模型服务与 GPU 超配｜缓存复用先划清兼容边界",
+          "summary": "DeepInfer披露生产缓存兼容键与失效条件，不等同完整开源缓存服务。",
+          "sha256": "c5a7c6dd5b9944976b5928d36f7cd3cec7e666f6c80d9e848cacff9ad9ea50a3",
+          "path": "reports/2026-11-04/r1/articles/model-serving-gpu.md"
+        },
+        {
+          "id": "hardware-status",
+          "title": "重点硬件｜本次无合格新进展",
+          "summary": "静态规格不作为新事件，B200/GB300性能不外推H100/H200，Pro5500型号待核实。",
+          "sha256": "9b8f90b6b1fdd850bf5d21e12fe253aa8dd3165f45cd85fd314cd02e97996d12",
+          "path": "reports/2026-11-04/r1/articles/hardware-status.md"
+        },
+        {
+          "id": "model-architecture-status",
+          "title": "模型与新架构｜本次无合格新进展",
+          "summary": "核查Qwen、GLM、DeepSeek官方模型资料，未发现满足架构与缓存适配证据的新事件。",
+          "sha256": "5c337b5de4a90c1f6b64a043fc411ebfc84a2e62842a219ad28d25bb562b7718",
+          "path": "reports/2026-11-04/r1/articles/model-architecture-status.md"
+        },
+        {
+          "id": "embodied-training",
+          "title": "制造业具身训练｜用成功率反推推理时限",
+          "summary": "VLALagBench区分观测陈旧与同步停顿，用任务曲线评估延迟预算，非工厂SLO保证。",
+          "sha256": "8dbc2a863e0905eb02fca8f1eb9bdeaede584ed1031471870161430ce03dcb21",
+          "path": "reports/2026-11-04/r1/articles/embodied-training.md"
+        },
+        {
+          "id": "small-model-status",
+          "title": "前沿小模型｜kniv v7 把英文抽取移到 CPU",
+          "summary": "动态标签与实体标记让专用英文抽取运行于CPU；INT8必须验收任务质量、窗口与延迟。",
+          "sha256": "c98e99a53d4cfe6cc8b576c745bbf93f29d92dea2c52588b74ae380e3dbedacd",
+          "path": "reports/2026-11-04/r1/articles/small-model-status.md"
+        },
+        {
+          "id": "inference-engines",
+          "title": "推理引擎每日变动｜扩缓存与批量写回",
+          "summary": "vLLM接入HiSparse可扩展KV，SGLang在可批处理路径中每批统一等待；按负载解读收益。",
+          "sha256": "6b8b2b8a704b084e7d638d77cd5487fac351c3873ce2deb815dfd1c36f09ff1f",
+          "path": "reports/2026-11-04/r1/articles/inference-engines.md"
+        }
+      ],
+      "poster": "assets/overview.png",
+      "path": "reports/2026-11-04/r1/"
     }
   ],
   "entries": [
@@ -2292,6 +2345,113 @@
       "article_id": "inference-engines",
       "fingerprint": "6771f63b5328f441388746fdf48eafeb514b88a5d5730b25413f189c1ef6debe",
       "date": "2026-11-03",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-04-deepinfer-deployment-qa-v02",
+      "event_key": "deepinfer-deployment-qa-v02",
+      "title": "DeepInfer生产缓存兼容边界",
+      "summary": "新Q&A披露部署配置、权重与用户组联合标识，改变缓存值或布局应失效；不是完整生产系统开源。",
+      "source_urls": [
+        "https://github.com/deepseek-ai/DeepInfer/blob/a679bb86ce36e883a98a97733492b686e5b9a08e/doc/inference_deployment_qa.md",
+        "https://github.com/deepseek-ai/DeepInfer/commit/a679bb86ce36e883a98a97733492b686e5b9a08e"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "2981721ad6e90e2b9e8da30fbab6e891dc2183f6f08f6c3fb6d89588cf17a2f5",
+      "date": "2026-11-04",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-04-hardware-screening-20261104",
+      "event_key": "hardware-screening-20261104",
+      "title": "重点硬件核查记录",
+      "summary": "已读H100/H200与NVIDIA博客；静态规格不作为新事件，Pro5500具体型号待核实。",
+      "source_urls": [
+        "https://developer.nvidia.com/blog/",
+        "https://www.nvidia.com/en-us/data-center/h100/",
+        "https://www.nvidia.com/en-us/data-center/h200/"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status",
+      "fingerprint": "6ea9ba03211c9a84ad8f5b9a7a5d4962d79067216cd51158addfda1e7e75b502",
+      "date": "2026-11-04",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-04-architecture-screening-20261104",
+      "event_key": "architecture-screening-20261104",
+      "title": "模型架构核查记录",
+      "summary": "官方模型库可见更新时间早于七日窗口，未发现满足架构与缓存适配证据的新事件。",
+      "source_urls": [
+        "https://huggingface.co/api/models?author=Qwen&direction=-1&limit=5&sort=lastModified",
+        "https://huggingface.co/api/models?author=deepseek-ai&direction=-1&limit=5&sort=lastModified",
+        "https://huggingface.co/api/models?author=zai-org&direction=-1&limit=5&sort=lastModified"
+      ],
+      "update_of": null,
+      "article_id": "model-architecture-status",
+      "fingerprint": "a1ff6be8363d8bb2448fc08bcf0b4d31263dd82f5cd73281d62bbf2b68f6083e",
+      "date": "2026-11-04",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-04-vlalagbench-v1",
+      "event_key": "vlalagbench-v1",
+      "title": "VLALagBench机器人延迟与任务成功率",
+      "summary": "分离观测陈旧与同步停顿，在延迟及请求预算内比较执行方式；代码尚未公开，模拟部署映射不是工厂SLO。",
+      "source_urls": [
+        "https://arxiv.org/abs/2611.03103v1",
+        "https://arxiv.org/html/2611.03103v1"
+      ],
+      "update_of": null,
+      "article_id": "embodied-training",
+      "fingerprint": "5b364ba5a47f66d383a748bc570600d11a1cd285adee3abb86014c00eca36c15",
+      "date": "2026-11-04",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-04-vllm-pr-65214",
+      "event_key": "vllm-pr-65214",
+      "title": "HiSparse接入可扩展KV",
+      "summary": "重绑GPU常驻与热点视图、区分主机池；B200 TP4容量提升16.4%，吞吐近中性，不是跨模型超配。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/commit/8ba4fe5f118ef188bafc162496a266b3a06661b1",
+        "https://github.com/vllm-project/vllm/pull/65214"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "44ed13a10ddd0e4df851c43c1ef3452fc19091d579cfd560c6d4e37121cfb1fb",
+      "date": "2026-11-04",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-04-sglang-pr-46930",
+      "event_key": "sglang-pr-46930",
+      "title": "HiCache写回合并同步等待",
+      "summary": "可批处理路径每批统一等待，设备淘汰顺序不变但主机驻留可能变化；GB300上的吞吐及TTFT收益取决于测试负载。",
+      "source_urls": [
+        "https://github.com/sgl-project/sglang/commit/d2a536fc532cc8cf1f70e0390adfa403c6fed09e",
+        "https://github.com/sgl-project/sglang/pull/46930"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "8898164c7e434849dd0c07ff4759f204b077e5b9f221b586b9a66d10b2589aee",
+      "date": "2026-11-04",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-04-kniv-v7-engineering",
+      "event_key": "kniv-v7-engineering",
+      "title": "kniv v7英文结构化抽取与CPU量化",
+      "summary": "新工程报告补齐动态标签、实体标记与INT8质量门控；限定英文短文档，图文件大小不等于运行内存，单请求计时不等于线上SLO。",
+      "source_urls": [
+        "https://huggingface.co/blog/dragonscale-ai/how-we-built-kniv-v7",
+        "https://huggingface.co/dragonscale-ai/kniv-v7-xlarge-u-en/blob/e82e5eee482fc1812d919028c4eb418ee867df88/README.md"
+      ],
+      "update_of": null,
+      "article_id": "small-model-status",
+      "fingerprint": "cf3e83655474034a003fabc6dae9f180c5ad324478b4278f0333022e049a7f0f",
+      "date": "2026-11-04",
       "revision": 1
     }
   ]
