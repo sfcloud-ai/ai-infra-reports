@@ -4,12 +4,12 @@
 import {readFile,lstat,realpath} from 'node:fs/promises';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
-import {HandoffState,handoffScope} from './handoff-state.mjs';
+import {withLockedHandoffState} from './handoff-state.mjs';
 import {NoticeOutbox,notificationScope} from './notice-outbox.mjs';
 import {authorizeNoticeRecovery} from './notice-recovery.mjs';
 import {validateConfig} from './run-handoff.mjs';
 import {decodeBundle,verifyReportPublication,requireThat} from './report-handoff.mjs';
-let state,relay;
+let relay;
 try{
  const [configFile,fenceFile,reference,confirmation]=process.argv.slice(2);
  requireThat(process.argv.length===6&&process.getuid?.()===0&&confirmation==='--confirm-original-journal-fenced-and-owner-stopped','Explicit local operator confirmation required');
@@ -37,7 +37,9 @@ try{
  relay.close();relay=undefined;
  // Preserve service ownership of SQLite WAL/SHM and any newly created tables.
  process.setgid(owner.gid);process.setuid(owner.uid);
- state=new HandoffState(filename,handoffScope(config));const outbox=new NoticeOutbox(state,notificationScope(config));
+ await withLockedHandoffState(config,async state=>{
+ const outbox=new NoticeOutbox(state,notificationScope(config));
  authorizeNoticeRecovery(outbox,plan,{reference,checked_at:Date.now(),relay_requests:0,publisher_verified:true});
  console.log(JSON.stringify({status:'approved',report_id:plan.binding.report_id,recovery_id:plan.binding.recovery_id,fence_sha256:plan.binding_sha256,messages_sent:0}));
-}catch(e){console.error('Recovery authorization stopped: '+e.message);process.exitCode=1;}finally{relay?.close();state?.close();}
+ });
+}catch(e){console.error('Recovery authorization stopped: '+e.message);process.exitCode=1;}finally{relay?.close();}

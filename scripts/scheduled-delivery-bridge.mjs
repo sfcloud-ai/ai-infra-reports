@@ -3,8 +3,17 @@
 import {spawn} from 'node:child_process';
 import {scopeDigest} from './handoff-state.mjs';
 import {installScheduledTables} from './scheduled-delivery-state.mjs';
-import {decodeBundle,requireThat} from './report-handoff.mjs';
+import {decodeBundle,requireThat,REQUEST} from './report-handoff.mjs';
 import {validateCheckerConfig} from './notice-checker.mjs';
+import {safeDiagnostic,isLocalSlackCooldown} from './handoff-recovery.mjs';
+export function statusImages(value){
+ if(value===undefined)return [];
+ requireThat(Array.isArray(value)&&value.length<=32,'Bounded image receipts required');
+ return value.map(image=>{
+  requireThat(image&&typeof image.file_id==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(image.file_id)&&['pending','sending','sent','failed','unknown'].includes(image.status),'Invalid image receipt');
+  return {file_id:image.file_id,status:image.status,error:image.error==null?null:typeof image.error==='string'&&/^[A-Za-z0-9_.:-]{1,80}$/.test(image.error)?image.error:'unspecified'};
+ });
+}
 export function validateScheduledConfig(c){
  requireThat(c&&Object.keys(c).sort().join()==='activation_date,args,executable'&&/^\d{4}-\d\d-\d\d$/.test(c.activation_date)&&new Date(c.activation_date+'T00:00:00Z').toISOString().slice(0,10)===c.activation_date,'Explicit scheduler activation boundary required');
  validateCheckerConfig({args:c.args,executable:c.executable});return c;
@@ -50,13 +59,16 @@ export async function advanceScheduledDelivery(state,config,query=queryScheduled
    }
    const expected=JSON.parse(binding);
    requireThat(result&&Object.entries(expected).every(([k,v])=>result[k]===v)&&['queued','sending','sent','failed','unknown','partial'].includes(result.status)&&Number.isSafeInteger(result.parts_total)&&result.parts_total>0&&Number.isSafeInteger(result.parts_sent)&&result.parts_sent>=0&&result.parts_sent<=result.parts_total,'Relay status binding/counts differ');
-   const complete=result.status==='sent'&&result.phase==='complete'&&result.parts_sent===result.parts_total;
+   const images=statusImages(result.images);
+   const complete=result.status==='sent'&&result.phase==='complete'&&result.parts_sent===result.parts_total&&images.length===1&&images[0].file_id==='scheduled-poster'&&images[0].status==='sent'&&images[0].error===null;
    requireThat(result.status!=='sent'||complete,'Incomplete delivery cannot be sent');
    db.prepare('UPDATE scheduled_handoffs SET phase=?,result=? WHERE request_id=?').run(complete?'complete':'observed',JSON.stringify(result),id);
    return {request_id:id,phase:complete?'complete':'observed',wecom_status:complete?'sent':result.status,parts_sent:result.parts_sent,parts_total:result.parts_total};
-  }catch{
+  }catch(error){
    // Do not stop publication or reissue a send. Next tick queries original ID.
-   return {request_id:id,phase:'reconcile_pending',wecom_status:'not_verified'};
+   const diagnostic=safeDiagnostic(error,'scheduled_delivery');
+   db.prepare('UPDATE scheduled_handoffs SET result=? WHERE request_id=?').run(JSON.stringify({request_id:id,diagnostic}),id);
+   return {request_id:id,phase:'reconcile_pending',wecom_status:'not_verified',diagnostic};
   }
  }
  return {phase:'idle'};
@@ -64,40 +76,70 @@ export async function advanceScheduledDelivery(state,config,query=queryScheduled
 export async function advanceScheduledStatus(state,config,events,slack,query=queryScheduled){
  if(!events.length&&!state.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='scheduled_status_replies'").get())return;
  installScheduledTables(state.db,['scheduled_status_replies']);
- const phase=event=>state.db.prepare('SELECT phase FROM scheduled_status_replies WHERE source_ts=?').get(event.source_ts)?.phase;
- // A durable uncertain reply outlives the authenticated intake window. Use its
- // original text and thread only; no expired command gains a new write.
- const pending=state.db.prepare("SELECT source_ts,hash FROM scheduled_status_replies WHERE phase IN ('sending','unknown') ORDER BY poll_order,source_ts LIMIT 1").get();
- const event=events.find(event=>phase(event)===undefined)??pending;
+ // Admit authenticated requests before the separately bounded query/send lane.
+ // Both unsent and uncertain responses survive expiry of the intake window.
+ for(const event of events)admitStatus(state.db,event);
+ const event=state.db.prepare("SELECT source_ts,hash FROM scheduled_status_replies WHERE phase IN ('queued','ready','sending','unknown') ORDER BY poll_order,source_ts LIMIT 1").get();
  if(event){
   state.db.prepare('UPDATE scheduled_status_replies SET poll_order=(SELECT COALESCE(MAX(poll_order),0)+1 FROM scheduled_status_replies) WHERE source_ts=?').run(event.source_ts);
   await replyScheduledStatus(state,config,event,slack,query);
  }
 }
+function admitStatus(db,event){
+ const prior=db.prepare('SELECT * FROM scheduled_status_replies WHERE source_ts=?').get(event.source_ts);
+ if(prior){requireThat(prior.hash===event.hash,'Status source changed');return prior;}
+ requireThat(REQUEST.test(event.request_id??''),'Status request identity required');
+ db.prepare("INSERT INTO scheduled_status_replies(source_ts,hash,phase,text,reply_ts) VALUES (?,?,'queued',?,NULL)").run(event.source_ts,event.hash,JSON.stringify({request_id:event.request_id}));
+ return db.prepare('SELECT * FROM scheduled_status_replies WHERE source_ts=?').get(event.source_ts);
+}
 export async function replyScheduledStatus(state,config,event,slack,query=queryScheduled){
  const db=state.db;
  installScheduledTables(db,['scheduled_status_replies']);
- const prior=db.prepare('SELECT * FROM scheduled_status_replies WHERE source_ts=?').get(event.source_ts);
- if(prior){
-  requireThat(prior.hash===event.hash,'Status source changed');
-  if(prior.phase==='unknown'||prior.phase==='sending'){
+ let prior=admitStatus(db,event);
+ if(prior.phase==='unknown'||prior.phase==='sending'){
    // Reconcile the original thread reply; never repost an unknown write.
    const found=await slack.findControlReceipt(event.source_ts,prior.text);
    if(found)db.prepare("UPDATE scheduled_status_replies SET phase='sent',reply_ts=? WHERE source_ts=?").run(found,event.source_ts);
-  }
   return;
  }
- const remote=await query(config.scheduled_delivery,{action:'status',request_id:event.request_id});
+ if(prior.phase==='sent')return;
+ if(prior.phase==='queued'){
+ const command=JSON.parse(prior.text);
+ requireThat(command&&Object.keys(command).join()==='request_id'&&REQUEST.test(command.request_id??''),'Stored status command changed');
+ const requestId=command.request_id;
+ const remote=await query(config.scheduled_delivery,{action:'status',request_id:requestId});
  requireThat(remote&&['not_found','queued','sending','sent','failed','unknown','partial'].includes(remote.status),'Status unavailable');
- if(remote.status!=='not_found')requireThat(remote.request_id===event.request_id,'Status request differs');
- const fields=['status','phase','report_date','report_commit','bundle_sha256','parts_sent','parts_total','next_attempt_at','attempts','last_error'];
+ if(remote.status!=='not_found')requireThat(remote.request_id===requestId,'Status request differs');
+ const job=state.metadata(requestId);
+ if(job?.detail.commit&&remote.status!=='not_found')requireThat(remote.report_commit===job.detail.commit&&remote.bundle_sha256===job.hash,'Status original binding differs');
+ const fields=['status','phase','report_date','report_commit','bundle_sha256','parts_sent','parts_total','next_attempt_at','attempts'];
  const result=Object.fromEntries(fields.filter(k=>Object.hasOwn(remote,k)).map(k=>[k,remote[k]]));
- const text='!ai-report status-receipt '+JSON.stringify({request_id:event.request_id,source_ts:event.source_ts,...result});
+ if(remote.last_error!=null)result.last_error=typeof remote.last_error==='string'&&/^[A-Za-z0-9_.:-]{1,80}$/.test(remote.last_error)?remote.last_error:'unspecified';
+ if(remote.images!==undefined)result.images=statusImages(remote.images);
+ result.publisher_phase=job?.phase??'not_found';
+ if(job){
+  result.publisher_bundle_sha256=job.hash;
+  result.publisher_source_ts=job.source_ts;
+  if(job.detail.recovery?.last_error)result.publisher_diagnostic=safeDiagnostic({diagnostic:job.detail.recovery.last_error},'publisher');
+  if(job.detail.recovery?.next_at)result.publisher_next_attempt_at=job.detail.recovery.next_at;
+ }
+ const text='!ai-report status-receipt '+JSON.stringify({request_id:requestId,source_ts:event.source_ts,...result});
  requireThat(Buffer.byteLength(text)<=16384,'Bounded status receipt required');
- const inserted=db.prepare("INSERT OR IGNORE INTO scheduled_status_replies(source_ts,hash,phase,text,reply_ts) VALUES (?,?,'sending',?,NULL)").run(event.source_ts,event.hash,text);
+ db.prepare("UPDATE scheduled_status_replies SET phase='ready',text=? WHERE source_ts=? AND phase='queued'").run(text,event.source_ts);
+ prior=db.prepare('SELECT * FROM scheduled_status_replies WHERE source_ts=?').get(event.source_ts);
+ }
+ requireThat(prior.phase==='ready','Unexpected status reply phase');
+ // Defer before durable intent; no HTTP call has occurred during a cooldown.
+ slack.assertReady?.('chat.postMessage');
+ const inserted=db.prepare("UPDATE scheduled_status_replies SET phase='sending' WHERE source_ts=? AND phase='ready'").run(event.source_ts);
  if(!inserted.changes)return;
  try{
-  const ts=await slack.controlReceipt(event.source_ts,text);requireThat(/^\d{10}\.\d{6}$/.test(ts),'Receipt timestamp missing');
+  const ts=await slack.controlReceipt(event.source_ts,prior.text);requireThat(/^\d{10}\.\d{6}$/.test(ts),'Receipt timestamp missing');
   db.prepare("UPDATE scheduled_status_replies SET phase='sent',reply_ts=? WHERE source_ts=?").run(ts,event.source_ts);
- }catch{db.prepare("UPDATE scheduled_status_replies SET phase='unknown' WHERE source_ts=?").run(event.source_ts);}
+ }catch(error){
+  // A concurrent quota update can land between the precheck and adapter call.
+  // This in-process proof preserves our original never-attempted response.
+  if(isLocalSlackCooldown(error)){db.prepare("UPDATE scheduled_status_replies SET phase='ready' WHERE source_ts=? AND phase='sending'").run(event.source_ts);throw error;}
+  db.prepare("UPDATE scheduled_status_replies SET phase='unknown' WHERE source_ts=?").run(event.source_ts);
+ }
 }

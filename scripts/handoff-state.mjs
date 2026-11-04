@@ -1,6 +1,16 @@
 import {DatabaseSync} from "node:sqlite";
 import {digest} from "./archive.mjs";
 import {requireThat} from "./report-handoff.mjs";
+import path from 'node:path';
+import {withHandoffLock} from './handoff-lock.mjs';
+// Operational recovery writers must keep close-time WAL checkpointing inside
+// the same exclusive lock used by live ticks and read-only snapshots.
+export async function withLockedHandoffState(config,run){
+ return withHandoffLock(config.state_dir,async()=>{
+  const state=new HandoffState(path.join(config.state_dir,'handoff.sqlite'),handoffScope(config));
+  try{return await run(state);}finally{state.close();}
+ });
+}
 export function handoffScope(config){
  const {slack_token_file,producer_key_file,state_dir,notification_destination,notification_not_before,notification_checker,scheduled_delivery,...scope}=config;
  return scope;
@@ -20,6 +30,8 @@ export class HandoffState{
   }catch(error){this.db.close();throw error;}
  }
  get(id){const row=this.db.prepare("SELECT * FROM jobs WHERE id=?").get(id);return row?{...row,bytes:Buffer.from(row.bytes),detail:JSON.parse(row.detail)}:null;}
+ metadata(id){const row=this.db.prepare('SELECT id,hash,source_ts,phase,detail FROM jobs WHERE id=?').get(id);return row?{...row,detail:JSON.parse(row.detail)}:null;}
+ pendingMetadata(){return this.db.prepare("SELECT id,hash,source_ts,phase,detail FROM jobs WHERE phase != 'receipt_sent' ORDER BY source_ts").all().map(row=>({...row,detail:JSON.parse(row.detail)}));}
  admit(event,bytes){
   requireThat(digest(bytes)===event.hash,"Transport digest mismatch");
   const prior=this.get(event.request_id);
@@ -30,5 +42,11 @@ export class HandoffState{
  }
  move(id,from,to,detail){return this.db.prepare("UPDATE jobs SET phase=?, detail=? WHERE id=? AND phase=?").run(to,JSON.stringify(detail),id,from).changes===1;}
  pending(){return this.db.prepare("SELECT id FROM jobs WHERE phase != 'receipt_sent' ORDER BY source_ts").all().map(r=>r.id);}
+ // The ledger is pinned to one app/workspace. Retain method cooldown evidence
+ // in original job diagnostics and consult all jobs, including completed ones.
+ providerDeadline(scope){
+  const deadline=this.db.prepare("SELECT MAX(c.value) AS deadline FROM jobs,json_each(jobs.detail,'$.recovery.cooldowns') AS c WHERE c.key=? AND c.type='integer'").get(scope)?.deadline;
+  return Number.isSafeInteger(deadline)&&deadline>0&&deadline<=8640000000000000?deadline:0;
+ }
  close(){this.db.close();}
 }

@@ -12,6 +12,8 @@ import {encodeNoticeCommand,verifyNoticeGrant} from "../scripts/notice-command.m
 import {SlackHandoff} from "../scripts/slack-handoff.mjs";
 import {validateConfig,handoffTick} from "../scripts/run-handoff.mjs";
 import {createNoticeManifest} from "../scripts/notice-manifest.mjs";
+import {ProviderCooldowns,providerIO,guardProviderOperation} from '../scripts/provider-cooldowns.mjs';
+import {operationError} from '../scripts/github.mjs';
 const request="morning-2030-01-01",merge="d".repeat(40),ts="1793448000.000001";
 const config={team_id:"T123",channel_id:"C123",sender_user_id:"U123",bot_user_id:"U456",bot_id:"B456",producer_app_id:10,merger_app_id:11,slack_token_file:path.resolve("slack-token"),producer_key_file:path.resolve("producer-key"),state_dir:path.resolve("state"),ready_for_review:false,notification_destination:"D123",notification_not_before:"1793447000.000001"};
 const dir="reports/2026-10-31/r1/",files=new Map([...await readReports("tests/fixtures/archive")].filter(([p])=>p.startsWith(dir)));
@@ -33,6 +35,44 @@ function admit(r,c,source="1793448100.000001"){
 }
 const checkCommand=(c=claim(),id="checker-command-01")=>({...c,command_id:id,action:"check",message_ts:"1793448700.000001"});
 function checkerResult(request){return {slack_status:"verified",wecom_status:"not_checked",publication_status:"not_checked",receipt:{channel:config.notification_destination,ts:request.message_ts,relay_request_id:"auto:"+request.message_ts,file_id:request.file_id,transport_sha256:digest(png),transport_bytes:png.length},observed_publication_commit:"e".repeat(40),messages_sent:0,state_changed:false};}
+
+test('known Slack cooldown preserves the prepared notice response before send intent',async()=>{
+ const r=rig(),c=claim();let clock=1000;
+ const slack=new SlackHandoff(config,'synthetic',()=>assert.fail('no HTTP needed'),{now:()=>clock,cooldowns:{deadline:()=>5000}});
+ const io={...r.io,receiptReady:()=>slack.assertReady('chat.postMessage')};
+ try{
+  admit(r,c);await assert.rejects(advanceNotice(r.outbox,c.command_id,io),error=>error.diagnostic.outcome==='not_started');
+  const prepared=r.outbox.command(c.command_id).response;
+  assert.equal(r.outbox.command(c.command_id).phase,'response_ready');assert.equal(r.sent.length,0);
+  clock=5000;await advanceNotice(r.outbox,c.command_id,{...io,verify:()=>assert.fail('do not prepare a new grant')});
+  assert.equal(r.outbox.command(c.command_id).phase,'response_sent');assert.equal(r.sent.length,1);
+  assert.equal(r.sent[0].text,noticeResponseText(prepared));
+ }finally{r.state.close();}
+});
+
+test('notice verification shares GitHub cooldowns with report reads and resumes the original command',async()=>{
+ const r=rig(),c=claim(),cooldowns=new ProviderCooldowns(':memory:','fixture');let clock=1000,verifications=0,reads=0;
+ const io=providerIO({...r.io,verify:async()=>{verifications++;if(verifications===1)throw operationError('fixture limit',{stage:'publication_source',provider_scope:'github.public',code:'rate_limited',retryable:true,retry_at:61000});return proof;},readPR:async()=>{reads++;return {};}},cooldowns,()=>clock);
+ try{
+  admit(r,c);await assert.rejects(advanceNotice(r.outbox,c.command_id,io));assert.equal(cooldowns.deadline('github.public'),61000);
+  clock=3000;await assert.rejects(advanceNotice(r.outbox,c.command_id,io));await assert.rejects(io.readPR(1));assert.equal(verifications,1);assert.equal(reads,0);
+  assert.equal(r.outbox.command(c.command_id).phase,'received');assert.equal(r.sent.length,0);
+  assert.equal(await guardProviderOperation(cooldowns,['github.app'],async()=>true,()=>clock),true);
+  clock=61000;await advanceNotice(r.outbox,c.command_id,io);assert.equal(verifications,2);assert.equal(r.sent.length,1);
+  cooldowns.defer('github.public',100000);const later=claim('later-claim-command');admit(r,later,'1793448200.000001');
+  await assert.rejects(advanceNotice(r.outbox,later.command_id,io));assert.equal(verifications,2);
+ }finally{cooldowns.close();r.state.close();}
+});
+
+test('a cooldown arriving after notice intent retains the same never-attempted response',async()=>{
+ const r=rig(),c=claim();let clock=1000;
+ const slack=new SlackHandoff(config,'synthetic',()=>assert.fail('no HTTP attempt'),{now:()=>clock,cooldowns:{deadline:()=>5000}});
+ const io={...r.io,receipt:async(...args)=>{slack.assertReady('chat.postMessage');return r.io.receipt(...args);}};
+ try{
+  admit(r,c);await assert.rejects(advanceNotice(r.outbox,c.command_id,io));assert.equal(r.outbox.command(c.command_id).phase,'response_ready');assert.equal(r.sent.length,0);
+  const original=r.outbox.command(c.command_id).response;clock=5000;await advanceNotice(r.outbox,c.command_id,io);assert.equal(r.sent.length,1);assert.equal(r.sent[0].text,noticeResponseText(original));
+ }finally{r.state.close();}
+});
 
 test("native preparation survives restart and only a unique persisted completion intent grants final upload",async()=>{
  const tmp=await mkdtemp(path.join(os.tmpdir(),"native-notice-restart-")),filename=path.join(tmp,"state.sqlite");let r=rig(filename);
@@ -180,9 +220,9 @@ test("checker receipt mismatch and a concurrent reservation change cannot produc
  for(const mode of ["bad-result","changed-notice"]){
   const r=rig();try{
    const c=claim();admit(r,c);await advanceNotice(r.outbox,c.command_id,r.io);const check=checkCommand(c);admit(r,check,"1793448800.000001");
-   await assert.rejects(()=>handoffTick(r.state,config,{history:async()=>[],controlReceipt:()=>assert.fail("no positive or changed reply")},{...r.io,checkNotice:async input=>{
+   const tick=await handoffTick(r.state,config,{history:async()=>[],controlReceipt:()=>assert.fail("no positive or changed reply")},{...r.io,checkNotice:async input=>{
     const result=checkerResult(input);if(mode==="bad-result")result.receipt.transport_sha256="f".repeat(64);else r.state.db.prepare("UPDATE notices SET phase='send_unknown' WHERE report_id=?").run(request);return result;
-   }}));
+   }});assert.equal(tick.errors[0].stage,'notice');
    assert.equal(r.outbox.command(check.command_id).phase,"received");
   }finally{r.state.close();}
  }
@@ -275,7 +315,7 @@ test("the serialized runtime ignores disabled notices, then admits and resumes t
  const slack={history:async()=>[message],download:async(e,options)=>{downloads++;assert.equal(options.name,"ai-notice-command.json");assert.equal(e.file_id,"FCOMMAND");return data;},controlReceipt:async()=>{replies++;return "1793448500.000001";},findControlReceipt:async()=>assert.fail("no recovery needed")};
  try{
   const {notification_destination,notification_not_before,...disabled}=config;
-  assert.deepEqual(await handoffTick(r.state,disabled,slack,r.io),{phase:"idle"});assert.equal(downloads,0);
+  assert.equal((await handoffTick(r.state,disabled,slack,r.io)).phase,'idle');assert.equal(downloads,0);
   assert.equal((await handoffTick(r.state,config,slack,r.io)).phase,"response_sent");
   assert.equal((await handoffTick(r.state,config,slack,r.io)).phase,"idle");assert.equal(downloads,1);assert.equal(replies,1);
  }finally{r.state.close();}
@@ -346,7 +386,7 @@ test("unknown control writes remain barriers even when an earlier waiting claim 
    // This older claim is now eligible; the uncertain write must still win.
    r.state.move(waiting.report_request_id,"pr_open","receipt_sent",{commit:merge});
    const slack={history:async()=>[],controlReceipt:async()=>assert.fail("no fresh response"),findControlReceipt:async(thread)=>{reads++;assert.equal(thread,"1793448100.000001");throw Error("unreconciled control write");}};
-   await assert.rejects(()=>handoffTick(r.state,config,slack,{verify:async()=>assert.fail("no fresh grant")}),/unreconciled/);
+   const tick=await handoffTick(r.state,config,slack,{verify:async()=>assert.fail("no fresh grant")});assert.equal(tick.errors[0].stage,'notice');
    assert.equal(reads,1);assert.equal(r.outbox.command(waiting.command_id).phase,"received");assert.equal(r.outbox.command(status.command_id).phase,"received");
    assert.equal(r.outbox.command(c.command_id).phase,phase);assert.equal(r.outbox.notice(waiting.report_request_id),null);
   }finally{r.state.close();}
