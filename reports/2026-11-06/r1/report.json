@@ -1,0 +1,234 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-11-06",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-11-06",
+  "subtitle": "九项进展与六个固定板块，聚焦缓存安全、达标成本和训练交付边界。",
+  "articles": [
+    {
+      "id": "model-serving-gpu",
+      "title": "模型服务与 GPU 超配｜KV 安全与达标成本",
+      "summary": "KVGuard 检查请求权限和块生命周期；ServerBench 用闭环负载与延迟门槛判断并发收益，两者都不是跨模型共享方案。",
+      "sha256": "a6ae6e7b9f45b0734ec8ee1be7b5896194ada914ef3b91c6a5c6f373d731a8b7"
+    },
+    {
+      "id": "hardware-status",
+      "title": "重点硬件｜规格复核与新进展筛选",
+      "summary": "静态核对 H100、H200 与可能对应 Pro5500 的官方型号；当日系统综述缺少可迁移的新实验，不重复计算昨日修复。",
+      "sha256": "1a9ea3c1ce77a427c25adc5ff020fdb6db972efb4483632e73582db164baa6d8"
+    },
+    {
+      "id": "model-architecture-status",
+      "title": "模型与新架构｜分支隔离的草稿训练",
+      "summary": "SpecOPD 为稀疏与线性注意力处理草稿分支，代码和硬件披露仍不足；训练提速不能代替在线服务验收。",
+      "sha256": "b988bfcca11df80911c808d4f89ccb127639048c02802b3e421775cc46b24883"
+    },
+    {
+      "id": "embodied-training",
+      "title": "制造业具身训练｜训练管线与在线纠偏",
+      "summary": "LeRobot 0.7.0 的训练与数据管线须分指标验收；TwinBridge 的在线改进局限于五个实验室任务。",
+      "sha256": "ccafdf83a66b25fdce6128ce5a9eadbc8c72a6055f1e1da81f7da9e861acaca5"
+    },
+    {
+      "id": "small-model-status",
+      "title": "前沿小模型｜Clover 的双向草稿边界",
+      "summary": "Clover 约 35B 总参数与 3B 激活量不能混算显存；AR 与自推测路径支持不同，H200 数字须带质量与负载条件。",
+      "sha256": "61367ff254a9540da4629c2751726f617562c65bf92cadc9412c9e147dab41ec"
+    },
+    {
+      "id": "inference-engines",
+      "title": "推理引擎每日变动｜身份、取消与恢复",
+      "summary": "vLLM 区分缓存身份与安全释放，SGLang 保留混合状态完整恢复点；均为主线合并，DeepInfer 无合格新增。",
+      "sha256": "eae1e4d1f93ae9ba7e5a250138b149cd041c321432379280be43d02f2b516371"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-11-06-arxiv-2611-06138-v1",
+      "event_key": "arxiv-2611-06138-v1",
+      "title": "KVGuard：逐请求检查 KV 块权限与初始化",
+      "summary": "针对CUDA大缓冲内部合法地址上的错误请求访问，为物理KV块维护请求读写权限与逐条目初始化位；分配、块表转换、kernel查找和KV访问五处检查，传输完成前保留源/目的块，接收端按实际送达数量初始化。",
+      "source_urls": [
+        "https://arxiv.org/abs/2611.06138v1",
+        "https://arxiv.org/html/2611.06138v1"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-11-06-arxiv-2611-06841-v1",
+      "event_key": "arxiv-2611-06841-v1",
+      "title": "ServerBench：以完整回放联合验证容量与并发",
+      "summary": "冻结模型/硬件/目标，联合选择服务实现与并发；保留会话依赖的闭环回放只计算TTFT及TPOT达标的token价值，正式阶段冻结产物独立seed验收；缩池强制抢占恢复暴露未初始化状态。",
+      "source_urls": [
+        "https://arxiv.org/abs/2611.06841v1",
+        "https://arxiv.org/html/2611.06841v1",
+        "https://github.com/Infini-AI-Lab/Server-Bench"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-11-06-vllm-pr-65160",
+      "event_key": "vllm-pr-65160",
+      "title": "vLLM自动部署前缀：隔离身份不等于校验载荷",
+      "summary": "MooncakeStore opt-in auto前缀结合构建、模型配置、HF commit与KV配置；默认空前缀不变，不哈希环境开关或原地权重，TP/PP与载荷布局仍须另行兼容。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/65160",
+        "https://github.com/vllm-project/vllm/commit/3199780ac6aff537b1cd7dbab9aec3ae030fc490"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    },
+    {
+      "id": "2026-11-06-vllm-pr-65124",
+      "event_key": "vllm-pr-65124",
+      "title": "vLLM清缓存先中止P2P读取，等确认后释放页",
+      "summary": "drain_jobs主动AbortFetch并立即上报load失败，chunk延迟到AbortAck或5秒ack超时断连close才释放，避开完整load timeout；lookup状态不变。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/65124",
+        "https://github.com/vllm-project/vllm/commit/9f8c539a3b734612e06dd29d53140385e12ad49e"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    },
+    {
+      "id": "2026-11-06-sglang-pr-48421",
+      "event_key": "sglang-pr-48421",
+      "title": "SGLang混合L3预取保留完整恢复边界",
+      "summary": "含SWA/Mamba组件传输时要求完整storage hit的主机分配，容量不足撤销并登记重试；避免截短KV后缺少对应恢复状态，full-only仍允许部分分配。",
+      "source_urls": [
+        "https://github.com/sgl-project/sglang/pull/48421",
+        "https://github.com/sgl-project/sglang/commit/e838360ffd706c1a45a390e30d4c9f01c56bf81c"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    },
+    {
+      "id": "2026-11-06-specopd-v1",
+      "event_key": "specopd-v1-2611-02846",
+      "title": "SpecOPD：分支共享前缀，隔离递归状态",
+      "summary": "并行草稿训练按全/稀疏/线性注意力分别复用主干KV、重建边界索引组、回放FP32状态；原草稿增量吞吐有限，代码与GPU SKU未披露。",
+      "source_urls": [
+        "https://arxiv.org/abs/2611.02846v1",
+        "https://arxiv.org/html/2611.02846v1",
+        "https://github.com/QwenApp/SpecOPD"
+      ],
+      "update_of": null,
+      "article_id": "model-architecture-status"
+    },
+    {
+      "id": "2026-11-06-clover-engineering-20261030",
+      "event_key": "clover-engineering-20261030",
+      "title": "Clover：块扩散的质量、缓存与适配边界",
+      "summary": "35B总量、3B激活仍需约69GB BF16权重；H200公开质量/吞吐评测，SGLang适配open、llama.cpp已合并仅AR，先验收临时状态提交及接收语义。",
+      "source_urls": [
+        "https://huggingface.co/blog/Diffuspace/clover-35b-a3b-preview",
+        "https://huggingface.co/Diffuspace/Clover-35B-A3B-Preview",
+        "https://huggingface.co/Diffuspace/Clover-35B-A3B-Preview/blob/4b0402b65e523d0183a14c431955438714cb16ff/modeling_clover_moe.py",
+        "https://github.com/sgl-project/sglang/pull/46927",
+        "https://github.com/ggml-org/llama.cpp/pull/31306"
+      ],
+      "update_of": null,
+      "article_id": "small-model-status"
+    },
+    {
+      "id": "2026-11-06-lerobot-v070-training-systems",
+      "event_key": "lerobot-v070-release",
+      "title": "LeRobot v0.7.0：流式数据与分片恢复",
+      "summary": "正式发布无盘episode池、多worker及FSDP2/DCP。提升有CPU/RAM/样本混合代价，checkpoint改善不等于训练吞吐同倍提升。",
+      "source_urls": [
+        "https://github.com/huggingface/lerobot/releases/tag/v0.7.0",
+        "https://huggingface.co/blog/lerobot/lerobot-release-v070",
+        "https://github.com/huggingface/lerobot/pull/3917",
+        "https://github.com/huggingface/lerobot/pull/4874",
+        "https://github.com/huggingface/lerobot/pull/4010",
+        "https://huggingface.co/docs/lerobot/v0.7.0/training_dataset_streaming",
+        "https://huggingface.co/docs/lerobot/v0.7.0/multi_gpu_training",
+        "https://github.com/huggingface/lerobot/blob/410c095eacc0011d998a73383eb94abed2715af0/src/lerobot/datasets/streaming_dataset.py"
+      ],
+      "update_of": null,
+      "article_id": "embodied-training"
+    },
+    {
+      "id": "2026-11-06-twinbridge-v1",
+      "event_key": "arxiv-2611-06442-v1",
+      "title": "TwinBridge：有序事件与历史账本驱动真机奖励",
+      "summary": "数字孪生同时迁移策略及视觉进度奖励；五个实验室任务末尾各10次在线episode平均98%，实机交互时间不等于总训练成本。",
+      "source_urls": [
+        "https://arxiv.org/abs/2611.06442v1",
+        "https://arxiv.org/html/2611.06442v1"
+      ],
+      "update_of": null,
+      "article_id": "embodied-training"
+    },
+    {
+      "id": "2026-11-06-hardware-source-check",
+      "event_key": "hardware-source-check-20261106",
+      "title": "重点硬件来源复核与候选排除",
+      "summary": "静态核对H100/H200及已报RTX PRO 5500产品页；11月5日NVIDIA综述的新颖性与可迁移实验不足，不计新进展。",
+      "source_urls": [
+        "https://www.nvidia.com/en-us/data-center/h100/",
+        "https://www.nvidia.com/en-us/data-center/h200/",
+        "https://www.nvidia.com/en-us/products/workstations/professional-desktop-gpus/rtx-pro-5500/",
+        "https://developer.nvidia.com/cuda/gpus",
+        "https://developer.nvidia.com/blog/five-ways-nvidia-co-design-maximizes-the-value-of-every-byte-in-the-ai-factory/"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status"
+    }
+  ],
+  "images": [
+    {
+      "path": "assets/overview.png",
+      "sha256": "8b2194f56bcf4e8841e7dfb9204e8b7214aeffdcf7b0929e86786bd1ac71b9b5",
+      "alt": "六板块横版总海报，九项进展及硬件筛选结果；原创分区设计。"
+    },
+    {
+      "path": "assets/kvguard-lifecycle.png",
+      "sha256": "f0e6e1c25a8c2ac3102db1dd6af92b8942326a0cf54d42c164d8fa08cf9093a1",
+      "alt": "KVGuard：合法地址仍须检查请求权限，依据正文来源的原创简化示意图。"
+    },
+    {
+      "path": "assets/serverbench-closed-loop.png",
+      "sha256": "114a7fb3eaf2727a42810709c7fb2589eef1b5db6814c31cc3af9900df98d8f3",
+      "alt": "ServerBench：只把达标请求计入服务收益，依据正文来源的原创简化示意图。"
+    },
+    {
+      "path": "assets/vllm-cache-identity.png",
+      "sha256": "5fc6d06af2ffbd1d9506e11d6a0d2348a5fb38bad74245025f39a838d9bdd2ea",
+      "alt": "vLLM：自动前缀只覆盖部分部署身份，依据正文来源的原创简化示意图。"
+    },
+    {
+      "path": "assets/vllm-abort-lifecycle.png",
+      "sha256": "13ff0a35c0152f822a7838d48ea405383d179e6a0572aad41fca39fe1cfb350d",
+      "alt": "vLLM：任务失败不等于内存已经能复用，依据正文来源的原创简化示意图。"
+    },
+    {
+      "path": "assets/sglang-hybrid-boundary.png",
+      "sha256": "6eb0551d7fa18cd56abc2570f4d8ee44e3af7833fcc6bccf351af4085b580100",
+      "alt": "SGLang：混合状态必须保留完整恢复点，依据正文来源的原创简化示意图。"
+    },
+    {
+      "path": "assets/specopd-branch-state.png",
+      "sha256": "e079b80a0a1ad453f7fdb44e3054634dbcf01e27028ec3cf4be8960fa0d44462",
+      "alt": "SpecOPD 三类注意力的分支状态隔离，原创并列机制图。"
+    },
+    {
+      "path": "assets/clover-preview-commit.png",
+      "sha256": "cff24f747382ebfb8dbfb9ff3cea7f40f2768352abac469eca23e4786868f66e",
+      "alt": "Clover：预览只读，确认后才写回历史，依据正文来源的原创简化示意图。"
+    },
+    {
+      "path": "assets/lerobot-data-training.png",
+      "sha256": "67996455f2c3163cb0fd7e1ab4b242a4a899d09efbce4d13e6bb332281ac8bd5",
+      "alt": "LeRobot：数据加载与训练恢复分别记账，依据正文来源的原创简化示意图。"
+    },
+    {
+      "path": "assets/twinbridge-reward-ledger.png",
+      "sha256": "717cb61c948d6054bb0889720ebaf23ab936067844a161a0ccb48303749d47ae",
+      "alt": "TwinBridge：把预测进度与奖励历史分开，依据正文来源的原创简化示意图。"
+    }
+  ],
+  "poster": "assets/overview.png"
+}
