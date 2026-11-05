@@ -843,6 +843,59 @@
       ],
       "poster": "assets/overview.png",
       "path": "reports/2026-11-04/r1/"
+    },
+    {
+      "schema_version": "1.0",
+      "date": "2026-11-05",
+      "revision": 1,
+      "title": "AI Infra 晨报 · 2026-11-05",
+      "subtitle": "七项有证据的新进展，保留六个需求板块；先看机制，再看硬件、质量与交付边界。",
+      "articles": [
+        {
+          "id": "model-serving-gpu",
+          "title": "模型服务与 GPU 超配｜算清索引与预填充峰值",
+          "summary": "LeanSparse 降低索引和预填充驻留，但 TTFT 改善伴随 TPOT 上升；Bevy 的专家就绪调度仅有本地设备证据。",
+          "sha256": "afcb9348947aad6616501492b27512613ba2a854e806098c0bcff54a3e6e7021",
+          "path": "reports/2026-11-05/r1/articles/model-serving-gpu.md"
+        },
+        {
+          "id": "hardware-status",
+          "title": "重点硬件｜Hopper MPS 正确性修复",
+          "summary": "CUDA 13.5 修复限定算法与限额组合的错误结果；MPS 内存驱逐不是透明卸载，Pro5500 仍须核对具体型号。",
+          "sha256": "c6ad04e26c1680e1552f5c4cb84d3279e492b3fdc158d1028e0e797e2eac3221",
+          "path": "reports/2026-11-05/r1/articles/hardware-status.md"
+        },
+        {
+          "id": "model-architecture-status",
+          "title": "模型与新架构｜本轮无合格新发布",
+          "summary": "已检查 GLM、DeepSeek、Qwen 官方模型索引与代码入口；未找到符合架构与缓存适配条件的新发布，Qwen 博客正文仍不可读。",
+          "sha256": "1842118ba14e838e144bd1b5f859280c89f7a8cc42e72621f4a9a9e658610952",
+          "path": "reports/2026-11-05/r1/articles/model-architecture-status.md"
+        },
+        {
+          "id": "embodied-training",
+          "title": "制造业具身训练｜GR00T 掩码进入 TensorRT",
+          "summary": "GR00T 补齐训练掩码与动作头 TensorRT 路径，需重导出并匹配开关；没有工厂收益或真实机器人错误率证据。",
+          "sha256": "d89366f3f77e193b4498c93c2398dba6e142f6691124681d2470b579a1130938",
+          "path": "reports/2026-11-05/r1/articles/embodied-training.md"
+        },
+        {
+          "id": "small-model-status",
+          "title": "前沿小模型｜CPU 决策服务算闲置成本",
+          "summary": "DiffusionGemma 的单步结构化决策在 CPU 上减少重复前向；26B 总参数不能按 4B 激活参数估显存，低流量须算常驻成本。",
+          "sha256": "2b8f4da6b2b1a21ad8a004f1ff3653c610b41360b114c4559c73eaa0e349776f",
+          "path": "reports/2026-11-05/r1/articles/small-model-status.md"
+        },
+        {
+          "id": "inference-engines",
+          "title": "推理引擎每日变动｜缓存准入与草稿预算",
+          "summary": "vLLM 在有限窗口内优先命中前缀，SGLang 按 DCP 展开行数计入草稿 KV；两项已合并未发布，DeepInfer 未发现合格新增。",
+          "sha256": "3823751d4660cd1bf23c99ffdc70c3da158312f10892e9cdf4c580236a9a597e",
+          "path": "reports/2026-11-05/r1/articles/inference-engines.md"
+        }
+      ],
+      "poster": "assets/overview.png",
+      "path": "reports/2026-11-05/r1/"
     }
   ],
   "entries": [
@@ -2452,6 +2505,140 @@
       "article_id": "small-model-status",
       "fingerprint": "cf3e83655474034a003fabc6dae9f180c5ad324478b4278f0333022e049a7f0f",
       "date": "2026-11-04",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-05-vllm-pr-54625",
+      "event_key": "vllm-pr-54625",
+      "title": "vLLM缓存感知准入：先兑现驻留前缀",
+      "summary": "有限窗口内优先准入有驻留前缀的请求，默认关闭；MI355X小窗口收益有限，大窗口可退化，需验收冷请求公平性。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/commit/2a777ce26e8315fa503ac5e88b595235d1c2b928",
+        "https://github.com/vllm-project/vllm/pull/54625"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "f46732cd0b98199ad5b458154a6d8985225c18ad2149650d3f0711be26f7ea48",
+      "date": "2026-11-05",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-05-sglang-pr-39799",
+      "event_key": "sglang-pr-39799",
+      "title": "SGLang按DCP展开行数计入草稿KV预算",
+      "summary": "纠正EAGLE草稿池少算显存；MI355X DCP8以容量下降10.1%恢复约18.1GB预留，但该组合仍有独立启动阻断。",
+      "source_urls": [
+        "https://github.com/sgl-project/sglang/commit/dff6a0c3accf310f70eab81be1220a27b732c96b",
+        "https://github.com/sgl-project/sglang/pull/39799"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "425ae93186530645733b2ef19fa7e8ad276a214405d1a94a7e44fc98bc9a40e5",
+      "date": "2026-11-05",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-05-arxiv-2611-04671-v1",
+      "event_key": "arxiv-2611-04671-v1",
+      "title": "LeanSparse：索引键卸载与双缓冲 prefill",
+      "summary": "将完整索引键与压缩KV保留主机；prefill复用两个按层历史缓冲，decode用PQ32先筛选2K候选，再取回原始键选512位置。分别管理索引键cache与KV cache。",
+      "source_urls": [
+        "https://arxiv.org/abs/2611.04671v1",
+        "https://arxiv.org/html/2611.04671v1",
+        "https://panzaifeng.github.io/publications/"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "9d048de334c16c2f41547a20b8e1ffdb74bb809a89cb82f0e499f352c2654ccb",
+      "date": "2026-11-05",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-05-arxiv-2611-04794-v1",
+      "event_key": "arxiv-2611-04794-v1",
+      "title": "Bevy：交错就绪请求减少专家读取等待",
+      "summary": "缺专家的请求等待时，其他请求先跑到后续层暴露真实专家需求；落后层优先、同层就绪任务临时成批，以计算覆盖读取。",
+      "source_urls": [
+        "https://arxiv.org/abs/2611.04794v1",
+        "https://arxiv.org/html/2611.04794v1",
+        "https://github.com/FMInference/FlexLLMGen"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "a36b441cea97e7adad03ebe371e277ce0e157a0953de2e319ac436f1709c161d",
+      "date": "2026-11-05",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-05-nvidia-cuda-13-5-20261104",
+      "event_key": "nvidia-cuda-13-5-20261104",
+      "title": "CUDA13.5修复Hopper MPS限额下特定GEMM错误结果",
+      "summary": "CUDA 13.5 修复 Hopper 特定 MPS/GEMM 错误结果；内存分区压力驱逐不是透明卸载。",
+      "source_urls": [
+        "https://developer.nvidia.com/blog/nvidia-cuda-13-5-brings-nvidia-vera-rubin-ga-support/",
+        "https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/",
+        "https://docs.nvidia.com/deploy/mps/latest/mpsv3-interface.html",
+        "https://docs.nvidia.com/deploy/mps/latest/mpsv3-memory-partitioning.html"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status",
+      "fingerprint": "bdb76ea997c14515d93ee86dd0c2537d96a5cf0e9179dd4e0a2150a388aadb87",
+      "date": "2026-11-05",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-05-groot-padding-tensorrt-f4a9c89",
+      "event_key": "groot-action-padding-c56f541",
+      "title": "GR00T：把训练掩码带进TensorRT",
+      "summary": "严格VL掩码补入前置自注意力层；严格动作mask的TensorRT导出、校准和运行循环补齐，模型开关与引擎输入不匹配时拒绝旧引擎。",
+      "source_urls": [
+        "https://github.com/NVIDIA/Isaac-GR00T/actions/runs/41931761620",
+        "https://github.com/NVIDIA/Isaac-GR00T/blob/7b304f95b95790490b79bd263ba57015c3c12dfd/README.md",
+        "https://github.com/NVIDIA/Isaac-GR00T/blob/bc5d21a2ea1d41306318486faac3c8992440b499/gr00t/deployment/vl_padding.py",
+        "https://github.com/NVIDIA/Isaac-GR00T/blob/bc5d21a2ea1d41306318486faac3c8992440b499/tests/gr00t/model/test_action_head.py",
+        "https://github.com/NVIDIA/Isaac-GR00T/blob/f4a9c89bb74d513612c4c3bc1d78a733ef6a4f63/gr00t/deployment/action_padding.py",
+        "https://github.com/NVIDIA/Isaac-GR00T/blob/f4a9c89bb74d513612c4c3bc1d78a733ef6a4f63/scripts/deployment/trt/trt_model_forward.py",
+        "https://github.com/NVIDIA/Isaac-GR00T/blob/f4a9c89bb74d513612c4c3bc1d78a733ef6a4f63/tests/scripts/deployment/test_strict_action_padding_trt.py",
+        "https://github.com/NVIDIA/Isaac-GR00T/commit/bc5d21a2ea1d41306318486faac3c8992440b499",
+        "https://github.com/NVIDIA/Isaac-GR00T/commit/f4a9c89bb74d513612c4c3bc1d78a733ef6a4f63"
+      ],
+      "update_of": "2026-11-01-r2-groot-action-padding-c56f541",
+      "article_id": "embodied-training",
+      "fingerprint": "cc71a300d9076909843f05885e47451b2b1464186a95e37136402cda9697c633",
+      "date": "2026-11-05",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-05-diffusiongemma-cpu-single-pass",
+      "event_key": "diffusiongemma-cpu-single-pass-engineering-20261029",
+      "title": "CPU 决策服务的收益，取决于空闲时间而非参数标签",
+      "summary": "7天扩窗工程实证：结构化单步决策融合prefill/canvas；低流量CPU成本取舍，非新权重、非通用SOTA。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/61480",
+        "https://huggingface.co/blog/LeagueLabs/optimizing-diffgemma-decision-model-vllm-cpu-i",
+        "https://huggingface.co/google/diffusiongemma-26B-A4B-it"
+      ],
+      "update_of": null,
+      "article_id": "small-model-status",
+      "fingerprint": "734fa451ba3b24d6dfff75ca7c11d16a8bba1656de2251d8d6494e51ceb4b9dd",
+      "date": "2026-11-05",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-05-model-architecture-scan",
+      "event_key": "model-architecture-scan-20261105",
+      "title": "GLM、DeepSeek、Qwen 架构筛选记录",
+      "summary": "本轮已查官方模型索引与项目入口，未找到合格新架构；Qwen 博客正文访问缺口单独披露。",
+      "source_urls": [
+        "https://huggingface.co/Qwen",
+        "https://huggingface.co/deepseek-ai",
+        "https://huggingface.co/zai-org",
+        "https://qwen.ai/blog"
+      ],
+      "update_of": null,
+      "article_id": "model-architecture-status",
+      "fingerprint": "9b016758b4af02772e667995af016cf36a70116625f849b374439b3ab667bdec",
+      "date": "2026-11-05",
       "revision": 1
     }
   ]
