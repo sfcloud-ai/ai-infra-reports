@@ -8,14 +8,16 @@ import {setTimeout as delay} from "node:timers/promises";
 import {randomUUID} from "node:crypto";
 import {runHandoff,privateFile,privateDirectory,validateConfig} from "./run-handoff.mjs";
 import {safeDiagnostic} from './handoff-recovery.mjs';
+import {isHandoffLockBusy} from './handoff-lock.mjs';
 
 export async function serialTicks(tick,report,wait,signal,onError){
  while(!signal.aborted){
-  let result;
-  try{result=await tick();}catch(error){if(!onError)throw error;await onError(error);}
+  let result,recovery;
+  try{result=await tick();}catch(error){if(!onError)throw error;recovery=await onError(error);}
   if(result!==undefined)await report(result);
   if(signal.aborted)break;
-  const interval=Number.isFinite(result?.next_delay_ms)?Math.max(1000,Math.min(120000,result.next_delay_ms)):120000;
+  const requested=result?.next_delay_ms??recovery?.next_delay_ms;
+  const interval=Number.isFinite(requested)?Math.max(1000,Math.min(120000,requested)):120000;
   try{await wait(interval,signal);}catch(error){if(error.name!=="AbortError"||!signal.aborted)throw error;}
  }
 }
@@ -29,13 +31,19 @@ export async function writeHealth(directory,health){
  await writeFile(temporary,JSON.stringify(health)+"\n",{mode:0o600,flag:"wx"});
  await rename(temporary,path.join(directory,"health.json"));
 }
-export async function superviseTicks(tick,report,wait,signal,identity){
+export async function superviseTicks(tick,report,wait,signal,identity,onDeferred=()=>{}){
  let count=0;
  await serialTicks(tick,async result=>{
   const healthy=result.healthy===true;count=healthy?count+1:0;
   await report({...result,...identity,healthy,successful_checks:count,checked_at:new Date().toISOString()});
  },wait,signal,async error=>{
   count=0;
+  if(isHandoffLockBusy(error)){
+   // Preserve the last completed health observation. Refreshing checked_at here
+   // would hide a stuck lock; repeated deferrals must become heartbeat_stale.
+   await onDeferred({...identity,phase:'tick_deferred',observed_at:new Date().toISOString(),error:safeDiagnostic(error,'tick')});
+   return {next_delay_ms:1000};
+  }
   await report({...identity,healthy:false,successful_checks:count,checked_at:new Date().toISOString(),phase:'tick_failed',error:safeDiagnostic(error,'tick')});
  });
 }
@@ -51,7 +59,7 @@ async function main(){
  await superviseTicks(()=>runHandoff(configFile),async health=>{
   await writeHealth(config.state_dir,health);
   (health.error?console.error:console.log)(JSON.stringify(health));
- },(ms,signal)=>delay(ms,undefined,{signal}),stop.signal,{mode:'live',consumption_enabled:true,commit,started_at,pid:process.pid});
+ },(ms,signal)=>delay(ms,undefined,{signal}),stop.signal,{mode:'live',consumption_enabled:true,commit,started_at,pid:process.pid},diagnostic=>console.log(JSON.stringify(diagnostic)));
 }
 if(import.meta.url===pathToFileURL(process.argv[1]||"").href){
  main().catch(()=>{console.error("Publisher stopped. Reconcile durable state before restarting; uncertain writes are never retried automatically.");process.exitCode=1;});

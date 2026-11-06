@@ -13,7 +13,8 @@ import {handoffScope,scopeDigest} from './handoff-state.mjs';
 import {decodeBundle,requireThat,SHA,boundedBytes} from './report-handoff.mjs';
 import {validateScheduledConfig} from './scheduled-delivery-bridge.mjs';
 import {SlackHandoff} from './slack-handoff.mjs';
-import {withHandoffReadLock} from './handoff-lock.mjs';
+import {withHandoffReadLock,isHandoffLockBusy} from './handoff-lock.mjs';
+import {safeDiagnostic} from './handoff-recovery.mjs';
 import {openProviderCooldowns} from './provider-cooldowns.mjs';
 
 export function validateWatchdogConfig(c){
@@ -54,27 +55,41 @@ export async function readPublisherService(unit){
 }
 // Never open HandoffState here: its constructor creates/migrates writable tables.
 export async function readDayBindings(config,date){
- const filename=path.join(config.state_dir,'handoff.sqlite');await privateFile(filename,10*1024*1024*1024,false);
- try{return await queryDayBindings(filename,config,date);}
- catch(error){
-  // A closed WAL writer removes its sidecars. SQLite may need writable sidecars
-  // even for a read-only connection. A read-only mount can report CANTOPEN
-  // instead of READONLY; both use a locked copy, never writable Publisher state.
-  if(error.code!=='ERR_SQLITE_ERROR'||!Number.isInteger(error.errcode)||![8,14].includes(error.errcode&255))throw error;
- }
- const directory=await mkdtemp(path.join(os.tmpdir(),'publisher-watchdog-snapshot-'));
+ let stage='watchdog.ledger.stat';
  try{
-  const snapshot=path.join(directory,'handoff.sqlite');
-  await withHandoffReadLock(config.state_dir,async()=>{
-   // All Publisher writers hold the exclusive lock. Copy the WAL as well so a
-   // terminated writer's committed transactions are not lost. Rebuild only the
-   // temporary copy's SHM; do not copy a potentially stale shared-memory index.
-   await privateFile(filename,10*1024*1024*1024,false);await copyFile(filename,snapshot);
-   try{await privateFile(filename+'-wal',10*1024*1024*1024,false);await copyFile(filename+'-wal',snapshot+'-wal');}
-   catch(error){if(error.code!=='ENOENT')throw error;}
-  });
-  return await queryDayBindings(snapshot,config,date);
- }finally{await rm(directory,{recursive:true,force:true});}
+  const filename=path.join(config.state_dir,'handoff.sqlite');await privateFile(filename,10*1024*1024*1024,false);
+  stage='watchdog.ledger.query';
+  try{return await queryDayBindings(filename,config,date);}
+  catch(error){
+   // A closed WAL writer removes its sidecars. SQLite may need writable sidecars
+   // even for a read-only connection. A read-only mount can report CANTOPEN
+   // instead of READONLY; both use a locked copy, never writable Publisher state.
+   if(error.code!=='ERR_SQLITE_ERROR'||!Number.isInteger(error.errcode)||![8,14].includes(error.errcode&255))throw error;
+  }
+  stage='watchdog.ledger.snapshot_create';
+  const directory=await mkdtemp(path.join(os.tmpdir(),'publisher-watchdog-snapshot-'));
+  try{
+   const snapshot=path.join(directory,'handoff.sqlite');
+   stage='watchdog.ledger.snapshot_lock';
+   await withHandoffReadLock(config.state_dir,async()=>{
+    // All Publisher writers hold the exclusive lock. Copy the WAL as well so a
+    // terminated writer's committed transactions are not lost. Rebuild only the
+    // temporary copy's SHM; do not copy a potentially stale shared-memory index.
+    stage='watchdog.ledger.snapshot_copy';
+    await privateFile(filename,10*1024*1024*1024,false);await copyFile(filename,snapshot);
+    try{await privateFile(filename+'-wal',10*1024*1024*1024,false);await copyFile(filename+'-wal',snapshot+'-wal');}
+    catch(error){if(error.code!=='ENOENT')throw error;}
+   });
+   stage='watchdog.ledger.snapshot_query';
+   return await queryDayBindings(snapshot,config,date);
+  }finally{
+   try{await rm(directory,{recursive:true,force:true});}
+   catch(error){stage='watchdog.ledger.snapshot_cleanup';throw error;}
+  }
+ }catch(error){
+  const failure=error instanceof Error?error:Error('Publisher ledger read failed');
+  failure.diagnostic={...failure.diagnostic,stage};throw failure;
+ }
 }
 async function queryDayBindings(filename,config,date){
  const db=new DatabaseSync(filename,{readOnly:true});
@@ -128,7 +143,7 @@ export async function inspectWatchdog(c,publisher,{now=Date.now(),readService=re
  const observations=[{category:'publisher_health',issues:checkPublisherHealth(health,service,{now,maxAgeSeconds:c.heartbeat_max_age_seconds})}];
  const {date,due}=shanghaiDay(now);
  if(date>=publisher.scheduled_delivery.activation_date&&now>=due+c.deadline_grace_seconds*1000){
-  let delivery;try{delivery=await checkDailyDelivery(await readBindings(publisher,date),query);}catch{delivery={issues:['daily_report_ledger_unavailable']};}
+  let delivery;try{delivery=await checkDailyDelivery(await readBindings(publisher,date),query);}catch(error){delivery={issues:[isHandoffLockBusy(error)?'daily_report_ledger_busy':'daily_report_ledger_unavailable'],error:safeDiagnostic(error,'watchdog.ledger','not_started')};}
   observations.push({category:'delivery:'+date,report_date:date,...delivery});
  }
  return {schema_version:'1.0',checked_at:new Date(now).toISOString(),observations};

@@ -80,11 +80,11 @@ test('CANTOPEN uses a locked snapshot retaining committed WAL rows without chang
   // A snapshot must still respect an active writer, and corruption must not
   // be reclassified as the recoverable missing-sidecar condition.
   first=true;await withHandoffLock(directory,async()=>{
-   await assert.rejects(readDayBindings({state_dir:directory},'2026-11-01'),error=>error.code==='SQLITE_BUSY');
+   await assert.rejects(readDayBindings({state_dir:directory},'2026-11-01'),error=>error.code==='HANDOFF_LOCK_BUSY'&&error.diagnostic.stage==='watchdog.ledger.snapshot_lock');
   });
   const corrupt=Object.assign(Error('database disk image is malformed'),{code:'ERR_SQLITE_ERROR',errcode:11});
   DatabaseSync.prototype.exec=function(sql){if(sql==='BEGIN')throw corrupt;return exec.call(this,sql);};
-  await assert.rejects(readDayBindings({state_dir:directory},'2026-11-01'),error=>error===corrupt);
+  await assert.rejects(readDayBindings({state_dir:directory},'2026-11-01'),error=>error===corrupt&&error.diagnostic.stage==='watchdog.ledger.query');
  }finally{DatabaseSync.prototype.exec=exec;state?.close();await rm(directory,{recursive:true,force:true});}
 });
 
@@ -306,4 +306,24 @@ test('reconciliation requires exact text, author, channel and complete history',
  assert.equal(await clientFor({messages:[message]}).findAlert(alert),message.ts);
  assert.equal(await clientFor({messages:[]}).findAlert(alert),null);
  for(const data of [{messages:[{...message,user:'U999'}]},{messages:[{...message,edited:{}}]},{messages:[{...message,thread_ts:'1793750000.000001'}]},{messages:[message,message]},{messages:[message],has_more:true}])await assert.rejects(()=>clientFor(data).findAlert(alert));
+});
+
+ test('ledger failures retain only bounded SQLite and filesystem diagnostics',async()=>{
+ const io={now,readService:async()=>service,readHealth:async()=>health,query:()=>assert.fail('unread ledger cannot query delivery')};
+ for(const [code,errcode] of [['ERR_SQLITE_ERROR',11],['ERR_SQLITE_ERROR',266],['EACCES',undefined]]){
+  const error=Object.assign(Error('private database path and report content'),{code,errcode,diagnostic:{stage:'watchdog.ledger.query'}});
+  const result=await inspectWatchdog(c,publisher,{...io,readBindings:async()=>{throw error;}}),observation=result.observations[1];
+  assert.deepEqual(observation.issues,['daily_report_ledger_unavailable']);assert.equal(observation.error.code,code);assert.equal(observation.error.stage,'watchdog.ledger.query');
+  if(errcode)assert.equal(observation.error.sqlite_errcode,errcode);
+  assert(!JSON.stringify(result).includes('private database'));
+ }
+});
+
+test('persistent real snapshot-lock contention is reported distinctly without querying or claiming success',{skip:process.platform!=='linux'},async()=>{
+ const directory=await mkdtemp(path.join(os.tmpdir(),'watchdog-contention-'));let busy;
+ try{
+  await withHandoffLock(directory,async()=>{try{await withHandoffLock(directory,()=>assert.fail('busy'),{waitMs:0});}catch(error){busy=error;}});
+  const result=await inspectWatchdog(c,publisher,{now,readService:async()=>service,readHealth:async()=>health,readBindings:async()=>{throw busy;},query:()=>assert.fail('cannot query delivery')});
+  assert.deepEqual(result.observations[1].issues,['daily_report_ledger_busy']);assert.equal(result.observations[1].error.flock_exit_code,75);
+ }finally{await rm(directory,{recursive:true,force:true});}
 });
