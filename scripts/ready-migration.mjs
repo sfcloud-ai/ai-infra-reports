@@ -11,7 +11,8 @@ import {remoteJournalSchemaObjects} from "./remote-native-journal.mjs";
 import {successorSchemaObjects} from './recovery-control-successor.mjs';
 import {SCHEDULED_SCHEMA,scheduledSchemaObjects} from './scheduled-delivery-state.mjs';
 import {validateConfig,privateFile,privateDirectory} from "./run-handoff.mjs";
-const known=new Set(["scope","jobs","notice_scope","notices","notice_commands","ready_migrations","notice_recovery_authorizations","remote_native_runs","remote_native_ops","recovery_control_successors",...Object.keys(SCHEDULED_SCHEMA)]);
+import {intakeSchemaObjects} from './publisher-intake-state.mjs';
+const known=new Set(["publisher_intake_scan","publisher_inbox","scope","jobs","notice_scope","notices","notice_commands","ready_migrations","notice_recovery_authorizations","remote_native_runs","remote_native_ops","recovery_control_successors",...Object.keys(SCHEDULED_SCHEMA)]);
 function inspect(db){
  requireThat(db.prepare("PRAGMA integrity_check").get().integrity_check==="ok","State integrity failed");
  const tables=db.prepare("SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all();
@@ -19,6 +20,11 @@ function inspect(db){
  requireThat(db.prepare("SELECT name FROM sqlite_master WHERE type IN ('trigger','view')").all().every(o=>allowedTriggers.has(o.name)),"Unexpected state triggers/views");
  requireThat(tables.every(t=>known.has(t.name))&&tables.some(t=>t.name==="jobs")&&tables.some(t=>t.name==="scope"),"Unknown state schema");
  scheduledSchemaObjects(db);
+ const intakeObjects=intakeSchemaObjects(db);
+ if(intakeObjects.length){
+  requireThat(db.prepare("SELECT count(*) AS n FROM publisher_inbox WHERE phase!='admitted'").get().n===0,'Unresolved durable inbox prevents migration');
+  requireThat(db.prepare('SELECT count(*) AS n FROM publisher_intake_scan WHERE upper_bound IS NOT NULL OR page_cursor IS NOT NULL').get().n===0,'Unfinished durable scan prevents migration');
+ }
  for(const [name,phase] of [['scheduled_handoffs','complete'],['scheduled_status_replies','sent']]){
   if(tables.some(t=>t.name===name))requireThat(db.prepare(`SELECT count(*) AS n FROM ${name} WHERE phase!=?`).get(phase).n===0,'Unresolved scheduled delivery prevents migration');
  }
@@ -28,6 +34,7 @@ function inspect(db){
  if(recoveryObjects.length)requireThat(db.prepare("SELECT count(*) AS n FROM notice_recovery_authorizations WHERE phase!='consumed'").get().n===0,"Unresolved recovery authorization prevents migration");
  if(journalObjects.length)requireThat(db.prepare("SELECT count(*) AS n FROM remote_native_runs WHERE phase!='complete'").get().n===0&&db.prepare("SELECT count(*) AS n FROM remote_native_ops WHERE phase!='acknowledged'").get().n===0,"Unresolved remote journal prevents migration");
  const hash=createHash("sha256");
+ if(intakeObjects.length)hash.update(JSON.stringify(intakeObjects)+"\n");
  if(recoveryObjects.length)hash.update(JSON.stringify(recoveryObjects)+"\n");
  if(journalObjects.length)hash.update(JSON.stringify(journalObjects)+"\n");
  if(successorObjects.length)hash.update(JSON.stringify(successorObjects)+"\n");

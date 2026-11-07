@@ -5,7 +5,9 @@ import {scopeDigest} from './handoff-state.mjs';
 import {installScheduledTables} from './scheduled-delivery-state.mjs';
 import {decodeBundle,requireThat,REQUEST} from './report-handoff.mjs';
 import {validateCheckerConfig} from './notice-checker.mjs';
-import {safeDiagnostic,isLocalSlackCooldown} from './handoff-recovery.mjs';
+import {safeDiagnostic,isSlackWriteUnexecuted} from './handoff-recovery.mjs';
+import {producerInspection,inspectCommand,INSPECT_PREFIX} from './producer-inspect.mjs';
+import {intakeStatus} from './publisher-inbox.mjs';
 export function statusImages(value){
  if(value===undefined)return [];
  requireThat(Array.isArray(value)&&value.length<=32,'Bounded image receipts required');
@@ -18,14 +20,18 @@ export function validateScheduledConfig(c){
  requireThat(c&&Object.keys(c).sort().join()==='activation_date,args,executable'&&/^\d{4}-\d\d-\d\d$/.test(c.activation_date)&&new Date(c.activation_date+'T00:00:00Z').toISOString().slice(0,10)===c.activation_date,'Explicit scheduler activation boundary required');
  validateCheckerConfig({args:c.args,executable:c.executable});return c;
 }
+export function scheduledQueryBudget(request){
+ requireThat(request&&['admit','status','inspect'].includes(request.action),'Known scheduled action required');
+ return request.action==='admit'?180000:10000;
+}
 export function queryScheduled(config,request){
- validateScheduledConfig(config);const bytes=Buffer.from(JSON.stringify(request));
+ validateScheduledConfig(config);const budget=scheduledQueryBudget(request),bytes=Buffer.from(JSON.stringify(request));
  requireThat(bytes.length<=12*1024*1024,'Bounded scheduling request required');
  return new Promise((resolve,reject)=>{
   const child=spawn(config.executable,config.args,{shell:false,stdio:['pipe','pipe','ignore'],env:{LANG:'C.UTF-8',PYTHONDONTWRITEBYTECODE:'1'}});
   const parts=[];let size=0,done=false;
   const finish=(error,value)=>{if(done)return;done=true;clearTimeout(timer);if(error){child.kill('SIGKILL');reject(error);}else resolve(value);};
-  const timer=setTimeout(()=>finish(Error('Scheduled endpoint timeout')),180000);
+  const timer=setTimeout(()=>finish(Error('Scheduled endpoint timeout')),budget);
   child.on('error',()=>finish(Error('Scheduled endpoint unavailable')));child.stdin.on('error',()=>finish(Error('Scheduled endpoint input unresolved')));
   child.stdout.on('data',part=>{size+=part.length;if(size>16384)finish(Error('Scheduled endpoint result too large'));else parts.push(part);});
   child.on('close',code=>{try{requireThat(code===0,'Scheduled endpoint rejected');const result=JSON.parse(new TextDecoder('utf8',{fatal:true}).decode(Buffer.concat(parts)));finish(null,result);}catch{finish(Error('Scheduled endpoint outcome unresolved'));}});
@@ -89,7 +95,7 @@ function admitStatus(db,event){
  const prior=db.prepare('SELECT * FROM scheduled_status_replies WHERE source_ts=?').get(event.source_ts);
  if(prior){requireThat(prior.hash===event.hash,'Status source changed');return prior;}
  requireThat(REQUEST.test(event.request_id??''),'Status request identity required');
- db.prepare("INSERT INTO scheduled_status_replies(source_ts,hash,phase,text,reply_ts) VALUES (?,?,'queued',?,NULL)").run(event.source_ts,event.hash,JSON.stringify({request_id:event.request_id}));
+ db.prepare("INSERT INTO scheduled_status_replies(source_ts,hash,phase,text,reply_ts) VALUES (?,?,'queued',?,NULL)").run(event.source_ts,event.hash,JSON.stringify(event.kind==='inspect'?inspectCommand({kind:event.kind,request_id:event.request_id,report_date:event.report_date,bundle_sha256:event.bundle_sha256,query_id:event.query_id}):{request_id:event.request_id}));
  return db.prepare('SELECT * FROM scheduled_status_replies WHERE source_ts=?').get(event.source_ts);
 }
 export async function replyScheduledStatus(state,config,event,slack,query=queryScheduled){
@@ -103,8 +109,23 @@ export async function replyScheduledStatus(state,config,event,slack,query=queryS
   return;
  }
  if(prior.phase==='sent')return;
+ if(prior.phase==='ready'&&prior.text.startsWith(INSPECT_PREFIX)){
+  const old=JSON.parse(prior.text.slice(INSPECT_PREFIX.length));
+  if(!Number.isSafeInteger(old.observed_at)||old.observed_at<Date.now()-60000){
+   const command=inspectCommand({kind:'inspect',request_id:old.request_id,report_date:old.report_date,bundle_sha256:old.bundle_sha256,query_id:old.query_id});
+   db.prepare("UPDATE scheduled_status_replies SET phase='queued',text=? WHERE source_ts=? AND phase='ready'").run(JSON.stringify(command),event.source_ts);
+   prior=db.prepare('SELECT * FROM scheduled_status_replies WHERE source_ts=?').get(event.source_ts);
+  }
+ }
  if(prior.phase==='queued'){
  const command=JSON.parse(prior.text);
+ if(command.kind==='inspect'){
+  const result=await producerInspection(state,config,command,event.source_ts,query);
+  const text=INSPECT_PREFIX+JSON.stringify(result);
+  requireThat(Buffer.byteLength(text)<=16384,'Bounded inspect receipt required');
+  db.prepare("UPDATE scheduled_status_replies SET phase='ready',text=? WHERE source_ts=? AND phase='queued'").run(text,event.source_ts);
+ }else{
+
  requireThat(command&&Object.keys(command).join()==='request_id'&&REQUEST.test(command.request_id??''),'Stored status command changed');
  const requestId=command.request_id;
  const remote=await query(config.scheduled_delivery,{action:'status',request_id:requestId});
@@ -116,7 +137,9 @@ export async function replyScheduledStatus(state,config,event,slack,query=queryS
  const result=Object.fromEntries(fields.filter(k=>Object.hasOwn(remote,k)).map(k=>[k,remote[k]]));
  if(remote.last_error!=null)result.last_error=typeof remote.last_error==='string'&&/^[A-Za-z0-9_.:-]{1,80}$/.test(remote.last_error)?remote.last_error:'unspecified';
  if(remote.images!==undefined)result.images=statusImages(remote.images);
- result.publisher_phase=job?.phase??'not_found';
+   const intake=intakeStatus(db,requestId);
+   result.publisher_phase=job?.phase??(intake?'intake_pending':'not_found');
+   if(intake&&!job)result.publisher_intake=intake;
  if(job){
   result.publisher_bundle_sha256=job.hash;
   result.publisher_source_ts=job.source_ts;
@@ -126,6 +149,7 @@ export async function replyScheduledStatus(state,config,event,slack,query=queryS
  const text='!ai-report status-receipt '+JSON.stringify({request_id:requestId,source_ts:event.source_ts,...result});
  requireThat(Buffer.byteLength(text)<=16384,'Bounded status receipt required');
  db.prepare("UPDATE scheduled_status_replies SET phase='ready',text=? WHERE source_ts=? AND phase='queued'").run(text,event.source_ts);
+ }
  prior=db.prepare('SELECT * FROM scheduled_status_replies WHERE source_ts=?').get(event.source_ts);
  }
  requireThat(prior.phase==='ready','Unexpected status reply phase');
@@ -139,7 +163,7 @@ export async function replyScheduledStatus(state,config,event,slack,query=queryS
  }catch(error){
   // A concurrent quota update can land between the precheck and adapter call.
   // This in-process proof preserves our original never-attempted response.
-  if(isLocalSlackCooldown(error)){db.prepare("UPDATE scheduled_status_replies SET phase='ready' WHERE source_ts=? AND phase='sending'").run(event.source_ts);throw error;}
+  if(isSlackWriteUnexecuted(error)){db.prepare("UPDATE scheduled_status_replies SET phase='ready' WHERE source_ts=? AND phase='sending'").run(event.source_ts);throw error;}
   db.prepare("UPDATE scheduled_status_replies SET phase='unknown' WHERE source_ts=?").run(event.source_ts);
  }
 }

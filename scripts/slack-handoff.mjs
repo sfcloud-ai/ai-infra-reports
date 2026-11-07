@@ -2,7 +2,7 @@ import {REPOSITORY} from "./archive.mjs";
 import {digest} from "./archive.mjs";
 import {requireThat,boundedBytes,MAX_BUNDLE,SHA,acceptControlFile} from "./report-handoff.mjs";
 import {operationError,rateLimitInfo} from "./github.mjs";
-import {localSlackCooldown} from './handoff-recovery.mjs';
+import {localSlackCooldown,confirmedSlackRejection} from './handoff-recovery.mjs';
 export class SlackHandoff{
  constructor(config,token,fetcher=fetch,{now=Date.now,cooldowns}={}){this.config=config;this.token=token;this.fetcher=fetcher;this.now=now;this.cooldowns=cooldowns;}
  assertReady(method){
@@ -18,11 +18,14 @@ export class SlackHandoff{
   try{response=await this.fetcher(url.href,{method:write?"POST":"GET",headers:{authorization:"Bearer "+this.token,"content-type":"application/json; charset=utf-8"},body:write?JSON.stringify(params):undefined,redirect:"error",signal:AbortSignal.timeout(30000)});}catch{throw failure('transport',write?'unknown':'not_started',!write);}
   const retryAt=()=>{const seconds=response.headers?.get?.('retry-after');return this.now()+(/^\d{1,6}$/.test(seconds??'')?Number(seconds)*1000:60000);};
   const limited=async()=>{const deadline=retryAt();await this.cooldowns?.defer(method,deadline);return deadline;};
-  if(!response.ok)throw failure('http_error',write&&response.status>=500?'unknown':'not_started',response.status===429||(!write&&response.status>=500),response.status,response.status===429?await limited():undefined);
+  if(!response.ok){
+   const error=failure('http_error',write&&response.status>=500?'unknown':'not_started',response.status===429||(!write&&response.status>=500),response.status,response.status===429?await limited():undefined);
+   throw write&&response.status===429?confirmedSlackRejection(error):error;
+  }
   // No inline write retry. The durable worker decides whether reconciliation
   // or a bounded retry is safe; only allowlisted error identifiers are logged.
   const data=JSON.parse((await boundedBytes(response,1024*1024)).toString("utf8"));
-  if(data.ok!==true){const codes=['ratelimited','invalid_auth','token_revoked','missing_scope','not_authed','account_inactive','channel_not_found','not_in_channel','is_archived'];const code=codes.includes(data.error)?data.error:'api_error';throw failure(code,write&&code==='api_error'?'unknown':'not_started',code==='ratelimited',undefined,code==='ratelimited'?await limited():undefined);}
+  if(data.ok!==true){const codes=['ratelimited','invalid_auth','token_revoked','missing_scope','not_authed','account_inactive','channel_not_found','not_in_channel','is_archived','invalid_cursor'];const code=codes.includes(data.error)?data.error:'api_error';const error=failure(code,write&&code==='api_error'?'unknown':'not_started',code==='ratelimited'||!write&&code==='invalid_cursor',undefined,code==='ratelimited'?await limited():undefined);throw write&&code!=='api_error'&&code!=='invalid_cursor'?confirmedSlackRejection(error):error;}
   return {data,scopes:response.headers.get("x-oauth-scopes")};
  }
  async preflight(){
@@ -33,9 +36,32 @@ export class SlackHandoff{
   requireThat(channel?.id===c.channel_id&&channel.is_private===true&&channel.is_member===true&&!channel.is_im&&!channel.is_mpim&&!channel.is_archived&&!channel.is_shared&&!channel.is_ext_shared&&!channel.is_org_shared,"Control channel must be private, unshared and joined");
  }
  async history(now=Date.now()){
-  const {data}=await this.call("conversations.history",{channel:this.config.channel_id,oldest:(now/1000-15*60).toFixed(6),limit:15});
-  requireThat(Array.isArray(data.messages)&&!data.has_more&&!data.response_metadata?.next_cursor,"Incomplete control history; inspect backlog before continuing");
-  return data.messages.slice().reverse();
+  const from=(now/1000-15*60).toFixed(6),to=(now/1000+30).toFixed(6),messages=new Map(),seen=new Set();let cursor=null;
+  for(let page=0;page<5;page++){
+   const result=await this.historyPage({from,to,cursor});
+   for(const message of result.messages){
+    const prior=messages.get(message.ts);requireThat(!prior||JSON.stringify(prior)===JSON.stringify(message),'Control message changed during pagination');messages.set(message.ts,message);
+   }
+   cursor=result.next_cursor;
+   if(cursor===null)return [...messages.values()].sort((a,b)=>a.ts.localeCompare(b.ts));
+   requireThat(!seen.has(cursor),'Repeated control history cursor');seen.add(cursor);
+  }
+  throw Error('Incomplete control history; inspect backlog before continuing');
+ }
+ async historyPage({from,to,cursor=null}){
+  const timestamp=/^\d{10}\.\d{6}$/;
+  requireThat(timestamp.test(from)&&timestamp.test(to)&&from<=to&&(cursor===null||typeof cursor==='string'&&cursor.length>0&&cursor.length<=1024),"Bounded fixed history range required");
+  const {data}=await this.call("conversations.history",{channel:this.config.channel_id,oldest:from,latest:to,inclusive:true,limit:100,...(cursor?{cursor}:{})});
+  const next=data.response_metadata?.next_cursor||null;
+  requireThat(Array.isArray(data.messages)&&data.messages.length<=100&&(data.has_more===undefined||typeof data.has_more==='boolean')&&(next===null||typeof next==='string'&&next.length<=1024)&&!(data.has_more&&!next),"Incomplete control history page");
+  requireThat(data.messages.every(m=>timestamp.test(m?.ts??'')&&m.ts>=from&&m.ts<=to),"Control history outside fixed range");
+  return {messages:data.messages,next_cursor:next};
+ }
+ async exactPublish(timestamp){
+  requireThat(/^\d{10}\.\d{6}$/.test(timestamp),"Original message timestamp required");
+  const {data}=await this.call("conversations.history",{channel:this.config.channel_id,oldest:timestamp,latest:timestamp,inclusive:true,limit:2});
+  requireThat(Array.isArray(data.messages)&&data.messages.length===1&&data.messages[0].ts===timestamp&&!data.has_more&&!data.response_metadata?.next_cursor,"Original publish message unavailable or ambiguous");
+  return data.messages[0];
  }
  async download(event,{name="ai-brief-bundle.json",limit=MAX_BUNDLE}={}){
   const {data:{file:f}}=await this.call("files.info",{file:event.file_id});
@@ -66,9 +92,23 @@ export class SlackHandoff{
   return data.ts;
  }
  async findControlReceipt(thread,text){
-  const {data}=await this.call("conversations.replies",{channel:this.config.channel_id,ts:thread,limit:15});
-  requireThat(Array.isArray(data.messages)&&!data.has_more&&!data.response_metadata?.next_cursor,"Incomplete receipt thread; no automatic resend");
-  const matches=data.messages.filter(m=>m.thread_ts===thread&&m.text===text);
+  requireThat(/^\d{10}\.\d{6}$/.test(thread),'Original receipt thread required');
+  const messages=new Map(),seen=new Set();let cursor=null,complete=false;
+  for(let page=0;page<5;page++){
+   const {data}=await this.call("conversations.replies",{channel:this.config.channel_id,ts:thread,limit:100,...(cursor?{cursor}:{})});
+   requireThat(Array.isArray(data.messages)&&data.messages.length<=100,'Bounded receipt page required');
+   const pageTimestamps=new Set();
+   for(const message of data.messages){
+    requireThat(/^\d{10}\.\d{6}$/.test(message?.ts??''),'Receipt timestamp required');
+    requireThat(!pageTimestamps.has(message.ts),'Duplicate receipt timestamp in one page');pageTimestamps.add(message.ts);
+    const prior=messages.get(message.ts);requireThat(!prior||JSON.stringify(prior)===JSON.stringify(message),'Receipt changed during pagination');messages.set(message.ts,message);
+   }
+   cursor=data.response_metadata?.next_cursor||null;
+   if(!cursor){requireThat(!data.has_more,'Incomplete receipt thread; no automatic resend');complete=true;break;}
+   requireThat(typeof cursor==='string'&&cursor.length<=1024&&!seen.has(cursor),'Invalid receipt pagination');seen.add(cursor);
+  }
+  requireThat(complete,'Incomplete receipt thread; no automatic resend');
+  const matches=[...messages.values()].filter(m=>m.thread_ts===thread&&m.text===text);
   requireThat(matches.length===1,"Receipt absent or ambiguous; no automatic resend");
   const m=matches[0],c=this.config;
   requireThat(m.type==="message"&&(!m.subtype||m.subtype==="bot_message")&&m.user===c.bot_user_id&&m.bot_id===c.bot_id&&!m.edited&&!m.hidden&&(!m.channel||m.channel===c.channel_id)&&(!m.team||m.team===c.team_id)&&typeof m.ts==="string"&&/^\d{10}\.\d{6}$/.test(m.ts)&&m.ts>thread,"Receipt identity changed");

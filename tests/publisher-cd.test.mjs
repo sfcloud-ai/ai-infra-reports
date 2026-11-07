@@ -12,3 +12,12 @@ test("publisher CD source, ledger and interrupted-deployment guards",()=>{
  assert.match(result.stderr,/\bOK\b/);
  assert.doesNotMatch(result.stderr,/skipped=/);
 });
+
+// The root-owned controller cannot import the application runtime. Keep its
+// reviewed schema copy byte-for-byte identical to the actual SQLite DDL.
+import {INTAKE_SCHEMA} from '../scripts/publisher-intake-state.mjs';
+test('publisher CD durable intake schema matches the runtime exactly',()=>{
+ const result=spawnSync(process.platform==='win32'?'python':'python3',['-B','-c','import json; from deployment.publisher_cd import INTAKE_SCHEMA; print(json.dumps(INTAKE_SCHEMA))'],{encoding:'utf8',timeout:10000});
+ assert.ifError(result.error);assert.equal(result.status,0,result.stderr);
+ assert.deepEqual(JSON.parse(result.stdout),INTAKE_SCHEMA);
+});

@@ -7,7 +7,7 @@ import {noticeIdentityReserved,noticeRecovery,activateNoticeRecovery,checkRecove
 import {checkedNoticeResult} from "./notice-checker.mjs";
 import {JOURNAL_FIELDS,validateJournalCommand,applyJournalCommand,guardJournalOperation,remoteJournal,remoteCatalog} from "./remote-native-journal.mjs";
 import {recoveryCommandAllowed} from './recovery-control-successor.mjs';
-import {isLocalSlackCooldown} from './handoff-recovery.mjs';
+import {isSlackWriteUnexecuted} from './handoff-recovery.mjs';
 export const MAX_NOTICE_COMMAND=16384;
 export function notificationScope(config){
  const {ready_for_review,...scope}=handoffScope(config);
@@ -221,7 +221,7 @@ export async function advanceNotice(outbox,id,io){
   requireThat(typeof ts==="string"&&TS.test(ts),"Notice response timestamp missing");
   outbox.move(id,"response_sending","response_sent",ts);
  }catch(error){
-  if(isLocalSlackCooldown(error)){outbox.move(id,'response_sending','response_ready');throw error;}
+  if(isSlackWriteUnexecuted(error)){outbox.move(id,'response_sending','response_ready');throw error;}
   outbox.move(id,"response_sending","response_unknown");if(remoteReceiptCanWait(outbox,operation))return;throw Error("Notice response outcome unknown; read original thread, never resend");
  }
 }

@@ -1,0 +1,10 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"messages\":\"=== THREAD PARENT MESSAGE ===\\nFrom: Fixture User <user@example.test> (U123)\\nTime: 2026-11-01 08:00:00 CST\\nMessage TS: {{source_ts}}\\n{{query}}\\n*发送工具* <@U789|ChatGPT>\\n\\n=== THREAD REPLIES (1 total) ===\\n\\n--- Reply 1 of 1 ---\\nFrom: Fixture Publisher <botuser-T123-B456@slack-bots.com> (U456)\\nTime: 2026-11-01 08:00:00 CST\\nMessage TS: {{receipt_ts}}\\n!ai-report inspect-receipt {{receipt_json}}\\n\",\"pagination_info\":\"There are no more messages in this thread.\\n\"}"
+    }
+  ],
+  "structuredContent": null,
+  "isError": false
+}

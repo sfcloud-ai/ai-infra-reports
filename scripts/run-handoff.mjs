@@ -9,11 +9,12 @@ import {HandoffState,handoffScope} from "./handoff-state.mjs";
 import {openProviderCooldowns,providerIO,PROVIDER_SCOPES} from './provider-cooldowns.mjs';
 import {NoticeOutbox,notificationScope,acceptNoticeCommand,decodeNoticeCommand,advanceNotice,MAX_NOTICE_COMMAND,remoteReceiptCanWait} from "./notice-outbox.mjs";
 import {SlackHandoff,publicGitHub,publicMergeCommit} from "./slack-handoff.mjs";
-import {acceptMessage,acceptReportStatus,decodeBundle,requireThat,verifyReportPublication} from "./report-handoff.mjs";
+import {acceptMessage,acceptReportStatus,acceptProducerInspect,decodeBundle,requireThat,verifyReportPublication} from "./report-handoff.mjs";
 import {advanceHandoff} from "./handoff-worker.mjs";
 import {proposeWithApp,reconcileProposalWithApp} from "./propose-with-app.mjs";
 import {validateCheckerConfig,runNoticeChecker} from "./notice-checker.mjs";
-import {safeDiagnostic,recordHandoffFailure,attemptDetail} from "./handoff-recovery.mjs";
+import {safeDiagnostic,recordHandoffFailure,attemptDetail,localSlackNotStarted} from "./handoff-recovery.mjs";
+import {PublisherInbox,validateIntakeConfig} from './publisher-inbox.mjs';
 import {withHandoffLock} from "./handoff-lock.mjs";
 export async function privateDirectory(dir){
  requireThat(path.isAbsolute(dir)&&await realpath(dir)===path.resolve(dir),"Private directory must be absolute and not symlinked");
@@ -39,6 +40,7 @@ export function validateConfig(c){
   requireThat(Object.hasOwn(c,"notification_destination")&&Object.hasOwn(c,"notification_not_before"),"Checker requires configured notices");
  }
  if(c&&Object.hasOwn(c,"scheduled_delivery")){keys.push("scheduled_delivery");validateScheduledConfig(c.scheduled_delivery);}
+ if(c&&Object.hasOwn(c,"durable_intake")){keys.push("durable_intake");validateIntakeConfig(c.durable_intake);}
  requireThat(c&&Object.keys(c).sort().join()===keys.sort().join(),"Unexpected publisher config");
  for(const [key,prefix]of [["team_id","T"],["channel_id","[CG]"],["sender_user_id","U"],["bot_user_id","U"],["bot_id","B"]])requireThat(new RegExp("^"+prefix+"[A-Z0-9]+$").test(c[key]),"Publisher identity config");
  requireThat(c.sender_user_id!==c.bot_user_id&&typeof c.ready_for_review==="boolean"&&Number.isSafeInteger(c.producer_app_id)&&c.producer_app_id>0&&Number.isSafeInteger(c.merger_app_id)&&c.merger_app_id>0&&c.producer_app_id!==c.merger_app_id,"Independent publisher identities required");
@@ -47,18 +49,31 @@ export function validateConfig(c){
  for(const k of ["slack_token_file","producer_key_file","state_dir"])requireThat(typeof c[k]==="string"&&path.isAbsolute(c[k]),"Absolute private paths required");
  return c;
 }
+export async function prepareSlack(slack){
+ try{await slack.preflight();return slack;}
+ catch(error){
+  // Existing admitted jobs retain their original authenticated binding. Their
+  // GitHub/Pages/T4 work may continue, but no Slack call uses an unverified bot.
+  const blocked=localSlackNotStarted(Object.assign(Error('Slack identity not verified'),{diagnostic:{...safeDiagnostic(error,'slack.preflight','not_started'),outcome:'not_started'}}));
+  return Object.fromEntries(['history','historyPage','exactPublish','download','controlAsset','controlReceipt','findControlReceipt','receipt','assertReady'].map(name=>[name,()=>{throw blocked;}]));
+ }
+}
 // Dependencies here are supplied only by trusted runtime code, never the payload.
 export async function handoffTick(state,config,slack,io){
   const now=io.now??Date.now,errors=[];
+  requireThat(config.durable_intake||!state.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='publisher_intake_scan'").get(),'Durable intake configuration cannot be removed silently');
   const capture=(stage,error,extra={})=>{if(errors.length<16)errors.push({...safeDiagnostic(error,stage),...extra});};
   const notices=config.notification_destination?new NoticeOutbox(state,notificationScope(config)):null;
-  let messages=[];const statusEvents=[];
+  const inbox=config.durable_intake?new PublisherInbox(state,config):null;
+  const statusEvents=[];
+  const readFreshCommands=async()=>{
+  let messages=[];
   try{messages=await slack.history();}catch(error){capture('intake_history',error);}
   for(const message of messages){
    try{
    let status=null;
-   if(config.scheduled_delivery&&message?.text?.startsWith("!ai-report status ")){
-    try{status=acceptReportStatus(message,config);}catch{continue;}
+   if(config.scheduled_delivery&&(message?.text?.startsWith("!ai-report status ")||message?.text?.startsWith("!ai-report inspect "))){
+    try{status=acceptReportStatus(message,config)??acceptProducerInspect(message,config);}catch{continue;}
    }
    if(status){
     // Admit every report before the separately bounded advisory status lane.
@@ -72,6 +87,7 @@ export async function handoffTick(state,config,slack,io){
     notices.admit(command,await slack.download(command,{name:"ai-notice-command.json",limit:MAX_NOTICE_COMMAND}));continue;
    }
    // Ignore other protocols; invalid matching commands fail closed without writes.
+   if(inbox&&message?.text?.startsWith('!ai-report publish '))continue;
    const event=acceptMessage(message,config);if(!event)continue;
    const prior=state.get(event.request_id);
    if(prior){requireThat(prior.hash===event.hash&&prior.source_ts===event.source_ts,"Duplicate request conflict");continue;}
@@ -79,6 +95,8 @@ export async function handoffTick(state,config,slack,io){
    requireThat(bundle.data.request_id===event.request_id&&bundle.hash===event.hash,"Message and bundle mismatch");state.admit(event,bytes);
    }catch(error){capture('intake_message',error,{source_ts:/^\d{10}\.\d{6}$/.test(message?.ts??'')?message.ts:null});}
   }
+  };
+  if(!inbox)await readFreshCommands();
   // Bound each lane to one operation. A later PR must not starve completed-report
   // notices; a premature claim waits while its publication continues advancing.
   // T4 admission/status progresses independently of a lost Slack publication
@@ -139,16 +157,41 @@ export async function handoffTick(state,config,slack,io){
   if(config.scheduled_delivery){
    try{scheduled=await advanceScheduledDelivery(state,config,io.scheduleQuery);}catch(error){capture('scheduled_delivery',error);}
   }
+  if(inbox)await readFreshCommands();
+  // Existing publication and scheduler work gets its turn before a bounded
+  // inbox page/file read. Pagination never creates an unbounded intake loop.
+  if(inbox){
+   try{const scanned=await inbox.scan(slack,now());errors.push(...scanned.rejected.slice(0,Math.max(0,16-errors.length)));}catch(error){capture('intake_history',error);}
+  }
+  // A newly seen inspect query can use this tick's completed scan. Do not
+  // impose an extra fixed poll interval before every fresh upload gate.
   if(config.scheduled_delivery){
    try{await advanceScheduledStatus(state,config,statusEvents,slack,io.scheduleQuery);}catch(error){capture('scheduled_status',error);}
   }
+  if(inbox){
+   try{const error=await inbox.admitOne(slack,now());if(error&&errors.length<16)errors.push(error);}catch(error){capture('intake_file',error);}
+  }
+  const blocked_intake=inbox?.pending()??[];
   const pending=state.pendingMetadata();
   // A quiet/backoff tick must not erase a durable failure from service health.
   // Keep the report degraded until the original request finishes or is reconciled.
   const blocked_reports=pending.filter(job=>['proposal_failed','proposing','proposal_unknown','sending','receipt_unknown'].includes(job.phase)||job.detail.recovery?.last_error).slice(0,16).map(job=>({request_id:job.id,phase:job.phase,...(job.detail.recovery?.last_error?{error:safeDiagnostic({diagnostic:job.detail.recovery.last_error},job.phase)}:{})}));
   const due=pending.filter(job=>job.phase!=='proposal_failed').map(job=>job.detail.recovery?.next_at).filter(t=>Number.isFinite(t)&&t>0);
+  if(inbox){
+   due.push(...blocked_intake.map(row=>row.next_at||now()+1000));
+   if(pending.some(job=>job.phase==='received'&&!job.detail.recovery?.next_at))due.push(now()+1000);
+   const scan=state.db.prepare('SELECT page_cursor,watermark FROM publisher_intake_scan WHERE id=1').get();
+   if(scan?.page_cursor)due.push(now()+1000);
+   // A completed older fixed range may still precede a queued read query.
+   // Continue that scan promptly, but do not turn remote query/write failures
+   // into unconditional one-second retries after coverage is already complete.
+   if(config.scheduled_delivery&&state.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='scheduled_status_replies'").get()){
+    const waiting=state.db.prepare("SELECT text FROM scheduled_status_replies WHERE phase='queued' AND source_ts>? ORDER BY source_ts LIMIT 1000").all(scan.watermark);
+    if(waiting.some(row=>{try{return JSON.parse(row.text).kind==='inspect';}catch{return false;}}))due.push(now()+1000);
+   }
+  }
   const next_delay_ms=due.length?Math.max(1000,Math.min(120000,Math.min(...due)-now())):120000;
-  return {...(id?{request_id:id,phase:state.metadata(id).phase}:noticeResult??{phase:'idle'}),...(noticeResult?{notice:noticeResult}:{}),...(scheduled?{scheduled}:{}),errors,blocked_reports,healthy:errors.length===0&&blocked_reports.length===0,next_delay_ms};
+  return {...(id?{request_id:id,phase:state.metadata(id).phase}:noticeResult??{phase:'idle'}),...(noticeResult?{notice:noticeResult}:{}),...(scheduled?{scheduled}:{}),...(inbox?{blocked_intake}:{}),errors,blocked_reports,healthy:errors.length===0&&blocked_reports.length===0&&blocked_intake.length===0,next_delay_ms};
 }
 export async function runHandoff(configFile){
  requireThat(process.platform==="linux","Live publisher requires the reviewed Linux service layout");
@@ -158,7 +201,7 @@ export async function runHandoff(configFile){
  return withHandoffLock(config.state_dir,async()=>{
  const cooldowns=await openProviderCooldowns(config,{privateFile,privateDirectory,createDirectory:true});
  try{
- const slack=new SlackHandoff(config,token,fetch,{cooldowns});await slack.preflight();
+ const slack=await prepareSlack(new SlackHandoff(config,token,fetch,{cooldowns}));
  const filename=path.join(config.state_dir,"handoff.sqlite");
  try{const f=await open(filename,"wx",0o600);await f.close();}catch(e){if(e.code!=="EEXIST")throw e;}
  await privateFile(filename,10*1024*1024*1024,false);

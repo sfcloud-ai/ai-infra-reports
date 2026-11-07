@@ -1,6 +1,6 @@
 import {REPOSITORY} from "./archive.mjs";
 import {decodeBundle,requireThat,SHA} from "./report-handoff.mjs";
-import {failureDetail,safeDiagnostic,isLocalSlackCooldown} from "./handoff-recovery.mjs";
+import {failureDetail,safeDiagnostic,isSlackWriteUnexecuted} from "./handoff-recovery.mjs";
 const PR=new RegExp("^https://github.com/"+REPOSITORY+"/pull/([1-9][0-9]*)$");
 // An interrupted write must be reconciled before the original request advances.
 export async function advanceHandoff(state,id,io){
@@ -81,7 +81,7 @@ export async function advanceHandoff(state,id,io){
    requireThat(/^\d{10}\.\d{6}$/.test(ts),"Receipt timestamp missing");
    state.move(id,"sending","receipt_sent",{...detail,receipt_ts:ts});
   }catch(error){
-   const local=isLocalSlackCooldown(error);
+   const local=isSlackWriteUnexecuted(error);
    state.move(id,"sending",local?'verified':'receipt_unknown',failureDetail(detail,error,'publication_receipt',(io.now??Date.now)()));
    if(local)throw error;
    throw Error("Receipt outcome requires operator reconciliation; no automatic resend");

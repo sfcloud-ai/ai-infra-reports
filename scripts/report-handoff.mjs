@@ -10,6 +10,14 @@ export const REQUEST=/^[a-z0-9][a-z0-9-]{7,79}$/;
 const FILE=/^reports\/(\d{4}-\d\d-\d\d)\/r([1-9]\d*)\/(report\.json|articles\/[a-z0-9][a-z0-9-]{0,79}\.md|assets\/[a-z0-9][a-z0-9-]{0,79}\.(png|jpg))$/;
 export function requireThat(ok,message){if(!ok)throw Error(message);}
 function exact(value,keys){requireThat(value&&typeof value==="object"&&!Array.isArray(value)&&Object.keys(value).sort().join()===keys.sort().join(),"Unexpected transport fields");}
+export function reportDate(value){
+ return typeof value==='string'&&/^\d{4}-\d\d-\d\d$/.test(value)&&Number.isFinite(Date.parse(value+'T00:00:00Z'))&&new Date(value+'T00:00:00Z').toISOString().slice(0,10)===value;
+}
+export function canonicalRequestDate(id){
+ const match=/^morning-(\d{4})(\d\d)(\d\d)-r([1-9]\d*)$/.exec(id??'');
+ if(!match)return null;
+ const date=match.slice(1,4).join('-');requireThat(reportDate(date),'Canonical request date invalid');return date;
+}
 export async function decodeBundle(bytes){
  requireThat(Buffer.isBuffer(bytes)&&bytes.length>0&&bytes.length<=MAX_BUNDLE,"Bundle byte limit");
  const data=JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(bytes));
@@ -31,6 +39,9 @@ export async function decodeBundle(bytes){
  requireThat(meta&&meta.length<128*1024,"Report metadata missing/large");
  const report=JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(meta));
  exact(report,["schema_version","date","revision","title","subtitle","articles","entries","images","poster"]);
+ const requestDate=canonicalRequestDate(data.request_id);
+ requireThat(!requestDate||requestDate===report.date&&data.request_id.endsWith('-r'+report.revision),'Canonical request edition differs from bundle');
+ requireThat(reportDate(report.date),'Report date invalid');
  requireThat(report.schema_version==="1.0"&&Number.isSafeInteger(report.revision)&&dir===`reports/${report.date}/r${report.revision}/`,"Edition identity");
  requireThat(Array.isArray(report.articles)&&report.articles.length>0&&report.articles.length<=30&&Array.isArray(report.images)&&report.images.length<=20,"Edition collections");
  const used=new Set([dir+"report.json"]);
@@ -67,7 +78,7 @@ function connectorCommand(message,config){
  requireThat(Array.isArray(context)&&context.length===1&&context[0]?.type==="mrkdwn"&&context[0].text===footer&&context[0].verbatim===false&&Object.keys(context[0]).sort().join()==="text,type,verbatim","Connector visible attribution mismatch");
  return command;
 }
-export function acceptControlFile(message,config,now=Date.now()){
+export function acceptControlFile(message,config,now=Date.now(),window){
  const appSender=config.sender_bot_id!==undefined||config.sender_app_id!==undefined;
  const userAppSender=config.sender_user_app_id!==undefined;
  const identity=message.user===config.sender_user_id&&(userAppSender
@@ -77,13 +88,15 @@ export function acceptControlFile(message,config,now=Date.now()){
   :!message.bot_id&&!message.app_id);
  const nativeShare=message.subtype==="file_share"||(appSender&&message.subtype==="bot_message")||(userAppSender&&message.subtype===undefined);
  requireThat(message.type==="message"&&nativeShare&&!message.edited&&!message.hidden&&(!message.thread_ts||message.thread_ts===message.ts)&&identity&&(message.attachments===undefined||(Array.isArray(message.attachments)&&message.attachments.length===0)),"Untrusted report message");
- requireThat(/^\d{10}\.\d{6}$/.test(message.ts)&&Number(message.ts)*1000<=now+30000&&Number(message.ts)*1000>=now-15*60000,"Report message outside intake window");
+ const timestamp=/^\d{10}\.\d{6}$/;
+ if(window)requireThat(Object.keys(window).sort().join()==='from,to'&&timestamp.test(window.from)&&timestamp.test(window.to)&&window.from<=window.to&&Number(window.to)*1000<=now+30000,"Trusted intake range required");
+ requireThat(timestamp.test(message.ts)&&Number(message.ts)*1000<=now+30000&&(window?message.ts>=window.from&&message.ts<=window.to:Number(message.ts)*1000>=now-15*60000),"Report message outside intake window");
  requireThat(message.files?.length===1&&/^F[A-Z0-9]+$/.test(message.files[0].id),"Exact control file required");
  return {source_ts:message.ts,file_id:message.files[0].id};
 }
-export function acceptDataCommand(message,config,prefix,pattern,now=Date.now()){
+export function acceptDataCommand(message,config,prefix,pattern,now=Date.now(),window){
  if(!message?.text?.startsWith(prefix))return null;
- const event=acceptControlFile(message,config,now);
+ const event=acceptControlFile(message,config,now,window);
  const userAppSender=config.sender_user_app_id!==undefined;
  const command=userAppSender?connectorCommand(message,config):message.text;
  const match=pattern.exec(command);
@@ -93,16 +106,35 @@ export function acceptDataCommand(message,config,prefix,pattern,now=Date.now()){
 export function acceptMessage(message,config,now=Date.now()){
  return acceptDataCommand(message,config,"!ai-report ",/^!ai-report publish ([a-z0-9][a-z0-9-]{7,79}) ([a-f0-9]{64})$/,now);
 }
+// Only a trusted persistent consumer chooses this range. The message itself
+// cannot extend admission to historical reports or bypass sender/file checks.
+export function acceptQueuedPublish(message,config,window,now=Date.now()){
+ requireThat(window,'Explicit durable intake range required');
+ return acceptDataCommand(message,config,"!ai-report publish ",/^!ai-report publish ([a-z0-9][a-z0-9-]{7,79}) ([a-f0-9]{64})$/,now,window);
+}
 // Same authenticated channel and sender contract, but deliberately no file.
-export function acceptReportStatus(message,config,now=Date.now()){
- if(!message?.text?.startsWith("!ai-report status "))return null;
+function acceptReadCommand(message,config,prefix,pattern,now,window){
+ if(!message?.text?.startsWith(prefix))return null;
  const appSender=config.sender_bot_id!==undefined||config.sender_app_id!==undefined,userApp=config.sender_user_app_id!==undefined;
  const identity=message.user===config.sender_user_id&&(userApp?!appSender&&!message.bot_id&&message.app_id===config.sender_user_app_id:appSender?message.bot_id===config.sender_bot_id&&message.app_id===config.sender_app_id:!message.bot_id&&!message.app_id);
  requireThat(message.type==="message"&&(message.subtype===undefined||appSender&&message.subtype==="bot_message")&&!message.edited&&!message.hidden&&(!message.thread_ts||message.thread_ts===message.ts)&&identity&&(message.files===undefined||Array.isArray(message.files)&&message.files.length===0)&&(message.attachments===undefined||Array.isArray(message.attachments)&&message.attachments.length===0),"Untrusted report status message");
- requireThat(/^\d{10}\.\d{6}$/.test(message.ts)&&Number(message.ts)*1000<=now+30000&&Number(message.ts)*1000>=now-15*60000,"Status message outside intake window");
- const command=userApp?connectorCommand(message,config):message.text,match=/^!ai-report status ([a-z0-9][a-z0-9-]{7,79})$/.exec(command);
+ const timestamp=/^\d{10}\.\d{6}$/;
+ if(window)requireThat(Object.keys(window).sort().join()==='from,to'&&timestamp.test(window.from)&&timestamp.test(window.to)&&window.from<=window.to&&Number(window.to)*1000<=now+30000,'Trusted read-command range required');
+ requireThat(timestamp.test(message.ts)&&Number(message.ts)*1000<=now+30000&&(window?message.ts>=window.from&&message.ts<=window.to:Number(message.ts)*1000>=now-15*60000),"Status message outside intake window");
+ const command=userApp?connectorCommand(message,config):message.text,match=pattern.exec(command);
  requireThat(match,"Exact status command required");
- return {request_id:match[1],source_ts:message.ts,hash:digest(command)};
+ return {match,source_ts:message.ts,hash:digest(command)};
+}
+export function acceptReportStatus(message,config,now=Date.now(),window){
+ const event=acceptReadCommand(message,config,'!ai-report status ',/^!ai-report status ([a-z0-9][a-z0-9-]{7,79})$/,now,window);
+ return event?{request_id:event.match[1],source_ts:event.source_ts,hash:event.hash}:null;
+}
+export function acceptProducerInspect(message,config,now=Date.now(),window){
+ const event=acceptReadCommand(message,config,'!ai-report inspect ',/^!ai-report inspect ([a-z0-9][a-z0-9-]{7,79}) (\d{4}-\d\d-\d\d) ([a-f0-9]{64}) ([a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})$/,now,window);
+ if(!event)return null;
+ const [,request_id,report_date,bundle_sha256,query_id]=event.match;
+ requireThat(reportDate(report_date),'Inspect date invalid');
+ return {kind:'inspect',request_id,report_date,bundle_sha256,query_id,source_ts:event.source_ts,hash:event.hash};
 }
 export async function boundedBytes(response,limit){
  requireThat(response.ok,"Remote read failed");
