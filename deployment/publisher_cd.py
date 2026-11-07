@@ -24,7 +24,14 @@ REPOSITORY = "sfcloud-ai/ai-infra-reports"
 SERVICE = "ai-report-publisher.service"
 CONFIG = Path("/etc/ai-report-publisher-cd.json")
 SHA = re.compile(r"[0-9a-f]{40}")
-TABLES = {"scope", "jobs", "ready_migrations", "notice_scope", "notices", "notice_commands", "notice_recovery_authorizations", "remote_native_runs", "remote_native_ops", "recovery_control_successors", "scheduled_handoffs", "scheduled_bridge_scope", "scheduled_status_replies", "job_replacement_audit"}
+TABLES = {"publisher_intake_scan", "publisher_inbox", "scope", "jobs", "ready_migrations", "notice_scope", "notices", "notice_commands", "notice_recovery_authorizations", "remote_native_runs", "remote_native_ops", "recovery_control_successors", "scheduled_handoffs", "scheduled_bridge_scope", "scheduled_status_replies", "job_replacement_audit"}
+
+INTAKE_SCHEMA = {
+    'publisher_intake_scan': 'CREATE TABLE publisher_intake_scan (\n   id INTEGER PRIMARY KEY CHECK(id=1), scope TEXT NOT NULL, watermark TEXT NOT NULL,\n   upper_bound TEXT, page_cursor TEXT)',
+    'publisher_inbox': "CREATE TABLE publisher_inbox (\n   source_ts TEXT PRIMARY KEY, request_id TEXT NOT NULL, file_id TEXT NOT NULL,\n   hash TEXT NOT NULL, phase TEXT NOT NULL DEFAULT 'pending', attempts INTEGER NOT NULL DEFAULT 0,\n   next_at INTEGER NOT NULL DEFAULT 0, last_attempt INTEGER NOT NULL DEFAULT 0, diagnostic TEXT)",
+    'publisher_inbox_request': 'CREATE INDEX publisher_inbox_request ON publisher_inbox(request_id)',
+}
+
 
 # Authorized pre-publication corrections retain the complete original payload.
 # This historical evidence is not an unresolved live job and is never migrated.
@@ -246,7 +253,20 @@ def snapshot(path, settled=True):
         if (any(SCHEDULED_SCHEMA[name] != sql for name, sql in scheduled.items())
                 or ("scheduled_handoffs" in scheduled) != ("scheduled_bridge_scope" in scheduled)):
             raise ValueError("unsupported_scheduled_schema")
+        intake = database.execute("SELECT type,name,sql FROM sqlite_master WHERE tbl_name IN ('publisher_intake_scan','publisher_inbox') OR name IN ('publisher_intake_scan','publisher_inbox','publisher_inbox_request') ORDER BY name").fetchall()
+        if intake:
+            expected = {("index" if name == "publisher_inbox_request" else "table", name, sql)
+                        for name, sql in INTAKE_SCHEMA.items()} | {("index", "sqlite_autoindex_publisher_inbox_1", None)}
+            if set(intake) != expected:
+                raise ValueError("unsupported_intake_schema")
+            scans = database.execute("SELECT id,scope FROM publisher_intake_scan").fetchall()
+            if len(scans) != 1 or scans[0][0] != 1 or not re.fullmatch(r"[a-f0-9]{64}", scans[0][1]):
+                raise ValueError("incomplete_intake_scope")
+            if settled and database.execute("SELECT count(*) FROM publisher_intake_scan WHERE upper_bound IS NOT NULL OR page_cursor IS NOT NULL").fetchone()[0]:
+                raise Deferred("unfinished_intake_scan")
         result = [["recovery_schema", recovery]] if recovery else []
+        if intake:
+            result.append(["intake_schema", intake])
         if journal:
             result.append(["remote_journal_schema", journal])
         if successor:
@@ -260,7 +280,7 @@ def snapshot(path, settled=True):
             result.append([name, sql, [[{"base64": base64.b64encode(value).decode()} if isinstance(value, bytes) else value
                                       for value in row] for row in rows]])
         if settled:
-            for name, phase in (("jobs", "receipt_sent"), ("notices", "sender_reported"), ("notice_commands", "response_sent"), ("notice_recovery_authorizations", "consumed"), ("remote_native_runs", "complete"), ("remote_native_ops", "acknowledged"), ("scheduled_handoffs", "complete"), ("scheduled_status_replies", "sent")):
+            for name, phase in (("publisher_inbox", "admitted"), ("jobs", "receipt_sent"), ("notices", "sender_reported"), ("notice_commands", "response_sent"), ("notice_recovery_authorizations", "consumed"), ("remote_native_runs", "complete"), ("remote_native_ops", "acknowledged"), ("scheduled_handoffs", "complete"), ("scheduled_status_replies", "sent")):
                 if name in {row[0] for row in tables} and database.execute("SELECT count(*) FROM " + name + " WHERE phase!=?", (phase,)).fetchone()[0]:
                     raise Deferred("in_flight_or_unknown_operation")
         return hashlib.sha256(json.dumps(result, separators=(",", ":")).encode()).hexdigest()

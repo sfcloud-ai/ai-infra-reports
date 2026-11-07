@@ -1,0 +1,10 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"results\":\"# Search Results for: \\n\\n## Messages (1 results)\\n### Result 1 of 1\\nChannel: #fixture-control (ID: C123)\\nFrom: Fixture User <user@example.test> (ID: U123) \\nTime: 2026-11-01 08:00:00 CST\\nMessage_ts: {{source_ts}}\\nReply count: 1\\nPermalink: [link](https://fixture-workspace.slack.com/archives/C123/p{{source_compact}}?thread_ts={{source_ts}}&cid=C123)\\nText: \\n{{query}}\\n\\n---\\n\\n\",\"pagination_info\":\"End of results - No more pages available.\\\\n\"}"
+    }
+  ],
+  "structuredContent": null,
+  "isError": false
+}

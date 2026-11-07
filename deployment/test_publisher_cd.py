@@ -109,6 +109,77 @@ class LedgerTests(unittest.TestCase):
                 "CREATE TABLE notices(id TEXT PRIMARY KEY,phase TEXT);"
                 "CREATE TABLE notice_commands(id TEXT PRIMARY KEY,phase TEXT);")
 
+    def intake(self):
+        with connection(self.database) as database:
+            for sql in cd.INTAKE_SCHEMA.values():
+                database.execute(sql)
+            database.execute("INSERT INTO publisher_intake_scan VALUES(1,?,?,NULL,NULL)", ("a" * 64, "1793448000.000001"))
+
+    def test_intake_empty_completed_scan_and_every_column_is_fingerprinted(self):
+        self.intake()
+        empty = cd.snapshot(self.database)
+        with connection(self.database) as database:
+            database.execute("INSERT INTO publisher_inbox VALUES('ts','report','F123','hash','admitted',3,42,100,'historic')")
+        self.assertNotEqual(cd.snapshot(self.database), empty)
+        for table, column, value in [("publisher_intake_scan", "scope", "b" * 64),
+                ("publisher_intake_scan", "watermark", "1793448000.000002"),
+                *[("publisher_inbox", column, value) for column, value in
+                  [("source_ts", "ts2"), ("request_id", "report2"), ("file_id", "F124"), ("hash", "hash2"),
+                   ("attempts", 4), ("next_at", 43), ("last_attempt", 101), ("diagnostic", "changed")]]]:
+            before = cd.snapshot(self.database)
+            with connection(self.database) as database:
+                database.execute("UPDATE " + table + " SET " + column + "=?", (value,))
+            self.assertNotEqual(cd.snapshot(self.database), before, column)
+
+    def test_intake_pending_unknown_partial_and_late_read_commands_defer(self):
+        self.intake()
+        with connection(self.database) as database:
+            database.execute("INSERT INTO publisher_inbox(source_ts,request_id,file_id,hash) VALUES('ts','report','F123','hash')")
+        for phase in ('pending', 'unknown'):
+            with connection(self.database) as database:
+                database.execute('UPDATE publisher_inbox SET phase=?', (phase,))
+            with self.assertRaises(cd.Deferred):
+                cd.snapshot(self.database)
+            cd.snapshot(self.database, settled=False)
+        with connection(self.database) as database:
+            database.execute("UPDATE publisher_inbox SET phase='admitted'")
+        for sql in ["UPDATE publisher_intake_scan SET upper_bound='1793449000.000001'",
+                    "UPDATE publisher_intake_scan SET upper_bound=NULL,page_cursor='cursor'"]:
+            before = cd.snapshot(self.database, settled=False)
+            with connection(self.database) as database:
+                database.execute(sql)
+            with self.assertRaisesRegex(cd.Deferred, 'unfinished_intake_scan'):
+                cd.snapshot(self.database)
+            self.assertNotEqual(cd.snapshot(self.database, settled=False), before)
+        with connection(self.database) as database:
+            database.execute('UPDATE publisher_intake_scan SET page_cursor=NULL')
+            database.execute(cd.SCHEDULED_SCHEMA['scheduled_status_replies'])
+            database.execute("INSERT INTO scheduled_status_replies VALUES('ts','hash','queued','query',NULL,0)")
+        with self.assertRaises(cd.Deferred):
+            cd.snapshot(self.database)
+        before = cd.snapshot(self.database, settled=False)
+        with connection(self.database) as database:
+            database.execute("UPDATE scheduled_status_replies SET phase='sent',reply_ts='reply'")
+        self.assertNotEqual(cd.snapshot(self.database), before)
+
+    def test_intake_exact_schema_and_scope_required_even_for_unsettled_snapshot(self):
+        for sql in ['DROP TABLE publisher_inbox', 'DROP TABLE publisher_intake_scan',
+                    'DELETE FROM publisher_intake_scan', "UPDATE publisher_intake_scan SET scope='invalid'",
+                    'DROP INDEX publisher_inbox_request',
+                    'DROP INDEX publisher_inbox_request; CREATE INDEX publisher_inbox_request ON publisher_inbox(hash)',
+                    'CREATE INDEX extra ON publisher_inbox(hash)',
+                    'ALTER TABLE publisher_inbox ADD COLUMN extra TEXT',
+                    'CREATE TRIGGER extra AFTER UPDATE ON publisher_intake_scan BEGIN DELETE FROM jobs; END']:
+            with self.subTest(sql=sql):
+                with connection(self.database) as database:
+                    database.executescript('DROP TABLE IF EXISTS publisher_inbox; DROP TABLE IF EXISTS publisher_intake_scan;')
+                self.intake()
+                with connection(self.database) as database:
+                    database.executescript(sql)
+                for settled in (True, False):
+                    with self.assertRaisesRegex(ValueError, 'intake|unsupported_ledger_object'):
+                        cd.snapshot(self.database, settled=settled)
+
     def test_row_mutation_with_identical_counts_is_detected(self):
         before = cd.snapshot(self.database)
         with connection(self.database) as database:

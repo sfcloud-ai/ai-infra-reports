@@ -252,7 +252,8 @@ test('shared post throttling defers before a second write intent while GitHub wo
  try{
   for(const id of ['original','second-report'])r.state.move(id,'received','verified',{commit:MERGE,pr:`https://github.com/${REPO}/pull/1`});
   await handoffTick(r.state,config,{history:async()=>[]},r.io);
-  assert.equal(posts,1);assert.equal(r.state.get('original').phase,'receipt_unknown');assert.equal(r.state.get('second-report').phase,'verified');
+  // The trusted HTTP adapter proved Slack rejected this write before execution.
+  assert.equal(posts,1);assert.equal(r.state.get('original').phase,'verified');assert.equal(r.state.get('second-report').phase,'verified');
   assert.equal(r.state.get('second-report').detail.recovery.next_at,1900000);assert.equal(r.state.get('unrelated').phase,'pr_open');assert.deepEqual(r.calls,['propose']);
  }finally{r.state.close();}
 });

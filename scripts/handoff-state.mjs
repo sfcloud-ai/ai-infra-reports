@@ -12,7 +12,7 @@ export async function withLockedHandoffState(config,run){
  });
 }
 export function handoffScope(config){
- const {slack_token_file,producer_key_file,state_dir,notification_destination,notification_not_before,notification_checker,scheduled_delivery,...scope}=config;
+ const {slack_token_file,producer_key_file,state_dir,notification_destination,notification_not_before,notification_checker,scheduled_delivery,durable_intake,...scope}=config;
  return scope;
 }
 export function scopeDigest(scope){
@@ -37,7 +37,8 @@ export class HandoffState{
   const prior=this.get(event.request_id);
   if(prior){requireThat(prior.hash===event.hash&&prior.source_ts===event.source_ts,"Request ID reused; reconcile first");return prior;}
   requireThat(this.db.prepare("SELECT COUNT(*) AS n FROM jobs").get().n<1000,"State capacity reached; archive with operator approval");
-  this.db.prepare("INSERT INTO jobs VALUES (?, ?, ?, ?, 'received', '{}')").run(event.request_id,event.hash,event.source_ts,bytes);
+  requireThat(event.file_id===undefined||/^F[A-Z0-9]+$/.test(event.file_id),'Original intake file identity invalid');
+  this.db.prepare("INSERT INTO jobs VALUES (?, ?, ?, ?, 'received', ?)").run(event.request_id,event.hash,event.source_ts,bytes,JSON.stringify(event.file_id?{intake_file_id:event.file_id}:{}));
   return this.get(event.request_id);
  }
  move(id,from,to,detail){return this.db.prepare("UPDATE jobs SET phase=?, detail=? WHERE id=? AND phase=?").run(to,JSON.stringify(detail),id,from).changes===1;}

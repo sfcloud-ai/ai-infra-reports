@@ -11,6 +11,7 @@ import {installRecoverySuccessor} from '../scripts/recovery-control-successor.mj
 import {digest} from "../scripts/archive.mjs";
 import {SCHEDULED_SCHEMA,installScheduledTables} from '../scripts/scheduled-delivery-state.mjs';
 import {planReadyMigration,stageReadyMigration,verifyReadyMigration} from "../scripts/ready-migration.mjs";
+import {installIntakeTables} from '../scripts/publisher-intake-state.mjs';
 async function fixture(){
  const root=await mkdtemp(path.join(os.tmpdir(),"readiness-migration-")),oldDir=path.join(root,"old");await mkdir(oldDir,{mode:0o700});
  const before={team_id:"T123",channel_id:"C123",sender_user_id:"U123",bot_user_id:"U456",bot_id:"B456",producer_app_id:10,merger_app_id:11,slack_token_file:path.join(root,"slack-token"),producer_key_file:path.join(root,"producer-key"),state_dir:oldDir,ready_for_review:false};
@@ -136,4 +137,46 @@ test('successor audit preserves the unresolved gate and survives only with its e
   state=new HandoffState(f.file,handoffScope(f.before));state.db.exec('DROP TRIGGER recovery_successor_grant_guard');state.close();
   await assert.rejects(()=>planReadyMigration(f.before,f.after),/successor schema/);
  }finally{await f.clean();}
+});
+
+async function intakeFixture(){
+ const f=await fixture();
+ f.edit=fn=>{const state=new HandoffState(f.file,handoffScope(f.before));try{return fn(state.db);}finally{state.close();}};
+ f.edit(db=>{installIntakeTables(db);db.prepare('INSERT INTO publisher_intake_scan VALUES(1,?,?,NULL,NULL)').run('a'.repeat(64),'1793448000.000001');});
+ return f;
+}
+test('completed empty durable scans migrate; all admitted envelope and scan evidence is preserved',async()=>{
+ const f=await intakeFixture();try{
+  const empty=await planReadyMigration(f.before,f.after);
+  f.edit(db=>db.exec("INSERT INTO publisher_inbox VALUES('1793448000.000001','original-report-01','F123','hash','admitted',3,42,100,'{\"code\":\"historic\"}')"));
+  const plan=await planReadyMigration(f.before,f.after);assert.notEqual(plan.data_sha256,empty.data_sha256);
+  await stageReadyMigration(f.before,f.after,plan.data_sha256);
+  assert.equal((await verifyReadyMigration(f.before,f.after,plan.data_sha256)).verified,true);
+  const target=new HandoffState(path.join(f.after.state_dir,'handoff.sqlite'),handoffScope(f.after));
+  try{for(const name of ['publisher_inbox','publisher_intake_scan'])assert.deepEqual(target.db.prepare(`SELECT * FROM ${name}`).all(),f.edit(db=>db.prepare(`SELECT * FROM ${name}`).all()));}finally{target.close();}
+  for(const sql of ["UPDATE publisher_intake_scan SET watermark='1793448000.000002'","UPDATE publisher_intake_scan SET scope='"+'b'.repeat(64)+"'","UPDATE publisher_inbox SET diagnostic='changed'","UPDATE publisher_inbox SET file_id='F124'","UPDATE publisher_inbox SET attempts=4","UPDATE publisher_inbox SET next_at=43","UPDATE publisher_inbox SET last_attempt=101"]){
+   const previous=(await planReadyMigration(f.before,f.after)).data_sha256;
+   f.edit(db=>db.exec(sql));assert.notEqual((await planReadyMigration(f.before,f.after)).data_sha256,previous);
+  }
+  await assert.rejects(()=>verifyReadyMigration(f.before,f.after,plan.data_sha256),/Original state moved/);
+ }finally{await f.clean();}
+});
+test('pending or unknown envelopes, partial scans, and late read replies prevent migration',async()=>{
+ const f=await intakeFixture();try{
+  f.edit(db=>db.exec("INSERT INTO publisher_inbox(source_ts,request_id,file_id,hash) VALUES('ts','report','F123','hash')"));
+  for(const phase of ['pending','unknown']){f.edit(db=>db.prepare('UPDATE publisher_inbox SET phase=?').run(phase));await assert.rejects(()=>planReadyMigration(f.before,f.after),/Unresolved durable inbox/);}
+  f.edit(db=>db.exec("UPDATE publisher_inbox SET phase='admitted'"));
+  for(const sql of ["UPDATE publisher_intake_scan SET upper_bound='1793449000.000001'","UPDATE publisher_intake_scan SET upper_bound=NULL,page_cursor='cursor'"]){f.edit(db=>db.exec(sql));await assert.rejects(()=>planReadyMigration(f.before,f.after),/Unfinished durable scan/);}
+  f.edit(db=>{db.exec('UPDATE publisher_intake_scan SET page_cursor=NULL');installScheduledTables(db,['scheduled_status_replies']);db.exec("INSERT INTO scheduled_status_replies VALUES('ts','hash','queued','{\"query_id\":\"query\"}',NULL,0)");});
+  await assert.rejects(()=>planReadyMigration(f.before,f.after),/Unresolved scheduled/);
+  f.edit(db=>db.exec("UPDATE scheduled_status_replies SET phase='sent'"));
+  const plan=await planReadyMigration(f.before,f.after);await stageReadyMigration(f.before,f.after,plan.data_sha256);
+  f.edit(db=>db.exec("UPDATE scheduled_status_replies SET text='changed query'"));
+  await assert.rejects(()=>verifyReadyMigration(f.before,f.after,plan.data_sha256),/Original state moved/);
+ }finally{await f.clean();}
+});
+test('durable schema requires exact table/index definitions, paired tables and bound scope',async()=>{
+ for(const sql of ['DROP TABLE publisher_inbox','DROP TABLE publisher_intake_scan','DELETE FROM publisher_intake_scan',"UPDATE publisher_intake_scan SET scope='invalid'",'DROP INDEX publisher_inbox_request','DROP INDEX publisher_inbox_request; CREATE INDEX publisher_inbox_request ON publisher_inbox(hash)','CREATE INDEX extra ON publisher_inbox(hash)','ALTER TABLE publisher_inbox ADD COLUMN extra TEXT','CREATE TRIGGER extra AFTER UPDATE ON publisher_intake_scan BEGIN DELETE FROM jobs; END']){
+  const f=await intakeFixture();try{f.edit(db=>db.exec(sql));await assert.rejects(()=>planReadyMigration(f.before,f.after),/durable intake|triggers/);}finally{await f.clean();}
+ }
 });

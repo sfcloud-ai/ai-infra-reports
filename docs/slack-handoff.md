@@ -144,11 +144,12 @@ approved supervisor must serialize ticks and wait at least 120 seconds between
 successful ticks. Stop on a nonzero exit and inspect the phase before resuming;
 do not use unconditional restart-on-failure. In particular, honor API rate limits
 before retrying reads. The adapter makes no automatic HTTP retries. Channel
-history is a complete, at-most-15-message window from the past 15 minutes; an
-incomplete page stops intake rather than skipping unseen commands. Outages past
-that window require explicit recovery, not replay of old commands. One pending
-request progresses per tick, so a waiting/failed older request must be reconciled
-before later work can advance. Public GitHub reads use no authentication token.
+history for advisory commands is a complete, bounded five-page window from the
+past 15 minutes (100 messages per page); an incomplete result stops that read
+rather than skipping unseen commands. Publish envelopes can instead use the
+explicit durable intake configuration below. Existing jobs are selected fairly
+under a bounded report-lane budget, so an older unresolved request cannot occupy
+every tick. Public GitHub reads use no authentication token.
 
 After GitHub reports the pinned PR as merged, the reader obtains its SHA from
 the repository's own [`merged` timeline event](https://docs.github.com/en/rest/using-the-rest-api/issue-event-types#merged).
@@ -251,3 +252,71 @@ changes the active config or deletes the source state.
   explicitly requested.
 - Only for unattended merging: separately configure the Merger key/identity,
   verify the live negative permission cases, then authorize its enable switch.
+## Durable Publisher intake
+
+An optional `durable_intake` configuration contains exactly `not_before`, an
+explicit Slack timestamp such as `1794067200.000000`. It is a reviewed activation
+boundary, not a request to replay earlier reports. The original workspace,
+channel and sender remain pinned. This scope is saved separately from the
+existing publication identity; changing or removing it requires reconciliation.
+
+The Publisher records a bounded page of authenticated publish envelopes and its
+pagination checkpoint transactionally. Each tick admits at most one original
+file, after giving existing publication and scheduled-delivery jobs their turn.
+It rechecks the unedited original message, exact file and original bundle hash.
+Temporary reads retry from this inbox after the former 15-minute window expires.
+An expired provider cursor restarts the same fixed time range; it never jumps
+to the newest message. With durable intake enabled, authenticated inspect/status
+commands are recorded atomically with that same scan; an outage longer than
+15 minutes does not strand an original read query. Direct fresh history retains
+its existing short-window checks.
+
+Status receipts expose `publisher_phase=intake_pending` and `publisher_intake`
+when a publish message was discovered but its file is not yet admitted. Health
+includes bounded `blocked_intake` diagnostics. These do not claim publication or
+delivery, and absence from the scheduler does not authorize another upload.
+
+A failed Slack identity preflight blocks all Slack calls for that tick, but
+already authenticated, admitted work may continue its original GitHub, Pages
+and T4 steps. An explicit Slack rate-limit rejection is retried after its saved
+deadline; uncertain writes still require original-thread reconciliation.
+
+This feature cannot recover an upload whose original file/share outcome is
+unknown. Deployment must preserve those records and use a future activation
+boundary. Do not re-upload, replace the file, or change a request ID to bypass it.
+
+
+## Read-only Producer recovery inspection
+
+`!ai-report inspect REQUEST_ID YYYY-MM-DD BUNDLE_SHA256 QUERY_ID` uses the same pinned
+native App/user and private control channel as publication. It carries no file
+and cannot admit, schedule, send, reserve a date, or replace existing records.
+QUERY_ID is the independent read attempt UUID, echoed in the authenticated reply
+so a late old query cannot satisfy a newer attempt. The Publisher replies in that original thread with `!ai-report inspect-receipt`
+and a bounded JSON snapshot. The relay socket accepts the corresponding
+`inspect` action only from its existing authenticated Publisher peer.
+
+A successful snapshot includes the original request/date/hash, query source
+timestamp, Publisher and scheduler scope digests, observation time, same-day
+claims and original status/counts. An admitted Publisher record also includes
+its original file ID when saved at admission. Older records return a null file
+ID, never a fabricated one. The reply omits report bodies, images, tokens,
+notification destinations and details about conflicting requests. `complete`
+means this read was complete, not that delivery completed.
+
+An empty Publisher result requires durable intake whose activation boundary is
+at or before that report date's UTC+8 midnight, and a completed scan covering
+the query timestamp. Any same-day or unassignable pending intake blocks proof
+of absence. Canonical `morning-YYYYMMDD-rN` IDs must match the actual bundle's
+date and revision; this allows unresolved other dates to remain isolated.
+An already-bound original request can be read without letting unrelated old
+unknown jobs block it. Missing, conflicting, stale or partial evidence fails
+closed instead of returning `not_found` as permission to upload.
+
+The snapshot is only a point-in-time observation, not a cross-process lock.
+The Producer must refresh it before each external write and retain its own
+write-intent journal. The scheduler's original admission uniqueness checks
+remain the final guard. Known-unsent replies refresh after 60 seconds; a reply
+whose send is unknown is reconciled byte-for-byte, never recomposed or reposted.
+This protocol requires coordinated reviewed deployment of both repositories
+and Producer integration; merely adding these files does not enable recovery.

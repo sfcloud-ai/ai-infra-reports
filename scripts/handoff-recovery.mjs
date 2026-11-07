@@ -6,8 +6,15 @@ const PROVIDER_SCOPES=new Set(['github.public','github.producer','github.app','s
 // Only the in-process adapter can attest that no HTTP request was attempted.
 // Serialized diagnostics or remote response fields cannot manufacture this proof.
 const LOCAL_SLACK_COOLDOWNS=new WeakSet();
+const CONFIRMED_SLACK_REJECTIONS=new WeakSet();
 export function localSlackCooldown(error){LOCAL_SLACK_COOLDOWNS.add(error);return error;}
+// Preflight failures also prove the guarded Slack method was never invoked.
+export const localSlackNotStarted=localSlackCooldown;
 export const isLocalSlackCooldown=error=>LOCAL_SLACK_COOLDOWNS.has(error);
+// Only the trusted HTTP adapter calls this after an explicit API rejection.
+// A serialized outcome='not_started' alone is never proof that no write landed.
+export function confirmedSlackRejection(error){CONFIRMED_SLACK_REJECTIONS.add(error);return error;}
+export const isSlackWriteUnexecuted=error=>isLocalSlackCooldown(error)||CONFIRMED_SLACK_REJECTIONS.has(error);
 export function safeDiagnostic(error,stage='handoff',outcome='unknown'){
  const d=error?.diagnostic??{};
  const result={stage:SYMBOL.test(d.stage??'')?d.stage:stage,code:SYMBOL.test(d.code??'')?d.code:SYSTEM_CODES.has(error?.code)?error.code:'unclassified',outcome:['not_started','unknown'].includes(d.outcome)?d.outcome:outcome,retryable:d.retryable===true};
