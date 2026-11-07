@@ -1,0 +1,230 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-11-07",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-11-07",
+  "subtitle": "六项进展，聚焦缓存准入、显存释放与训练适用边界。",
+  "articles": [
+    {
+      "id": "model-serving-gpu",
+      "title": "模型服务与 GPU 超配｜缓存准入和显存释放",
+      "summary": "Basin 区分真实硬件与模拟收益；LMCache 为跨进程 KV 映射 的 sleep/wake 补齐物理页引用处理，超时仍需谨慎。",
+      "sha256": "2a89120090c1ff46ff95c99f555eb4d0adef286e11b65515342317a73c0096fc"
+    },
+    {
+      "id": "hardware-status",
+      "title": "重点硬件｜H100 与 H200 的适用边界",
+      "summary": "静态产品规格与新实验分别核对；Pro5500 保留型号待核实，不将其他芯片成绩迁移为兼容承诺。",
+      "sha256": "e67512b4eceab68c957ad2f611f6066de35d8284ecdfb09261916c59ce499e87"
+    },
+    {
+      "id": "model-architecture-status",
+      "title": "模型与新架构｜异步训练先对齐数值",
+      "summary": "Zero Mismatch 将同权重算子误差与权重滞后拆开；小模型长程训练和大模型数值对齐的证据范围不同。",
+      "sha256": "a76be0dc8d12f0e20c41c12d6a40244a9c6fe28f762cbac318fd8646ec2d111c"
+    },
+    {
+      "id": "embodied-training",
+      "title": "制造业具身训练｜仿真动作先验的样本账",
+      "summary": "Latent RL Prior 用特权状态预训练动作解码器，再由视觉预测上下文；示范减少不代表总训练成本下降，尚无真机结果。",
+      "sha256": "959eeca3ec0e6087efed87b4860c7abe10396a47373e98925b1d7dce096e89db"
+    },
+    {
+      "id": "small-model-status",
+      "title": "前沿小模型｜去重与证据覆盖结果",
+      "summary": "复核模型与提交来源，区分模型卡更新和真实模型能力变化；本栏不以旧闻或弱线索补位。",
+      "sha256": "de5d867e982c0cdf5ecf6adcb025774d01c7d6b93f94c903e06209174224db2d"
+    },
+    {
+      "id": "inference-engines",
+      "title": "推理引擎每日变动｜休眠状态与页面回收",
+      "summary": "vLLM 保留非参数构建状态，SGLang 约束复用页面的后续写者；主线合并与稳定发布分开记录。",
+      "sha256": "f7b3e24d5c9f59a1e5fe215e26677d410cad0c4e35300118116844608db6bafb"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-11-07-vllm-pr-66010",
+      "event_key": "vllm-pr-66010",
+      "title": "vLLM Level 2休眠：只丢可重写参数，保留运行结构",
+      "summary": "11月6日已合并f8b116409c4cdf02cee4bb7eca8e6bb9780c2e35，晚于当前最新v0.33.0rc3及稳定版v0.32.0。Level2过去按weights池整体丢弃，但该池还装有模型加载时建立的指针表、闭包中的排列索引和量化缓存；这些并非参数，更新权重不会重建。现在worker提交将重写参数的storage地址，分配器只有在某块allocation的全部live block都可丢弃时才舍弃整块，其余备份到CPU并原地址恢复。保留参数仍可用sleep_preserve_parameter_names指定。",
+      "source_urls": [
+        "https://api.github.com/repos/vllm-project/vllm/pulls/66010",
+        "https://api.github.com/repos/vllm-project/vllm/commits/f8b116409c4cdf02cee4bb7eca8e6bb9780c2e35",
+        "https://api.github.com/repos/vllm-project/vllm/releases?per_page=6"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    },
+    {
+      "id": "2026-11-07-sglang-pr-48496",
+      "event_key": "sglang-pr-48496",
+      "title": "SGLang统一页回收：等待旧读者的是新写者，不是整个调度流",
+      "summary": "11月6日已合并adeec96c4ca6a83271a6df5e6c10d9f8428371d2，承接同日#48450的正确性修复，当前稳定v0.5.23未包含。统一内存的lazy回收原先认为虚拟ID释放就无读者，但正在运行的forward已准备的attention页表仍可能读原物理页。#48450让调度stream等待forward完成；#48496把释放页与完成event一起暂存，平时完成后入free list，压力下提前交出页面但给重写操作加reuse fence：清零放到forward stream，紧急搬移在host读取索引之后等待，decode对RDMA目的地址的发布也等待fence。",
+      "source_urls": [
+        "https://api.github.com/repos/sgl-project/sglang/pulls/48496",
+        "https://api.github.com/repos/sgl-project/sglang/pulls/48450",
+        "https://api.github.com/repos/sgl-project/sglang/commits/adeec96c4ca6a83271a6df5e6c10d9f8428371d2",
+        "https://api.github.com/repos/sgl-project/sglang/releases?per_page=6"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    },
+    {
+      "id": "2026-11-07-arxiv-2611-08458-v1",
+      "event_key": "arxiv-2611-08458-v1",
+      "title": "Latent RL Prior：冻结控制先验，少样本学习视觉接口",
+      "summary": "先用特权状态RL教师100000条成功轨迹训练flow-matching动作解码器；再冻结解码器，用DINOv2-Small和视觉Q-Former把图像映射为上下文token，仅用动作监督。双臂用联合query推断左右上下文，分别调用同一冻结单臂解码器。",
+      "source_urls": [
+        "https://arxiv.org/abs/2611.08458v1",
+        "https://arxiv.org/html/2611.08458v1"
+      ],
+      "update_of": null,
+      "article_id": "embodied-training"
+    },
+    {
+      "id": "2026-11-07-arxiv-2611-02543-v1",
+      "event_key": "arxiv-2611-02543-v1",
+      "title": "Basin：突发后的缓存失速，需要会话级准入",
+      "summary": "突发增加活跃会话与上下文工作集，缓存miss放大prefill重算，再延长会话形成持续失速。Basin在网关准入、按固定优先级排队、借用空闲decode存储prompt状态并削减持续过载需求。硬件原型按到达时间排序并按当前上下文准入；完整峰值预测版本只在模拟评估。",
+      "source_urls": [
+        "https://arxiv.org/abs/2611.02543v1",
+        "https://arxiv.org/html/2611.02543v1"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-11-07-lmcache-pr-6358",
+      "event_key": "lmcache-pr-6358",
+      "title": "LMCache：sleep先解除VMM进口，wake重绑新物理页",
+      "summary": "LMCacheMPConnector新增unregister/restore hooks。释放KV前等待已跟踪store/retrieve、撤下transfer context并注销服务端映射，wake后为同一虚址重新导出新物理块。注册锁让心跳恢复与释放串行，睡眠期间阻止重注册；服务端已故障时wake降级，后续心跳重注册。",
+      "source_urls": [
+        "https://raw.githubusercontent.com/LMCache/LMCache/012965f888cccaa5102cec7a745990f60e8ca721/docs/design/integration/vllm/mp_sleep_mode.md",
+        "https://raw.githubusercontent.com/LMCache/LMCache/012965f888cccaa5102cec7a745990f60e8ca721/lmcache/integration/vllm/vllm_multi_process_adapter.py",
+        "https://api.github.com/repos/LMCache/LMCache/pulls/6358/files?per_page=100",
+        "https://api.github.com/repos/LMCache/LMCache/commits?since=2026-10-30T23:26:51Z&until=2026-11-06T23:26:51Z&per_page=100"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-11-07-vllm-zero-mismatch-async-rl-20261106",
+      "event_key": "vllm-zero-mismatch-async-rl-20261106",
+      "title": "异步RL先消掉内核误差：缓存命中也必须数值一致",
+      "summary": "新技术文章把同权重kernel误差与异步旧权重滞后分开：先逐位对齐rollout/learner概率，再用采样时的真实token logprob作不裁剪IS。DeepSeek V4.1要求SWA prefix hit/miss及MTP路径一致；Kimi KDA保存chunk入口FP32状态、已完成行和位置，让decode重算与prefill相同的行表达式。论文1.5B BF16实验16GPU/12K updates、128 responses/update，异步2+14 learner/rollout训练步时间68.55h对同步TII164.77h（2.40×，排除评估），该组GPU SKU未给出。Qwen3-4B lag64图示持续到5K更新，附录总计6K。",
+      "source_urls": [
+        "https://raw.githubusercontent.com/vllm-project/vllm-project.github.io/main/_posts/2026-11-06-zero-mismatch-async-rl.md",
+        "https://vllm.ai/blog/2026-11-06-zero-mismatch-async-rl",
+        "https://raw.githubusercontent.com/hijkzzz/REINFORCE-Zero/main/README.md",
+        "https://raw.githubusercontent.com/hijkzzz/REINFORCE-Zero/main/REINFORCE-Zero.pdf",
+        "https://raw.githubusercontent.com/hijkzzz/REINFORCE-Zero/main/ALGORITHM.md",
+        "https://raw.githubusercontent.com/Inferact/zero-mismatch-rl/main/cases/deepseek-v4.1-flash/README.md",
+        "https://raw.githubusercontent.com/Inferact/zero-mismatch-rl/main/cases/kimi-k3.1/README.md",
+        "https://raw.githubusercontent.com/Inferact/zero-mismatch-rl/vllm/kimi-k3.1/csrc/k31/kda/kda_cfbi_v6.cu",
+        "https://raw.githubusercontent.com/Inferact/zero-mismatch-rl/main/README.md",
+        "https://raw.githubusercontent.com/NVIDIA-NeMo/labs-molt/main/README.md",
+        "https://api.github.com/repos/vllm-project/vllm/pulls/62365",
+        "https://api.github.com/repos/ISEEKYAN/Megatron-LM/pulls/257"
+      ],
+      "update_of": null,
+      "article_id": "model-architecture-status"
+    },
+    {
+      "id": "2026-11-07-hardware-source-check-20261107",
+      "event_key": "hardware-source-check-20261107",
+      "title": "重点硬件静态来源复核",
+      "summary": "核对H100/H200的SKU差异；Pro5500保留型号待核实，MIG隔离不等于显存超配。",
+      "source_urls": [
+        "https://www.nvidia.com/en-us/data-center/h100/",
+        "https://www.nvidia.com/en-us/data-center/h200/",
+        "https://www.nvidia.com/en-us/products/workstations/professional-desktop-gpus/rtx-pro-5500/",
+        "https://docs.nvidia.com/datacenter/tesla/mig-user-guide/latest/"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status"
+    },
+    {
+      "id": "2026-11-07-deepinfer-coverage-20261107",
+      "event_key": "deepinfer-coverage-20261107",
+      "title": "DeepInfer代码与技术说明覆盖",
+      "summary": "已读主线、release、PR和部署说明；已报Q&A不重复，未合并提案不写成在线服务能力。",
+      "source_urls": [
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/commits?per_page=30",
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/releases?per_page=10",
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/pulls?state=all&sort=updated&direction=desc&per_page=30",
+        "https://raw.githubusercontent.com/deepseek-ai/DeepInfer/main/README.md",
+        "https://raw.githubusercontent.com/deepseek-ai/DeepInfer/a679bb86ce36e883a98a97733492b686e5b9a08e/doc/inference_deployment_qa.md"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    },
+    {
+      "id": "2026-11-07-model-architecture-coverage-20261107",
+      "event_key": "model-architecture-coverage-20261107",
+      "title": "官方模型与架构来源覆盖",
+      "summary": "Qwen模型卡暗色主题修复不计模型能力进展；GLM/DeepSeek入口与DeepInfer说明核查完成，Qwen博客保留不可读缺口。",
+      "source_urls": [
+        "https://huggingface.co/Qwen",
+        "https://huggingface.co/api/models/Qwen/Qwen3.8-27B/commits/main",
+        "https://huggingface.co/api/models/Qwen/Qwen3.8-Flash-Next/commits/main",
+        "https://huggingface.co/zai-org",
+        "https://huggingface.co/deepseek-ai",
+        "https://www.deepseek.com/news/"
+      ],
+      "update_of": null,
+      "article_id": "model-architecture-status"
+    },
+    {
+      "id": "2026-11-07-small-model-coverage-20261107",
+      "event_key": "small-model-coverage-20261107",
+      "title": "小模型来源覆盖与取舍",
+      "summary": "Gemma、Smol Models与Microsoft官方入口已查；旧内容与仅目录更新时间不计新SOTA小模型成果。",
+      "source_urls": [
+        "https://ai.google.dev/gemma/docs",
+        "https://huggingface.co/HuggingFaceTB",
+        "https://huggingface.co/api/models?author=microsoft&direction=-1&limit=10&sort=lastModified"
+      ],
+      "update_of": null,
+      "article_id": "small-model-status"
+    }
+  ],
+  "images": [
+    {
+      "path": "assets/overview.png",
+      "sha256": "d9051c49eb8f67bb54d56844db81850996d8a06cad3d6ef82d84358bb2b7939e",
+      "alt": "六板块横版海报，六项进展和静态覆盖结果。"
+    },
+    {
+      "path": "assets/basin-admission.png",
+      "sha256": "e63c0b501ab0b9d60ee383c6f35d76ae7a8f758207f5efc78a791c24cfdb4403",
+      "alt": "Basin 缓存准入与借用 decode 空闲容量的原创简化关系图。"
+    },
+    {
+      "path": "assets/lmcache-vmm-sleep.png",
+      "sha256": "0df863f517378dd3e46bdd3e210da7dc7491d3c2d84bf83a7a1dfbfb32e0859e",
+      "alt": "LMCache 跨进程 KV 物理页映射在 sleep 和 wake 中的原创简化流程图。"
+    },
+    {
+      "path": "assets/zero-mismatch-async.png",
+      "sha256": "5322d657c456c5c549e9ceadb89fa1b6de243c18ac3b548c541eae4c0b6c04d5",
+      "alt": "异步强化学习先对齐同权重数值，再对权重滞后作重要性加权的原创示意图。"
+    },
+    {
+      "path": "assets/latent-rl-prior.png",
+      "sha256": "3c0ca695675baea4a6291702d0989a71349777ca0e047a61b5292f683ad88ce1",
+      "alt": "特权预训练动作解码器，再以视觉上下文进行适配的原创示意图。"
+    },
+    {
+      "path": "assets/vllm-sleep-state.png",
+      "sha256": "a32471f80ba7a39bc03a1f3a8609db4d7f13cdca626e1c040fcb2e7a891d5d93",
+      "alt": "vLLM 二级休眠区分可重写参数和须保存构建状态的原创示意图。"
+    },
+    {
+      "path": "assets/sglang-reuse-fence.png",
+      "sha256": "c0f0c9b5c74289bae3d38d3e6d0bb186e71fb2609aedbfd0ae0005a1f062fe3c",
+      "alt": "SGLang 页面回收后约束新写者等待旧 forward 的原创时序示意图。"
+    }
+  ],
+  "poster": "assets/overview.png"
+}
