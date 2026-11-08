@@ -137,9 +137,10 @@ export class ProducerUploadState{
   const eligible_at=Math.max(ticket.at+RESTART_RECOVERY_DELAY_MS,...posts.map(o=>o.at+postRetryDelay(o.attempt)));
   if(now<eligible_at)return {type:'wait',next_action:'wait_abandoned_ticket_recovery',next_attempt_at:eligible_at,...this.summary(j),write_allowed:false};
   // Only a new native query, authenticated by ProducerInspect, can authorize
-  // retirement. A still-fresh receipt inherited from the dead runner cannot.
+  // retirement. Bind its nonce, not independent Publisher/cloud clock order.
+  // A still-fresh receipt inherited from the dead runner cannot authorize it.
   const query=this.db.prepare('SELECT * FROM producer_inspect_queries WHERE run_id=? ORDER BY attempt DESC LIMIT 1').get(id);
-  if(!query||query.phase!=='resolved'||query.attempt<=inspect_attempt||query.started_at<started_at||!j.detail.preflight_at||j.detail.preflight_at<query.started_at||now<j.detail.preflight_at||now-j.detail.preflight_at>=READ_TTL_MS)return this.readAction(j,'restart_ticket_recovery_preflight');
+  if(!query||query.phase!=='resolved'||query.attempt<=inspect_attempt||query.started_at<started_at||!j.detail.preflight_at||j.detail.preflight_query_id!==query.query_id||now<j.detail.preflight_at||now-j.detail.preflight_at>=READ_TTL_MS)return this.readAction(j,'restart_ticket_recovery_preflight');
   requireThat(j.detail.preflight_empty===true,'Fresh empty downstream required for restart recovery');
   const previous=this.restartAudit(id),generation=(previous?.generation??0)+1,recovery_id=randomUUID();
   const high=name=>this.op(id,this.activeName(id,name))?.attempt??0;
@@ -237,7 +238,7 @@ export class ProducerUploadState{
  }
  // Authenticated, read-only adapter output, not search snippets or success text.
  // Missing, partial, stale or unavailable reads never authorize a write.
- observeDownstream(id,e,{inTransaction=false}={}){const apply=()=>{
+ observeDownstream(id,e,{inTransaction=false,inspectQueryId=null}={}){const apply=()=>{
   const j=this.get(id);requireThat(j,'Unknown Producer request');const now=clock(this.now());
   exact(e,['read_context','observed_at','complete','publisher_day','publisher','scheduler_day_claim','scheduler']);
   exact(e.read_context,['publisher_scope_sha256','scheduler_scope_sha256']);
@@ -272,7 +273,7 @@ export class ProducerUploadState{
    requireThat(s.status!=='sent'||complete,'All real parts and poster receipt required');
    delivery={status:s.status,parts_sent:s.parts_sent,parts_total:s.parts_total,complete:!!(source.source_ts||j.detail.source_ts)&&complete};
   }
-  this.save(j,{...j.detail,...source,preflight_at:e.observed_at,preflight_empty:!e.publisher&&!e.scheduler&&!e.scheduler_day_claim&&e.publisher_day.length===0,existing:!!e.publisher,publisher_source_ts:e.publisher?.source_ts??null,publisher_commit:e.publisher?.report_commit??null,delivery});return this.summary(this.get(id));
+  this.save(j,{...j.detail,...source,preflight_at:e.observed_at,preflight_query_id:inspectQueryId,preflight_empty:!e.publisher&&!e.scheduler&&!e.scheduler_day_claim&&e.publisher_day.length===0,existing:!!e.publisher,publisher_source_ts:e.publisher?.source_ts??null,publisher_commit:e.publisher?.report_commit??null,delivery});return this.summary(this.get(id));
  };return inTransaction?apply():this.transaction(apply);}
  observeSource(id,e){return this.transaction(()=>{
   const j=this.get(id);requireThat(j,'Unknown Producer request');

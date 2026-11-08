@@ -96,7 +96,7 @@ export class ProducerInspect{
   this.state.transaction(()=>{
    const latest=this.query(id);requireThat(latest?.operation_id===q.operation_id,'Inspect changed while verifying');
    const receipt_hash=digest(match[2]);requireThat(!latest.receipt_hash||(latest.receipt_hash===receipt_hash&&latest.receipt_ts===match[1]),'Original inspect receipt changed');
-   if(fresh&&latest.phase!=='resolved'){requireThat(q.started_at>=Math.max(j.detail.recovery_at??0,j.detail.restart_recovery_at??0),'Post-recovery inspect required');this.state.observeDownstream(id,evidence,{inTransaction:true});}
+   if(fresh&&latest.phase!=='resolved'){requireThat(q.started_at>=Math.max(j.detail.recovery_at??0,j.detail.restart_recovery_at??0),'Post-recovery inspect required');this.state.observeDownstream(id,evidence,{inTransaction:true,inspectQueryId:q.query_id});}
    this.state.db.prepare("UPDATE producer_inspect_queries SET receipt_ts=?,receipt_hash=?,phase='resolved' WHERE operation_id=?").run(match[1],receipt_hash,q.operation_id);
   });
   return {type:fresh?'state':'stale_inspect',...this.state.summary(this.state.get(id)),write_allowed:false};

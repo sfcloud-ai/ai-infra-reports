@@ -35,7 +35,7 @@ function allocate(s,now,{confirmed=false}={}){s.observeDownstream(ID,empty(now))
 function startup(s,c){return {operation_id:s.activeOp(ID,'ticket').operation_id,started_at:c.now(),inspect_attempt:s.db.prepare('SELECT COALESCE(MAX(attempt),0) n FROM producer_inspect_queries WHERE run_id=?').get(ID).n};}
 // Model only ProducerInspect's authenticated, resolved receipt write. CLI tests
 // separately exercise its actual formatted native parser end-to-end.
-function fresh(s,c){const n=s.db.prepare('SELECT COALESCE(MAX(attempt),0)+1 n FROM producer_inspect_queries WHERE run_id=?').get(ID).n,id=randomUUID();s.db.prepare("INSERT INTO producer_inspect_queries VALUES(?,?,?,?,?,NULL,NULL,NULL,'resolved',?)").run(ID,n,id,c.now(),(c.now()/1000).toFixed(6),id);s.observeDownstream(ID,empty(c.now()));return id;}
+function fresh(s,c){const n=s.db.prepare('SELECT COALESCE(MAX(attempt),0)+1 n FROM producer_inspect_queries WHERE run_id=?').get(ID).n,id=randomUUID();s.db.prepare("INSERT INTO producer_inspect_queries VALUES(?,?,?,?,?,NULL,NULL,NULL,'resolved',?)").run(ID,n,id,c.now(),(c.now()/1000).toFixed(6),id);s.observeDownstream(ID,empty(c.now()),{inspectQueryId:id});return id;}
 function rotate(s,c){const start=startup(s,c);fresh(s,c);return s.recoverAbandonedTicket(ID,start);}
 
 test('explicit offline policy is immutable, native scoped and bound to installation; no migration on serve',()=>fixture(async(s,c)=>{
@@ -76,6 +76,7 @@ test('repeated crashes use monotonic generations and original ticket times impos
 test('existing authenticated receipt, same-millisecond old query, stale and consumed evidence do not authorize retirement',()=>fixture(async(s,c)=>{
  allocate(s,c.now());c.advance(RESTART_RECOVERY_DELAY_MS);fresh(s,c);const start=startup(s,c);
  assert.equal(s.recoverAbandonedTicket(ID,start).type,'read'); // Timestamp equal is insufficient: new query attempt required.
+ fresh(s,c);s.save(s.get(ID),{...s.get(ID).detail,preflight_query_id:randomUUID()});assert.equal(s.recoverAbandonedTicket(ID,start).type,'read');
  fresh(s,c);s.save(s.get(ID),{...s.get(ID).detail,preflight_at:null});assert.equal(s.recoverAbandonedTicket(ID,start).type,'read');
  fresh(s,c);c.advance(60000);assert.equal(s.recoverAbandonedTicket(ID,start).type,'read');
  fresh(s,c);assert.equal(s.recoverAbandonedTicket(ID,start).type,'ticket_abandoned');assert.equal(s.recoverAbandonedTicket(ID,start),null);
@@ -146,4 +147,37 @@ test('restoring original native ticket after restart preserves it instead of rot
 test('summary retains history but active_operations reports latest outcome of each current stage',()=>fixture(async(s,c)=>{
  allocate(s,c.now(),{confirmed:true});s.observeDownstream(ID,empty(c.now()));s.record(s.next(ID),post());c.advance(RETRY_DELAY_MS);s.observeDownstream(ID,empty(c.now()));s.record(s.next(ID),post(success));
  const summary=s.summary(s.get(ID));assert.equal(summary.operation_history.filter(o=>o.operation==='post').length,2);assert.equal(summary.operations.filter(o=>o.operation==='post').length,1);assert.equal(summary.active_operations.filter(o=>o.operation==='post').length,1);assert.equal(summary.active_operations.find(o=>o.operation==='post').outcome,'confirmed');assert.equal(summary.active_operations.find(o=>o.operation==='post').attempt,2);
+}));
+
+function nativeProof(s,c,{offset,elapsed}){
+ const inspect=new ProducerInspect(s,native),write=inspect.next(ID),command=write.arguments.message,sourceTime=c.now(),source=(sourceTime/1000).toFixed(6);
+ assert.equal(write.next_action,'inspect');const locate=inspect.next(ID),result=body=>({content:[{type:'text',text:JSON.stringify(body)}],isError:false});
+ inspect.observeSource(ID,{tool:locate.tool,arguments:locate.arguments,result:result({results:`# Search Results for: \n\n## Messages (1 results)\n### Result 1 of 1\nChannel: #control (ID: C123)\nFrom: User (ID: U123) \nTime: synthetic\nMessage_ts: ${source}\nPermalink: [link](https://${native.workspace_host}/archives/C123/p${source.replace('.','')})\nText: \n${command} ${scope.sender_attribution_text}\n\n---\n\n`,pagination_info:'End of results - No more pages available.\n'})});
+ c.advance(elapsed);const read=inspect.next(ID),receipt={query_id:write.operation_id,request_id:ID,report_date:DAY,bundle_sha256:hash,source_ts:source,...empty(sourceTime+offset)};
+ const invocation={tool:read.tool,arguments:read.arguments,result:result({messages:`=== THREAD PARENT MESSAGE ===\nFrom: User <user@example.test> (U123)\nTime: synthetic\nMessage TS: ${source}\n${command}\n${scope.sender_attribution_text}\n\n=== THREAD REPLIES (1 total) ===\n\n--- Reply 1 of 1 ---\nFrom: Publisher <botuser-T123-B456@slack-bots.com> (U456)\nTime: synthetic\nMessage TS: ${((sourceTime+1)/1000).toFixed(6)}\n!ai-report inspect-receipt ${JSON.stringify(receipt)}\n`,pagination_info:'There are no more messages in this thread.\n'})};
+ return {inspect,invocation,query_id:write.operation_id,accept:()=>inspect.observeReceipt(ID,invocation)};
+}
+for(const sample of [
+ {name:'one millisecond slow',offset:-1,elapsed:0,outcome:'state'},
+ {name:'five seconds slow',offset:-5000,elapsed:0,outcome:'state'},
+ {name:'exact allowed thirty-second skew',offset:-30000,elapsed:0,outcome:'state'},
+ {name:'one millisecond outside allowed skew',offset:-30001,elapsed:0,outcome:'reject'},
+ {name:'one millisecond in the future',offset:1,elapsed:0,outcome:'reject'},
+ {name:'five seconds in the future',offset:5000,elapsed:0,outcome:'reject'},
+ {name:'fast clock caught up before receipt',offset:5000,elapsed:5000,outcome:'state'},
+ {name:'one millisecond before freshness expiry',offset:-30000,elapsed:29999,outcome:'state'},
+ {name:'exact freshness expiry',offset:-30000,elapsed:30000,outcome:'stale_inspect'}
+])test('native recovery clock boundary: '+sample.name,()=>fixture(async(s,c)=>{
+ allocate(s,c.now());c.advance(RESTART_RECOVERY_DELAY_MS);const start=startup(s,c),proof=nativeProof(s,c,sample);
+ if(sample.outcome==='reject'){
+  assert.throws(proof.accept,/observation clock/);assert.equal(proof.inspect.query(ID).phase,'located');assert.equal(s.recoverAbandonedTicket(ID,start).type,'read');assert.equal(s.restartAudit(ID),null);return;
+ }
+ assert.equal(proof.accept().type,sample.outcome);
+ if(sample.outcome==='stale_inspect'){
+  assert.equal(proof.inspect.query(ID).phase,'resolved');assert.equal(s.recoverAbandonedTicket(ID,start).type,'read');assert.equal(s.restartAudit(ID),null);assert.equal(s.get(ID).detail.preflight_at,null);return;
+ }
+ assert.equal(s.get(ID).detail.preflight_query_id,proof.query_id);assert.equal(s.recoverAbandonedTicket(ID,start).type,'ticket_abandoned');assert.equal(s.get(ID).detail.preflight_at,null);
+ // Even the original authenticated resolved reply cannot replenish a consumed
+ // proof. A newly created query also cannot accept the older nonce's receipt.
+ proof.accept();assert.equal(s.get(ID).detail.preflight_at,null);assert.equal(s.next(ID).type,'read');const next=proof.inspect.next(ID);assert.equal(next.type,'write');assert.notEqual(next.operation_id,proof.query_id);assert.throws(proof.accept);assert.equal(s.get(ID).detail.preflight_at,null);assert.equal(s.op(ID,'post'),null);assert.equal(s.op(ID,'complete'),null);
 }));
