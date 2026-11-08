@@ -243,3 +243,60 @@ Slack/WeCom or change today's completed report. The native inspect command and
 scheduled socket inspection must be installed separately before activation.
 No current automation was changed, and end-to-end live operation or the user's
 local publication-review requirements have not been verified by these tests.
+
+## Explicit recovery before any upload could execute
+
+The exceptional `authorize_ticket_recovery` bridge command is **not** a normal
+retry, an automatic ticket refresh or permission to replay unknown operations.
+It requires a separate explicit operator authorization. Its input is exactly
+`type` plus `authorization`, with `authorization_reference`, original `file_id`,
+original `url_sha256` and original `bundle_sha256`. The reference is a non-secret
+identifier for the operator's approval, not an assertion that downstream is empty.
+
+Use the same original config, bundle, journal and `runner.lock`. The bridge
+requires an inherited Linux FLOCK WRITE on that actual lock inode, verified via
+`/proc/self/fdinfo`; a different lock or a caller boolean is insufficient. Stop
+and verify the original executor before launching this bridge under that lock.
+The new runtime must be reviewed and verified before changing the installed
+runtime; never edit the fixed old release or reset the journal.
+
+Before authorization, obtain a fresh authenticated native inspection in this
+bridge. Recovery accepts exactly one confirmed original ticket, at least one
+original POST, and **every** original POST must independently reproduce the
+fixed direct-curl non-execution classification. Any complete intent, unknown or
+successful POST, unknown ticket, previously observed intake, downstream date
+claim, changed bundle or stale/consumed inspection blocks. `file_deleted` or an
+empty Slack search alone never authorizes recovery.
+
+The transaction appends an immutable audit retaining the original detail and
+all original operation records, keeps exact request/date/edition/bundle bytes,
+and consumes the current inspection. It atomically selects one successor upload
+namespace. Original operation rows and inspect rows are retained. SQL triggers
+fence original dispatch/receipt writes and immutable bindings; the old CLI also
+rejects the additional schema at startup. No external write occurs in this
+transaction. A **new** native inspection is required before each successor
+write, exactly as in the regular flow. A late old inspect cannot replenish it.
+
+Only one explicit recovery is supported per original request. The successor
+uses `recovery_ticket`, `recovery_post`, `recovery_complete` journal operations.
+A crash or unknown ticket/POST/completion is reconciled, not replaced again.
+`summary` includes both historical `operations` and `active_operations` plus
+`recovery_id`, so preserved failures are not mistaken for current progress.
+The original request ID and exact bundle remain unchanged through Publisher and
+T4; publication and actual text/image delivery still need independent proofs.
+
+The recovery POST uses the already configured managed HTTPS proxy, passing only
+the adapter's proxy/CA environment allowlist. There is no direct fallback, TLS
+bypass, redirect or curl retry. Its safe journal marker is
+`producer_curl_managed_proxy_v1`. Any non-success through this proxy is unknown,
+including DNS/connect errors and zero bytes; direct-curl non-execution evidence
+cannot be inferred for proxy attempts. The signed URL remains memory-only. This
+repair does not claim recovery from arbitrary process loss without the actual
+original ticket result, nor does it grant permission to persist secret tickets.
+
+For subsequent normally admitted reports in an environment that requires its
+managed proxy, launch the reviewed CLI with `--serve-managed-proxy` in place of
+`--serve`. No config/journal replacement is needed. Default `--serve` retains the
+original direct mode for compatible environments. Both modes share all original
+identity, admission and receipt checks. This flag does not authorize recovery
+or relax unknown-operation fences.

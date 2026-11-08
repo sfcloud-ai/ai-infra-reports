@@ -7,7 +7,7 @@ import {lstat,stat,realpath,open,mkdtemp,rm} from 'node:fs/promises';
 import {dirname,join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {pipeline} from 'node:stream/promises';
-import {PRODUCER_SCHEMA,producerScopeHash} from './producer-upload.mjs';
+import {PRODUCER_SCHEMA,RECOVERY_SCHEMA,producerScopeHash} from './producer-upload.mjs';
 import {INSPECT_SCHEMA,producerInspectScopeHash} from './producer-native-inspect.mjs';
 import {requireThat} from './report-handoff.mjs';
 function check(v,code){if(!v){const e=new Error(code);e.code=code;throw e;}}
@@ -47,7 +47,9 @@ export async function verifyProducerJournal(filename,scope,nativeConfig){
   await assertUnchanged();
   db=new DatabaseSync(snapshot,{readOnly:true});db.exec('PRAGMA query_only=ON; PRAGMA trusted_schema=OFF');
   const rows=db.prepare("SELECT type,name,sql FROM sqlite_master WHERE substr(name,1,7)!='sqlite_' ORDER BY name").all();
-  check(rows.length===Object.keys(expected).length&&rows.every(r=>r.type==='table'&&r.sql===expected[r.name]),'producer_journal_schema_incompatible');
+  const recovery=rows.some(r=>r.name==='producer_recovery_audit');
+  const schema={...expected,...(recovery?RECOVERY_SCHEMA:{})};
+  check(rows.length===Object.keys(schema).length&&rows.every(r=>r.sql===schema[r.name]),'producer_journal_schema_incompatible');
   requireThat(db.prepare('PRAGMA integrity_check').all().every(r=>r.integrity_check==='ok'),'Original journal integrity required');
   for(const [table,hash] of [['producer_scope',scopeHash],...(nativeConfig?[['producer_inspect_scope',inspectHash]]:[])]){
    const bound=db.prepare(`SELECT id,hash FROM ${table}`).all();check(bound.length===1&&bound[0].id===1&&bound[0].hash===hash,'producer_journal_scope_mismatch');

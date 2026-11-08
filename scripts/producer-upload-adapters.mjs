@@ -9,21 +9,40 @@ import {producerTicket,postMetrics} from './producer-upload.mjs';
 
 const metricNames=['http_status','num_connects','num_redirects','upload_bytes','response_bytes','header_bytes','time_namelookup','time_connect','time_appconnect','time_starttransfer','ssl_verify_result'];
 const curlNames=['http_code','num_connects','num_redirects','size_upload','size_download','size_header','time_namelookup','time_connect','time_appconnect','time_starttransfer','ssl_verify_result'];
-export function curlUploadPlan({url,input,output,size}){
+export function producerCurlEnvironment(transport='direct',env=process.env){
+ requireThat(['direct','managed_proxy'].includes(transport),'Unsupported upload transport');
+ const out={PATH:env.PATH,LANG:'C'};
+ if(transport==='direct')return out;
+ // Only the already configured managed HTTPS proxy is used. No proxy URL is
+ // logged, placed in argv, or stored in the journal. Never fall back to direct.
+ const proxy=env.https_proxy||env.HTTPS_PROXY;
+ requireThat(typeof proxy==='string'&&proxy.length>0&&proxy.length<=8192&&!/[\r\n\0]/.test(proxy),'Managed HTTPS proxy unavailable');
+ requireThat(!env.https_proxy||!env.HTTPS_PROXY||env.https_proxy===env.HTTPS_PROXY,'Ambiguous managed HTTPS proxy');
+ let parsed;try{parsed=new URL(proxy);}catch{throw Error('Invalid managed HTTPS proxy');}
+ requireThat(['http:','https:'].includes(parsed.protocol)&&parsed.hostname&&!parsed.hash&&!parsed.search&&['','/'].includes(parsed.pathname),'Invalid managed HTTPS proxy');
+ Object.assign(out,{https_proxy:proxy,HTTPS_PROXY:proxy,no_proxy:'',NO_PROXY:''});
+ for(const key of ['CURL_CA_BUNDLE','SSL_CERT_FILE','SSL_CERT_DIR'])if(env[key]){
+  requireThat(typeof env[key]==='string'&&isAbsolute(env[key])&&!/[\r\n\0]/.test(env[key]),'Invalid managed CA path');out[key]=env[key];
+ }
+ return out;
+}
+export function curlUploadPlan({url,input,output,size,transport='direct'}){
+ requireThat(['direct','managed_proxy'].includes(transport),'Unsupported upload transport');
  // The raw signed string is sent over stdin, never argv, logs or error text.
  producerTicket({file_id:'FVALIDATE',upload_url:url});
- return {args:['-q','--config','-','--silent','--request','POST','--proto','=https','--proto-redir','=https','--max-redirs','0','--retry','0','--noproxy','*','--connect-timeout','15','--max-time','60','--max-filesize','65536','--header','Content-Type: application/json','--header','Content-Length: '+size,'--data-binary','@'+input,'--output',output,'--write-out',curlNames.map(n=>`%{${n}}`).join('\t')],stdin:`url = "${url}"\n`};
+ return {args:['-q','--config','-','--silent','--request','POST','--proto','=https','--proto-redir','=https','--max-redirs','0','--retry','0',...(transport==='direct'?['--noproxy','*']:[]),'--connect-timeout','15','--max-time','60','--max-filesize','65536','--header','Content-Type: application/json','--header','Content-Length: '+size,'--data-binary','@'+input,'--output',output,'--write-out',curlNames.map(n=>`%{${n}}`).join('\t')],stdin:`url = "${url}"\n`};
 }
-export async function uploadProducerBytes({bytes,ticket},{spawnCurl=spawn}={}){
+export async function uploadProducerBytes({bytes,ticket},{spawnCurl=spawn,transport='direct',environment=process.env}={}){
  requireThat(Buffer.isBuffer(bytes)&&bytes.length>0&&bytes.length<=8*1024*1024,'Bounded original upload bytes required');
  const t=producerTicket({file_id:ticket.file_id,upload_url:ticket.upload_url});
  requireThat(t.url_sha256===ticket.url_sha256,'Original ticket changed');
+ const curlEnvironment=producerCurlEnvironment(transport,environment);
  const dir=await mkdtemp(join(tmpdir(),'producer-post-'));
  try{
   const input=join(dir,'bundle'),output=join(dir,'response');await writeFile(input,bytes,{mode:0o600});
-  const plan=curlUploadPlan({url:t.upload_url,input,output,size:bytes.length});
+  const plan=curlUploadPlan({url:t.upload_url,input,output,size:bytes.length,transport});
   const metrics=await new Promise((resolve,reject)=>{
-   const child=spawnCurl('curl',plan.args,{shell:false,stdio:['pipe','pipe','ignore'],env:{PATH:process.env.PATH,LANG:'C'}});
+   const child=spawnCurl('curl',plan.args,{shell:false,stdio:['pipe','pipe','ignore'],env:curlEnvironment});
    let stdout='',done=false;
    const fail=()=>{if(!done){done=true;clearTimeout(timer);child.kill('SIGKILL');reject(Error('POST outcome unknown'));}};
    const timer=setTimeout(fail,65000);child.on('error',fail);child.stdin.on('error',fail);
@@ -37,7 +56,7 @@ export async function uploadProducerBytes({bytes,ticket},{spawnCurl=spawn}={}){
   });
   let response=null;try{const info=await lstat(output);requireThat(info.isFile()&&info.size<=64*1024,'Bounded upload response required');response=await readFile(output);}catch(e){if(e.code!=='ENOENT')throw e;}
   requireThat((response?.length??0)===metrics.response_bytes,'POST response metrics differ');
-  return {adapter:'producer_curl_direct_v1',file_id:t.file_id,url_sha256:t.url_sha256,bundle_sha256:digest(bytes),metrics:postMetrics({...metrics,response_sha256:response?digest(response):null})};
+  return {adapter:transport==='managed_proxy'?'producer_curl_managed_proxy_v1':'producer_curl_direct_v1',file_id:t.file_id,url_sha256:t.url_sha256,bundle_sha256:digest(bytes),metrics:postMetrics({...metrics,response_sha256:response?digest(response):null})};
  }finally{await rm(dir,{recursive:true,force:true});}
 }
 
