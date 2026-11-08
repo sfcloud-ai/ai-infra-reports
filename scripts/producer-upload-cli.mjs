@@ -4,7 +4,7 @@
 // or untrusted JSON file. Day admission evidence is read from pinned live SQLite
 // databases or authenticated native tool replies, never a caller-provided
 // verified flag or unbound JSON receipt.
-import {readFile,open} from 'node:fs/promises';
+import {readFile,open,lstat} from 'node:fs/promises';
 import {isAbsolute} from 'node:path';
 import {createInterface} from 'node:readline';
 import {ProducerInspect,producerInspectScope} from './producer-native-inspect.mjs';
@@ -16,7 +16,8 @@ import {requireThat} from './report-handoff.mjs';
 const emit=v=>process.stdout.write(JSON.stringify(v)+'\n');
 let state,lines;
 try{
- requireThat(process.argv.length===4&&['--initialize','--serve','--serve-managed-proxy'].includes(process.argv[3]),'Usage: node scripts/producer-upload-cli.mjs OPERATOR_CONFIG.json --initialize|--serve|--serve-managed-proxy');
+ const install=process.argv[3]==='--enable-restart-recovery';
+ requireThat((process.argv.length===4&&['--initialize','--serve','--serve-managed-proxy'].includes(process.argv[3]))||(install&&process.argv.length===5),'Usage: node scripts/producer-upload-cli.mjs OPERATOR_CONFIG.json --initialize|--serve|--serve-managed-proxy|--enable-restart-recovery AUTHORIZATION_REFERENCE');
  const initialize=process.argv[3]==='--initialize';
  if(process.argv[3]==='--serve-managed-proxy')producerCurlEnvironment('managed_proxy');
  const c=JSON.parse(await readFile(process.argv[2],'utf8'));
@@ -36,6 +37,27 @@ try{
   emit({type:'initialized',protocol:'producer_upload_v1',write_allowed:false});
  }else{
   const unchanged=await verifyProducerJournal(c.state_file,c.scope,native?c.native_inspect:null);
+  // Enabling recovery is explicit and offline, never an implicit serve-time
+  // migration. Bind the policy to the actual journal and inherited lock inodes.
+  let installation=null;
+  if(install||unchanged.restartPolicy){
+   requireThat(native,'Restart recovery requires native authenticated inspection');
+   requireThat(install||process.argv[3]==='--serve-managed-proxy','Installed restart recovery requires managed proxy mode');
+   const lock=await requireOriginalRunnerLock(c.state_file),info=await lstat(c.state_file,{bigint:true});
+   installation={journal_device:String(info.dev),journal_inode:String(info.ino),...lock};
+   if(unchanged.restartPolicy)for(const [key,value] of Object.entries(installation))requireThat(unchanged.restartPolicy[key]===value,'Original restart policy installation changed');
+  }
+  const requireInstallation=async()=>{
+   const lock=await requireOriginalRunnerLock(c.state_file),info=await journalPath(c.state_file,inputs);
+   const current={journal_device:String(info.dev),journal_inode:String(info.ino),...lock};
+   for(const [key,value] of Object.entries(current))requireThat(installation[key]===value,'Original restart policy installation changed');
+  };
+  if(install){
+   requireThat(!unchanged.restartPolicy,'Restart recovery policy already installed');
+   await journalPath(c.state_file,inputs);await unchanged();
+   state=new ProducerUploadState(c.state_file,c.scope);
+   emit(state.enableRestartRecovery(process.argv[4],installation));
+  }else{
   // No mutable SQLite constructor runs until the complete original schema and
   // both scopes have passed read-only checks. Read bundle only in normal serve.
   const bytes=await readFile(c.bundle_file);
@@ -50,7 +72,7 @@ try{
  const adapter=new ProducerUploadAdapter(state,{
   callTool,
   upload:args=>uploadProducerBytes(args,{transport:args.transport})
- },{transport:process.argv[3]==='--serve-managed-proxy'?'managed_proxy':'direct'});
+ },{transport:process.argv[3]==='--serve-managed-proxy'?'managed_proxy':'direct',restart:unchanged.restartPolicy?{started_at:Date.now(),requireLock:requireInstallation}:null});
  emit({type:'ready',protocol:'producer_upload_v1',...ready});
  while(true){
   const cmd=await read();
@@ -76,6 +98,7 @@ try{
    try{emit({type:'state',...state.observeDownstream(ready.request_id,await readProducerLedgers(c,result))});}
    catch{emit({...result,type:'blocked',reason:'original_ledger_read_unavailable_or_conflicting',write_allowed:false});}
   }else emit(result);
+ }
  }
  }
 }catch(e){emit({type:'blocked',next_action:'reconcile_original_operation',reason:['producer_journal_schema_incompatible','producer_journal_scope_mismatch'].includes(e.code)?e.code:'producer_bridge_stopped',write_allowed:false});process.exitCode=1;}

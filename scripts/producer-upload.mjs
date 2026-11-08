@@ -73,13 +73,28 @@ export const RECOVERY_SCHEMA=Object.freeze({
  producer_recovery_binding: "CREATE TRIGGER producer_recovery_binding BEFORE UPDATE ON producer_runs WHEN EXISTS(SELECT 1 FROM producer_recovery_audit WHERE run_id=OLD.id) AND (NEW.id!=OLD.id OR NEW.date!=OLD.date OR NEW.edition!=OLD.edition OR NEW.hash!=OLD.hash OR NEW.bundle!=OLD.bundle OR json_extract(NEW.detail,'$.recovery_id') IS NOT json_extract(OLD.detail,'$.recovery_id')) BEGIN SELECT RAISE(ABORT,'Original recovery binding immutable'); END",
  producer_recovery_run_delete: "CREATE TRIGGER producer_recovery_run_delete BEFORE DELETE ON producer_runs WHEN EXISTS(SELECT 1 FROM producer_recovery_audit WHERE run_id=OLD.id) BEGIN SELECT RAISE(ABORT,'Original recovery run immutable'); END"
 });
+// Installed only by the explicit offline policy command. No credential is stored.
+export const RESTART_RECOVERY_POLICY='producer_abandoned_ticket_v1';
+export const RESTART_RECOVERY_DELAY_MS=5*60000;
+export const RESTART_SCHEMA=Object.freeze({
+ producer_restart_policy:'CREATE TABLE producer_restart_policy(id INTEGER PRIMARY KEY CHECK(id=1),policy TEXT NOT NULL,authorization_reference TEXT NOT NULL,scope_hash TEXT NOT NULL,journal_device TEXT NOT NULL,journal_inode TEXT NOT NULL,lock_device TEXT NOT NULL,lock_inode TEXT NOT NULL)',
+ producer_restart_audit:'CREATE TABLE producer_restart_audit(run_id TEXT NOT NULL,generation INTEGER NOT NULL,recovery_id TEXT UNIQUE NOT NULL,at INTEGER NOT NULL,ticket_attempt INTEGER NOT NULL,post_attempt INTEGER NOT NULL,complete_attempt INTEGER NOT NULL,original TEXT NOT NULL,PRIMARY KEY(run_id,generation))',
+ producer_restart_policy_update:"CREATE TRIGGER producer_restart_policy_update BEFORE UPDATE ON producer_restart_policy BEGIN SELECT RAISE(ABORT,'Immutable restart policy'); END",
+ producer_restart_policy_delete:"CREATE TRIGGER producer_restart_policy_delete BEFORE DELETE ON producer_restart_policy BEGIN SELECT RAISE(ABORT,'Immutable restart policy'); END",
+ producer_restart_audit_update:"CREATE TRIGGER producer_restart_audit_update BEFORE UPDATE ON producer_restart_audit BEGIN SELECT RAISE(ABORT,'Immutable restart audit'); END",
+ producer_restart_audit_delete:"CREATE TRIGGER producer_restart_audit_delete BEFORE DELETE ON producer_restart_audit BEGIN SELECT RAISE(ABORT,'Immutable restart audit'); END",
+ producer_restart_op_update:"CREATE TRIGGER producer_restart_op_update BEFORE UPDATE ON producer_ops WHEN EXISTS(SELECT 1 FROM producer_restart_audit a,json_each(a.original,'$.operations') o WHERE json_extract(o.value,'$.operation_id')=OLD.operation_id) BEGIN SELECT RAISE(ABORT,'Abandoned operation immutable'); END",
+ producer_restart_op_delete:"CREATE TRIGGER producer_restart_op_delete BEFORE DELETE ON producer_ops WHEN EXISTS(SELECT 1 FROM producer_restart_audit a,json_each(a.original,'$.operations') o WHERE json_extract(o.value,'$.operation_id')=OLD.operation_id) BEGIN SELECT RAISE(ABORT,'Abandoned operation immutable'); END",
+ producer_restart_binding:"CREATE TRIGGER producer_restart_binding BEFORE UPDATE ON producer_runs WHEN EXISTS(SELECT 1 FROM producer_restart_audit WHERE run_id=OLD.id) AND (NEW.id!=OLD.id OR NEW.date!=OLD.date OR NEW.edition!=OLD.edition OR NEW.hash!=OLD.hash OR NEW.bundle!=OLD.bundle OR json_extract(NEW.detail,'$.recovery_id') IS NOT json_extract(OLD.detail,'$.recovery_id')) BEGIN SELECT RAISE(ABORT,'Original restart binding immutable'); END",
+ producer_restart_run_delete:"CREATE TRIGGER producer_restart_run_delete BEFORE DELETE ON producer_runs WHEN EXISTS(SELECT 1 FROM producer_restart_audit WHERE run_id=OLD.id) BEGIN SELECT RAISE(ABORT,'Original restart run immutable'); END"
+});
 export const producerScopeHash=scope=>hash({schema:1,scope:producerScope(scope)});
 export class ProducerUploadState{
  constructor(filename,scope,{now=Date.now}={}){
   this.scope=producerScope(scope);this.now=now;this.db=new DatabaseSync(filename);
   try{
    const tables=this.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND substr(name,1,7)!='sqlite_'").all();
-   requireThat(tables.every(t=>['producer_scope','producer_runs','producer_ops','producer_inspect_scope','producer_inspect_queries','producer_recovery_audit'].includes(t.name)),'Use a dedicated Producer journal, never a Publisher, scheduler or native journal');
+   requireThat(tables.every(t=>['producer_scope','producer_runs','producer_ops','producer_inspect_scope','producer_inspect_queries','producer_recovery_audit','producer_restart_policy','producer_restart_audit'].includes(t.name)),'Use a dedicated Producer journal, never a Publisher, scheduler or native journal');
    this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;'+Object.values(PRODUCER_SCHEMA).map(sql=>sql.replace('CREATE TABLE ','CREATE TABLE IF NOT EXISTS ')).join(';'));
    const h=producerScopeHash(this.scope);this.db.prepare('INSERT OR IGNORE INTO producer_scope VALUES(1,?)').run(h);
    requireThat(this.db.prepare('SELECT hash FROM producer_scope WHERE id=1').get().hash===h,'Producer scope changed; use the original journal');
@@ -90,11 +105,56 @@ export class ProducerUploadState{
  get(id){const r=this.db.prepare('SELECT * FROM producer_runs WHERE id=?').get(id);return r?{...r,bundle:Buffer.from(r.bundle),detail:JSON.parse(r.detail)}:null;}
  op(id,name){const o=this.db.prepare('SELECT * FROM producer_ops WHERE run_id=? AND name=? ORDER BY attempt DESC LIMIT 1').get(id,name);return o?{...o,result:o.result===null?null:JSON.parse(o.result)}:null;}
  activeName(id,name){return this.get(id)?.detail.recovery_id?'recovery_'+name:name;}
- activeOp(id,name){return this.op(id,this.activeName(id,name));}
+ restartPolicy(){return this.db.prepare("SELECT 1 FROM sqlite_master WHERE name='producer_restart_policy'").get()?this.db.prepare('SELECT * FROM producer_restart_policy WHERE id=1').get():null;}
+ restartAudit(id){return this.restartPolicy()?this.db.prepare('SELECT * FROM producer_restart_audit WHERE run_id=? ORDER BY generation DESC LIMIT 1').get(id)??null:null;}
+ activeOp(id,name){const op=this.op(id,this.activeName(id,name)),audit=this.restartAudit(id);return op&&op.attempt>(audit?.[name+'_attempt']??0)?op:null;}
+ enableRestartRecovery(authorization_reference,installation){return this.transaction(()=>{
+  requireThat(typeof authorization_reference==='string'&&/^[A-Za-z0-9:_./-]{1,200}$/.test(authorization_reference),'Explicit restart policy authorization required');
+  exact(installation,['journal_device','journal_inode','lock_device','lock_inode']);
+  requireThat(Object.values(installation).every(v=>typeof v==='string'&&/^\d+$/.test(v)),'Original installation identity required');
+  requireThat(!this.restartPolicy(),'Restart policy already installed');
+  for(const sql of Object.values(RESTART_SCHEMA))this.db.exec(sql);
+  this.db.prepare('INSERT INTO producer_restart_policy VALUES(1,?,?,?,?,?,?,?)').run(RESTART_RECOVERY_POLICY,authorization_reference,producerScopeHash(this.scope),installation.journal_device,installation.journal_inode,installation.lock_device,installation.lock_inode);
+  return {type:'restart_recovery_enabled',policy:RESTART_RECOVERY_POLICY,write_allowed:false};
+ });}
+ // Called only for a ticket observed at process startup, with the inherited
+ // original flock. It cannot refresh an uncertain call from the live process.
+ recoverAbandonedTicket(id,{operation_id,started_at,inspect_attempt}){return this.transaction(()=>{
+  const policy=this.restartPolicy();requireThat(policy?.policy===RESTART_RECOVERY_POLICY&&policy.scope_hash===producerScopeHash(this.scope),'Installed restart policy required');
+  const j=this.get(id),ticket=this.activeOp(id,'ticket'),now=clock(this.now());
+  requireThat(Number.isSafeInteger(started_at)&&started_at>0&&started_at<=now&&Number.isSafeInteger(inspect_attempt)&&inspect_attempt>=0,'Original restart time required');
+  if(!j||!ticket||ticket.operation_id!==operation_id||j.detail.existing||j.detail.source_ts||j.detail.publisher_source_ts||j.detail.delivery)return null;
+  const ops=this.db.prepare('SELECT * FROM producer_ops WHERE run_id=? ORDER BY name,attempt').all(id),posts=ops.filter(o=>['post','recovery_post'].includes(o.name));
+  if(ops.some(o=>!['ticket','post','recovery_ticket','recovery_post'].includes(o.name)))return null; // Any historical completion fences all rotation.
+  if(!['unknown','confirmed'].includes(ticket.phase)||ticket.phase==='unknown'&&ticket.result!==null)return null;
+  if(ticket.phase==='confirmed'&&(ticket.result?.file_id!==j.detail.file_id||ticket.result?.url_sha256!==j.detail.url_sha256))return null;
+  try{
+   for(const op of posts){
+    const r=JSON.parse(op.result),tickets=ops.filter(t=>t.name===(op.name==='post'?'ticket':'recovery_ticket')&&t.phase==='confirmed'&&t.at<=op.at);
+    requireThat(op.phase==='not_executed'&&r?.adapter==='producer_curl_direct_v1'&&r.bundle_sha256===j.hash&&postOutcome(postMetrics(r.metrics),j.bundle.length)==='not_executed'&&tickets.some(t=>{const v=JSON.parse(t.result);return v.file_id===r.file_id&&v.url_sha256===r.url_sha256;}),'Every historical POST must independently prove nonexecution');
+   }
+  }catch{return null;}
+  const eligible_at=Math.max(ticket.at+RESTART_RECOVERY_DELAY_MS,...posts.map(o=>o.at+postRetryDelay(o.attempt)));
+  if(now<eligible_at)return {type:'wait',next_action:'wait_abandoned_ticket_recovery',next_attempt_at:eligible_at,...this.summary(j),write_allowed:false};
+  // Only a new native query, authenticated by ProducerInspect, can authorize
+  // retirement. A still-fresh receipt inherited from the dead runner cannot.
+  const query=this.db.prepare('SELECT * FROM producer_inspect_queries WHERE run_id=? ORDER BY attempt DESC LIMIT 1').get(id);
+  if(!query||query.phase!=='resolved'||query.attempt<=inspect_attempt||query.started_at<started_at||!j.detail.preflight_at||j.detail.preflight_at<query.started_at||now<j.detail.preflight_at||now-j.detail.preflight_at>=READ_TTL_MS)return this.readAction(j,'restart_ticket_recovery_preflight');
+  requireThat(j.detail.preflight_empty===true,'Fresh empty downstream required for restart recovery');
+  const previous=this.restartAudit(id),generation=(previous?.generation??0)+1,recovery_id=randomUUID();
+  const high=name=>this.op(id,this.activeName(id,name))?.attempt??0;
+  const original=JSON.stringify({request_id:j.id,report_date:j.date,edition:j.edition,bundle_sha256:j.hash,bundle_bytes:j.bundle.length,detail:j.detail,operations:ops,abandoned_operation_id:ticket.operation_id,inspect_operation_id:query.operation_id,scope_sha256:producerScopeHash(this.scope),policy_authorization_reference:this.restartPolicy().authorization_reference});
+  this.db.prepare('INSERT INTO producer_restart_audit VALUES(?,?,?,?,?,?,?,?)').run(id,generation,recovery_id,now,high('ticket'),high('post'),high('complete'),original);
+  // The old ticket is not "not_executed" and its result is never invented. A
+  // separate audited allocation follows only after another authenticated read.
+  const detail={...j.detail,restart_recovery_at:now,preflight_at:null,preflight_empty:false};delete detail.file_id;delete detail.url_sha256;
+  this.save(j,detail);
+  return {type:'ticket_abandoned',generation,...this.summary(this.get(id)),write_allowed:false};
+ });}
  authorizeTicketRecovery(id,authorization){return this.transaction(()=>{
   exact(authorization,['authorization_reference','file_id','url_sha256','bundle_sha256']);
   requireThat(typeof authorization.authorization_reference==='string'&&/^[A-Za-z0-9:_./-]{1,200}$/.test(authorization.authorization_reference),'Explicit authorization reference required');
-  const j=this.get(id),now=clock(this.now());requireThat(j&&!j.detail.recovery_id,'Original unrecovered request required');
+  const j=this.get(id),now=clock(this.now());requireThat(j&&!j.detail.recovery_id&&!this.restartAudit(id),'Original unrecovered request required');
   requireThat(j.hash===authorization.bundle_sha256&&j.detail.file_id===authorization.file_id&&j.detail.url_sha256===authorization.url_sha256,'Exact original recovery binding required');
   requireThat(j.detail.preflight_empty===true&&j.detail.preflight_at&&now>=j.detail.preflight_at&&now-j.detail.preflight_at<READ_TTL_MS&&!j.detail.existing&&!j.detail.source_ts&&!j.detail.publisher_source_ts&&!j.detail.delivery,'Fresh authenticated empty downstream required');
   const ops=this.db.prepare('SELECT * FROM producer_ops WHERE run_id=? ORDER BY name,attempt').all(id),tickets=ops.filter(o=>o.name==='ticket'),posts=ops.filter(o=>o.name==='post');
@@ -119,7 +179,7 @@ export class ProducerUploadState{
    this.db.prepare('INSERT INTO producer_runs VALUES(?,?,?,?,?,?)').run(b.data.request_id,b.report.date,`${b.report.date}/r${b.report.revision}`,bytes,b.hash,'{}');return this.summary(this.get(b.data.request_id));
   });
  }
- summary(j){const operations=['ticket','post','complete','recovery_ticket','recovery_post','recovery_complete'].map(name=>this.op(j.id,name)).filter(Boolean).map(o=>({operation:o.name,attempt:o.attempt,outcome:o.phase,...(['post','recovery_post'].includes(o.name)&&o.result?{metrics:o.result.metrics}:{})}));return {operations,recovery_id:j.detail.recovery_id??null,active_operations:operations.filter(o=>j.detail.recovery_id?o.operation.startsWith('recovery_'):!o.operation.startsWith('recovery_')),request_id:j.id,report_date:j.date,edition:j.edition,bundle_sha256:j.hash,bundle_bytes:j.bundle.length,file_id:j.detail.file_id??null,source_ts:j.detail.source_ts??null,status:j.detail.delivery?.complete?'sent':j.detail.source_ts?'intake_verified':'pending',delivery:j.detail.delivery??null};}
+ summary(j){const operation_history=this.db.prepare('SELECT * FROM producer_ops WHERE run_id=? ORDER BY name,attempt').all(j.id).map(o=>({operation:o.name,attempt:o.attempt,outcome:o.phase,...(['post','recovery_post'].includes(o.name)&&o.result?{metrics:JSON.parse(o.result).metrics}:{})})),operations=operation_history.filter(o=>o.attempt===this.op(j.id,o.operation)?.attempt),audit=this.restartAudit(j.id);return {operations,operation_history,recovery_id:j.detail.recovery_id??null,restart_generation:audit?.generation??0,restart_recovery_id:audit?.recovery_id??null,active_operations:operations.filter(o=>['ticket','post','complete'].some(name=>o.operation===this.activeName(j.id,name)&&o.attempt===this.activeOp(j.id,name)?.attempt)),request_id:j.id,report_date:j.date,edition:j.edition,bundle_sha256:j.hash,bundle_bytes:j.bundle.length,file_id:j.detail.file_id??null,source_ts:j.detail.source_ts??null,status:j.detail.delivery?.complete?'sent':j.detail.source_ts?'intake_verified':'pending',delivery:j.detail.delivery??null};}
  readAction(j,reason='preflight'){return {type:'read',next_action:'read_original_publisher_scheduler',reason,...this.summary(j),publisher_scope_sha256:this.scope.publisher_scope_sha256,scheduler_scope_sha256:this.scope.scheduler_scope_sha256,require_complete_date_claims:true,write_allowed:false};}
  sourceAction(j,reason){return {type:'read',next_action:'read_original_file_and_share',reason,...this.summary(j),team_id:this.scope.team_id,channel_id:this.scope.channel_id,require_actual_bytes:true,write_allowed:false};}
  // A dispatch action is emitted once, only after the durable transaction commits.
@@ -141,7 +201,7 @@ export class ProducerUploadState{
    if(op&&now<op.at+postRetryDelay(op.attempt))return {type:'wait',next_action:'wait_same_operation',next_attempt_at:op.at+postRetryDelay(op.attempt),...this.summary(j),write_allowed:false};
    if(!j.detail.preflight_at||now<j.detail.preflight_at||now-j.detail.preflight_at>=READ_TTL_MS)return this.readAction(j);
    if(name==='post'&&!postAvailable)return {type:'blocked',next_action:'restore_original_ticket',...this.summary(j),write_allowed:false};
-   const attempt=(op?.attempt??0)+1,operation_id=randomUUID();
+   const attempt=(this.op(id,this.activeName(id,name))?.attempt??0)+1,operation_id=randomUUID();
    this.db.prepare("INSERT INTO producer_ops VALUES(?,?,?,?,'unknown',?,NULL)").run(id,this.activeName(id,name),attempt,operation_id,now);
    this.save(j,{...j.detail,preflight_at:null}); // One fresh read authorizes one write, never a reservation.
    const action={type:'write',next_action:name,operation_id,attempt,...this.summary(j),write_allowed:true};
@@ -228,12 +288,17 @@ export class ProducerUploadState{
 // An agent can bridge native tools with this adapter; there is no invented shell
 // native API. External mutations happen only for the newly returned write action.
 export class ProducerUploadAdapter{
- constructor(state,io,{transport='direct'}={}){requireThat(['direct','managed_proxy'].includes(transport),'Known upload transport required');this.state=state;this.io=io;this.transport=transport;this.tickets=new Map();}
+ constructor(state,io,{transport='direct',restart=null}={}){requireThat(['direct','managed_proxy'].includes(transport),'Known upload transport required');this.state=state;this.io=io;this.transport=transport;this.tickets=new Map();this.restart=restart;this.startupTickets=new Map();if(restart)for(const j of state.db.prepare('SELECT id FROM producer_runs').all()){const op=state.activeOp(j.id,'ticket');if(op)this.startupTickets.set(j.id,{operation_id:op.operation_id,inspect_attempt:state.db.prepare('SELECT COALESCE(MAX(attempt),0) n FROM producer_inspect_queries WHERE run_id=?').get(j.id).n});}}
  restoreTicket(id,result){const j=this.state.get(id),t=producerTicket(result);requireThat(j&&j.detail.file_id===t.file_id&&j.detail.url_sha256===t.url_sha256,'Restore only the original ticket');this.tickets.set(id,t);}
  async step(id){
   const j=this.state.get(id);requireThat(j,'Unknown Producer request');
   // Check availability inside next(), after fresh reads but before POST intent.
   const transport=j.detail.recovery_id?'managed_proxy':this.transport;
+  if(this.restart&&!this.tickets.has(id)&&this.startupTickets.has(id)){
+   await this.restart.requireLock();
+   const recovered=this.state.recoverAbandonedTicket(id,{...this.startupTickets.get(id),started_at:this.restart.started_at});
+   if(recovered){if(recovered.type==='ticket_abandoned')this.startupTickets.delete(id);return recovered;}
+  }
   const action=this.state.next(id,{postAvailable:this.tickets.has(id),transport});
   if(action.type!=='write')return action;
   try{

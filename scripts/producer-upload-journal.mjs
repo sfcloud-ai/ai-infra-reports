@@ -7,7 +7,7 @@ import {lstat,stat,realpath,open,mkdtemp,rm} from 'node:fs/promises';
 import {dirname,join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {pipeline} from 'node:stream/promises';
-import {PRODUCER_SCHEMA,RECOVERY_SCHEMA,producerScopeHash} from './producer-upload.mjs';
+import {PRODUCER_SCHEMA,RECOVERY_SCHEMA,RESTART_SCHEMA,RESTART_RECOVERY_POLICY,producerScopeHash} from './producer-upload.mjs';
 import {INSPECT_SCHEMA,producerInspectScopeHash} from './producer-native-inspect.mjs';
 import {requireThat} from './report-handoff.mjs';
 function check(v,code){if(!v){const e=new Error(code);e.code=code;throw e;}}
@@ -48,7 +48,8 @@ export async function verifyProducerJournal(filename,scope,nativeConfig){
   db=new DatabaseSync(snapshot,{readOnly:true});db.exec('PRAGMA query_only=ON; PRAGMA trusted_schema=OFF');
   const rows=db.prepare("SELECT type,name,sql FROM sqlite_master WHERE substr(name,1,7)!='sqlite_' ORDER BY name").all();
   const recovery=rows.some(r=>r.name==='producer_recovery_audit');
-  const schema={...expected,...(recovery?RECOVERY_SCHEMA:{})};
+  const restart=rows.some(r=>r.name==='producer_restart_policy');
+  const schema={...expected,...(recovery?RECOVERY_SCHEMA:{}),...(restart?RESTART_SCHEMA:{})};
   check(rows.length===Object.keys(schema).length&&rows.every(r=>r.sql===schema[r.name]),'producer_journal_schema_incompatible');
   requireThat(db.prepare('PRAGMA integrity_check').all().every(r=>r.integrity_check==='ok'),'Original journal integrity required');
   for(const [table,hash] of [['producer_scope',scopeHash],...(nativeConfig?[['producer_inspect_scope',inspectHash]]:[])]){
@@ -57,6 +58,11 @@ export async function verifyProducerJournal(filename,scope,nativeConfig){
   if(nativeConfig){
    const rows=db.prepare('SELECT operation_id,query_id FROM producer_inspect_queries').all();
    check(rows.every(r=>r.query_id===r.operation_id&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(r.query_id)),'producer_journal_schema_incompatible');
+  }
+  if(restart){
+   const policies=db.prepare('SELECT * FROM producer_restart_policy').all();
+   check(!!nativeConfig&&policies.length===1&&policies[0].id===1&&policies[0].policy===RESTART_RECOVERY_POLICY&&policies[0].scope_hash===scopeHash,'producer_journal_scope_mismatch');
+   assertUnchanged.restartPolicy={...policies[0]};
   }
   await assertUnchanged();
   return assertUnchanged;
