@@ -116,6 +116,9 @@ resolves only its read query and grants no upload. Superseded queries and late
 old replies cannot resolve the new query or replenish consumed write permission.
 This refresh exception applies only to read-only inspect requests, never to
 ticket, POST or complete operations. Those retain their original unknown fences.
+The separately installed abandoned-ticket policy below can allocate a distinct
+successor only when no previous content upload could have executed. It never
+replays or changes the outcome of the unknown original operation.
 
 The nonce protocol is a coordinated, not-yet-deployed client/server upgrade; the
 old four-argument command is not accepted. Pre-nonce journal schemas/rows are
@@ -193,7 +196,7 @@ The POST step runs the concrete curl adapter directly. Original signed URL
 bytes go through curl stdin, not argv/logs, with no redirects, proxy, retries,
 URL normalization or shell interpolation. Bundle bytes come from the journal.
 The URL lives only in memory. After restart, `restore_ticket` accepts only the
-original native ticket result with the same file ID and URL hash. An unavailable
+original native ticket result with the same file ID and URL hash. Without the separately installed restart policy below, an unavailable
 or rejected original ticket blocks, never creates a replacement file.
 
 A real Publisher inspect receipt can supply `publisher.file_id` only when the
@@ -300,3 +303,86 @@ managed proxy, launch the reviewed CLI with `--serve-managed-proxy` in place of
 original direct mode for compatible environments. Both modes share all original
 identity, admission and receipt checks. This flag does not authorize recovery
 or relax unknown-operation fences.
+
+
+## Opt-in abandoned-ticket recovery after process loss
+
+A restart cannot recover a signed URL that existed only in the dead process,
+including a native result lost before it reached the bridge. This optional
+policy avoids storing that capability at all. It can retire an unused upload
+slot and allocate a distinct successor, preserving the original unknown ticket
+operation unchanged. It is not replay, inferred ticket failure, proof that the
+original allocation did not execute, or a general retry of unknown writes.
+The signed URL and raw native ticket result still remain memory-only.
+
+Install only after reviewing this runtime and approving the narrow policy. Stop
+the old runner first and hold the same existing original lock. Do not initialize,
+copy, reset or replace the journal, lock or bundle:
+
+```sh
+flock -n -E 73 "$PRIVATE_DIR/runner.lock" \
+  node "$REPO/scripts/producer-upload-cli.mjs" "$PRIVATE_DIR/config.json" \
+  --enable-restart-recovery YOUR_NON_SECRET_AUTHORIZATION_REFERENCE
+```
+
+This explicit offline command does not read the bundle, create a ticket, upload,
+or send a native message. It adds immutable `producer_restart_policy` and
+`producer_restart_audit` schemas and their SQL fences to the existing initialized
+native-mode journal. The policy binds its authorization reference, scope hash,
+original journal device/inode and original lock device/inode. Repeated installation
+is rejected rather than resetting the policy. Normal serve never migrates a
+journal. The earlier runtime rejects this added schema before opening a mutable
+SQLite connection; do not use an old runtime to roll back an installed policy.
+
+Continue the same private PTY/flock launcher with `--serve-managed-proxy`.
+No operator-config fields, credentials, security settings, listeners, remote
+services or file sharing are added. Plain `--serve`, missing flock, changed lock,
+or a copied/replaced journal fail closed before mutable startup. Journal/lock
+identity is checked again before every retirement attempt. This is deliberate:
+a copied backup or replacement cloud workspace is not the original live journal.
+
+At startup the adapter captures only the active ticket already in the journal.
+A new ticket issued by this same process cannot be automatically retired after a
+tool error. It must remain unknown until genuine process restart and inspection.
+A restored original ticket is still preferred and avoids retirement. For an
+unavailable startup ticket, retirement requires all of the following:
+
+- A minimum five-minute cooldown from the original ticket intent, also honoring
+  every recorded POST's existing backoff. This is durable across repeated restarts,
+  bounds repeated slot allocations, and has no arbitrary lifetime retry cutoff.
+- No complete intent anywhere in that request's history, even acknowledged ones.
+- No POST intent, or every historical POST independently marked `not_executed`
+  with its original matching ticket/hash and the strict direct-curl DNS/connect
+  evidence. Unknown/successful POSTs, missing/malformed receipts and every managed
+  proxy non-success block recovery, including a proxy DNS error with zero bytes.
+- A complete, fresh, authenticated empty Publisher/scheduler receipt from a new
+  native query created after this process started. A prior process's query cannot
+  qualify even when its timestamp is equal or its receipt is still fresh.
+
+Retirement atomically consumes that one-use read, appends an immutable audit of
+all original operations and request/date/hash/scope, and records per-stage
+attempt high-water marks. It does not modify any old operation or fabricate its
+receipt. A **separate new authenticated inspection** is required before allocating
+the successor. The successor retains the exact journaled bundle bytes, original
+request/date and downstream identity. Its ticket/POST/complete operations use new
+operation IDs and monotonically increasing attempt numbers. Late native results
+for abandoned operations cannot update the successor. `operation_history` exposes
+the retained attempts. The existing `operations` and `active_operations` fields
+continue reporting only the latest attempt of each stage, so earlier retry
+failures cannot hide its current success. Existing #76 explicit
+recovery audits and their original operation rows remain unchanged.
+
+A crash after retirement but before successor allocation resumes that unissued
+generation, rather than retiring it again. A later crash after another unused
+ticket may create another audited generation under the same conditions. No secret
+sidecar, key, raw tool result, URL, new journal or alternate Publisher path exists.
+Abandoned remote upload slots are not deleted automatically; their cleanup/expiry
+is controlled by Slack, and an expired/rejected POST is not assumed unexecuted.
+
+There is still no safe automatic replay after an unknown POST or complete,
+including a crash after the external effect but before its result was committed.
+The runner only reconciles the original file/intake/delivery through authenticated
+reads. A confirmed POST can continue to its original completion without a signed
+URL; a lost completion acknowledgement is not permission to complete again.
+Tests cover these hard-crash boundaries with synthetic journals, native formatted
+receipts and stub curl only; they do not certify any production send or deployment.

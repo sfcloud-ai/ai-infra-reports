@@ -17,4 +17,5 @@ export async function requireOriginalRunnerLock(stateFile){
  }
  requireThat(held,'Bridge must inherit the original exclusive runner.lock flock');
  const after=await lstat(lock,{bigint:true});requireThat(after.dev===info.dev&&after.ino===info.ino,'Original runner lock changed');
+ return {lock_device:String(info.dev),lock_inode:String(info.ino)};
 }
