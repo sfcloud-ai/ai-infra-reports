@@ -1,0 +1,211 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-11-08",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-11-08",
+  "subtitle": "五项工程进展：缓存身份、复制工作区与导出数值边界。",
+  "articles": [
+    {
+      "id": "model-serving-gpu",
+      "title": "模型服务与GPU超配｜LoRA缓存不能串身份",
+      "summary": "LMCache把适配器身份贯穿对象键与延迟写回；名称路径不是权重哈希，旧L2污染需处理。",
+      "sha256": "b1cfaccd8d29fa01c0fbf99e22099917de36117dc7e81fd5aa4f13ea05522d56"
+    },
+    {
+      "id": "hardware-status",
+      "title": "重点硬件｜H100与H200分开验收",
+      "summary": "静态规格不计新闻，MIG不等于显存超配；Pro5500仍保留型号待核实。",
+      "sha256": "dcb4cd712c1d6f2d2e274116a4de584767d941e091c692a12ccc17297e1cef95"
+    },
+    {
+      "id": "model-architecture-status",
+      "title": "模型与新架构｜模板更新不等于缓存变革",
+      "summary": "Qwen模板标记更新已核读，未作为新架构新闻；保留实际博客正文访问缺口。",
+      "sha256": "b4b3fc57095971309aff01b337ebd59934675be7ad1ccf856c68b8c1550cc6ac"
+    },
+    {
+      "id": "embodied-training",
+      "title": "制造业具身｜H100长padding的数值安全",
+      "summary": "GR00T以最小有限值替代负无穷掩码，修复H100融合attention长padding的NaN风险。",
+      "sha256": "a0dd679aa51fe3420009eefa41ecce8ca876d7c979cc13ff95502749a68364ec"
+    },
+    {
+      "id": "small-model-status",
+      "title": "前沿小模型｜来源覆盖与未入选理由",
+      "summary": "官方模型入口已核；旧模型、索引更新时间与缺运行证据的配置修复不冒充SOTA新进展。",
+      "sha256": "2f50f995b75b54d13b427285b626b586cb9c44d257a58a321b14f20553fe1c49"
+    },
+    {
+      "id": "inference-engines",
+      "title": "推理引擎每日变动｜工作区峰值与KV握手",
+      "summary": "vLLM统一CPU KV映射；SGLang分块复制循环状态并在传输前核对草稿KV语义。",
+      "sha256": "48f21d704ab54f03f4a208a37a347d3365865155ae3d2c9a9ef9317d45301bdf"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-11-08-vllm-pr-60130",
+      "event_key": "vllm-pr-60130",
+      "title": "vLLM CPU KV卸载：单rank统一映射，大页不足在启动时失败",
+      "summary": "11月7日07:12:22Z合并7a07e2342e7e857133d3964bd4b7022103a5b030。SimpleCPUOffloadConnector把每rank各层CPU KV改为同一mmap中的视图，按实际解析的KV块数定容，再向页大小取整。可选2MiB/1GiB HugeTLB，默认普通页；继承worker的NUMA策略，预填充发现hugetlb/cgroup不足即启动失败，不静默回落。CUDA注册最多256GiB一段，边界同时对齐KV块与实际后备页，pin/unpin一一对应；MADV_DONTFORK避免子进程继承固定页。",
+      "source_urls": [
+        "https://api.github.com/repos/vllm-project/vllm/pulls/60130",
+        "https://api.github.com/repos/vllm-project/vllm/commits/7a07e2342e",
+        "https://api.github.com/repos/vllm-project/vllm/releases?per_page=6"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    },
+    {
+      "id": "2026-11-08-sglang-pr-47984",
+      "event_key": "sglang-pr-47984",
+      "title": "SGLang混合状态复制：分块限制临时显存尖峰",
+      "summary": "11月7日04:49:54Z合并784cffe3d90bb625041f9c0b4f06e66b0a122e42。MambaPool.copy_from原先一次高级索引gather全部源slot，临时显存为slot数×单slot大小，前缀写时复制突发可能在静态池之外OOM。现在temporal状态按64MiB预算分块，至少1slot；小复制保持单次赋值，融合与fallback路径都调用同一helper，conv部分不变。源/目的slot必须不重叠，调试模式在真正分块时断言。",
+      "source_urls": [
+        "https://api.github.com/repos/sgl-project/sglang/pulls/47984",
+        "https://api.github.com/repos/sgl-project/sglang/commits/784cffe3d9",
+        "https://api.github.com/repos/sgl-project/sglang/issues/47916",
+        "https://api.github.com/repos/sgl-project/sglang/releases?per_page=6",
+        "https://api.github.com/repos/sgl-project/sglang/commits/edee938b5b5227fa0f98070abd247bbef592180b/check-runs?per_page=100"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    },
+    {
+      "id": "2026-11-08-sglang-pr-48375",
+      "event_key": "sglang-pr-48375",
+      "title": "SGLang P/D握手：先核草稿KV布局，再登记传输目标",
+      "summary": "11月7日09:30:05Z合并043cfc4d3a2cc2a931d15862f08c4b60b692c957。DSpark/DFlash预填充由目标hidden states生成草稿KV，decode无法只凭token元数据重建。新spec_kv_layout随已有bootstrap PUT /route发布algorithm和num_draft_entries；Python/Rust注册表保留跨prefill rank首个非空布局并拒绝已知冲突。Decode在登记prefill目标前比较布局，算法/entry数不符或target-only decode拒绝；无草稿PP阶段和state-only draft跳过。",
+      "source_urls": [
+        "https://api.github.com/repos/sgl-project/sglang/pulls/48375",
+        "https://api.github.com/repos/sgl-project/sglang/commits/043cfc4d3a2cc2a931d15862f08c4b60b692c957",
+        "https://api.github.com/repos/sgl-project/sglang/releases?per_page=6",
+        "https://api.github.com/repos/sgl-project/sglang/commits/6bc59350462cbda8833ec130947e2e73578302c1/check-runs?per_page=100"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    },
+    {
+      "id": "2026-11-08-lmcache-pr-5713",
+      "event_key": "lmcache-pr-5713",
+      "title": "LMCache：LoRA隔离要贯穿缓存键与延迟写回",
+      "summary": "11月5日19:41:34Z合并ea6ecd0，修复MP连接器把基座及不同LoRA的相同token/cache_salt视为同一KV的问题。请求tracker从真实LoRA name+path生成128-bit BLAKE2b标签，丢弃客户端自报lora标签、保留租户cache_salt；服务端将tag纳入lookup/store/retrieve/lock-release对象身份，lazy offload合并写回也保留request_configs。依赖#5843和已合并#6199。",
+      "source_urls": [
+        "https://api.github.com/repos/LMCache/LMCache/pulls/5713",
+        "https://api.github.com/repos/LMCache/LMCache/pulls/5713/files?per_page=100",
+        "https://api.github.com/repos/LMCache/LMCache/pulls/6199",
+        "https://api.github.com/repos/LMCache/LMCache/commits?since=2026-11-04T23:26:19Z&until=2026-11-07T23:26:19Z&per_page=100",
+        "https://api.github.com/repos/LMCache/LMCache/releases?per_page=3"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-11-08-groot-h100-trt-finite-mask-4d9f888",
+      "event_key": "groot-h100-trt-finite-mask-4d9f888",
+      "title": "GR00T：长padding下先保证H100动作输出有限",
+      "summary": "11月6日23:42:30Z主线4d9f888将ONNX/TensorRT导出的DiT自注意力和缓存cross-attention掩码统一为计算dtype中的0/最小有限值，代替负无穷；避免H100融合attention在长padding下连有效token也产生NaN。与同批VL掩码导出和11/7#802组合测试配套，严格VL和动作padding掩码均须保留。",
+      "source_urls": [
+        "https://api.github.com/repos/NVIDIA/Isaac-GR00T/commits/4d9f8886fcf3023ece9c5138b7ebfeffc40aedf7",
+        "https://api.github.com/repos/NVIDIA/Isaac-GR00T/commits/8af93e5f793cc4601bef4cd956255167496b61c0",
+        "https://api.github.com/repos/NVIDIA/Isaac-GR00T/commits/9fbe86ad985f909d412165033267e9cff239b64c",
+        "https://raw.githubusercontent.com/NVIDIA/Isaac-GR00T/9fbe86ad985f909d412165033267e9cff239b64c/README.md",
+        "https://api.github.com/repos/NVIDIA/Isaac-GR00T/commits?since=2026-11-04T23:26:19Z&until=2026-11-07T23:26:19Z&per_page=100"
+      ],
+      "update_of": null,
+      "article_id": "embodied-training"
+    },
+    {
+      "id": "2026-11-08-deepinfer-coverage-20261108",
+      "event_key": "deepinfer-coverage-20261108",
+      "title": "推理引擎每日变动｜工作区峰值与KV握手",
+      "summary": "vLLM统一CPU KV映射；SGLang分块复制循环状态并在传输前核对草稿KV语义。",
+      "source_urls": [
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/commits?per_page=30",
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/releases?per_page=10",
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/pulls?state=all&sort=updated&direction=desc&per_page=30",
+        "https://raw.githubusercontent.com/deepseek-ai/DeepInfer/main/README.md",
+        "https://raw.githubusercontent.com/deepseek-ai/DeepInfer/a679bb86ce36e883a98a97733492b686e5b9a08e/doc/inference_deployment_qa.md"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    },
+    {
+      "id": "2026-11-08-model-architecture-coverage-20261108",
+      "event_key": "model-architecture-coverage-20261108",
+      "title": "模型与新架构｜模板更新不等于缓存变革",
+      "summary": "Qwen模板标记更新已核读，未作为新架构新闻；保留实际博客正文访问缺口。",
+      "source_urls": [
+        "https://huggingface.co/api/models?author=deepseek-ai&sort=lastModified&direction=-1&limit=10",
+        "https://huggingface.co/api/models?author=zai-org&sort=lastModified&direction=-1&limit=10",
+        "https://huggingface.co/api/models?author=Qwen&sort=lastModified&direction=-1&limit=10",
+        "https://huggingface.co/api/models/Qwen/Qwen3.8-27B/commits/main",
+        "https://huggingface.co/Qwen/Qwen3.8-27B/raw/37561816e66b5b9153b1b64c10968c18c1e6f4a0/chat_template.jinja",
+        "https://huggingface.co/Qwen/Qwen3.8-27B/raw/8c0b3d30f3ae96f5c7f774de704bf0ada83e422a/chat_template.jinja"
+      ],
+      "update_of": null,
+      "article_id": "model-architecture-status"
+    },
+    {
+      "id": "2026-11-08-small-model-coverage-20261108",
+      "event_key": "small-model-coverage-20261108",
+      "title": "前沿小模型｜来源覆盖与未入选理由",
+      "summary": "官方模型入口已核；旧模型、索引更新时间与缺运行证据的配置修复不冒充SOTA新进展。",
+      "source_urls": [
+        "https://ai.google.dev/gemma/docs",
+        "https://gemma.ai/",
+        "https://huggingface.co/api/models?author=HuggingFaceTB&sort=lastModified&direction=-1&limit=10",
+        "https://huggingface.co/api/models?author=microsoft&sort=lastModified&direction=-1&limit=10"
+      ],
+      "update_of": null,
+      "article_id": "small-model-status"
+    },
+    {
+      "id": "2026-11-08-hardware-source-check-20261108",
+      "event_key": "hardware-source-check-20261108",
+      "title": "重点硬件｜H100与H200分开验收",
+      "summary": "静态规格不计新闻，MIG不等于显存超配；Pro5500仍保留型号待核实。",
+      "source_urls": [
+        "https://www.nvidia.com/en-us/data-center/h100/",
+        "https://www.nvidia.com/en-us/data-center/h200/",
+        "https://docs.nvidia.com/datacenter/tesla/mig-user-guide/latest/",
+        "https://www.nvidia.com/en-us/products/workstations/professional-desktop-gpus/rtx-pro-5500/"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status"
+    }
+  ],
+  "images": [
+    {
+      "path": "assets/overview.png",
+      "sha256": "c75e0841c9c82c5af531ccd496c2cbba23926f9ea5671a2ca56bbc059920eff9",
+      "alt": "五项进展与六个固定板块的横版摘要，与正文对应。"
+    },
+    {
+      "path": "assets/cpu-kv-pages.png",
+      "sha256": "8209a9da9659e2c775dc6a0f43bd68c613fa8b401d0e3861f7890eb8c760014f",
+      "alt": "cpu-kv-pages，依据本期来源绘制的原创简化机制图，非性能比例图。"
+    },
+    {
+      "path": "assets/draft-kv-handshake.png",
+      "sha256": "beed93529c5f4f9f9bd3da3b7a989bb543c6264e15a9bf25664b7831e1f04e96",
+      "alt": "draft-kv-handshake，依据本期来源绘制的原创简化机制图，非性能比例图。"
+    },
+    {
+      "path": "assets/groot-finite-mask.png",
+      "sha256": "a6386187cc7ad90aaab24a9891e59b0d25ad0d5f8c989ee90299cf34d79aa2e9",
+      "alt": "groot-finite-mask，依据本期来源绘制的原创简化机制图，非性能比例图。"
+    },
+    {
+      "path": "assets/lora-cache-identity.png",
+      "sha256": "bad84fb56314a8df24a9683a3e6b421bca5aea323ece6bb8c4686621f0733fe9",
+      "alt": "lora-cache-identity，依据本期来源绘制的原创简化机制图，非性能比例图。"
+    },
+    {
+      "path": "assets/mamba-copy-chunks.png",
+      "sha256": "f735406983527f0e1e5d45bff4e13d5631da44a7b5cab78675e8ccfdef45ce68",
+      "alt": "mamba-copy-chunks，依据本期来源绘制的原创简化机制图，非性能比例图。"
+    }
+  ],
+  "poster": "assets/overview.png"
+}
