@@ -1,3 +1,4 @@
+import {withCompletionAdmission,verifyAdmissionStartup} from './producer-local-admission.mjs';
 // Trusted local operator bridge. Only --serve starts work. Native tools are
 // caller-executed one-shot actions; this process implements the real raw POST.
 // Stdin must come from the authenticated native-tool orchestrator, not a report
@@ -17,13 +18,17 @@ const emit=v=>process.stdout.write(JSON.stringify(v)+'\n');
 let state,lines;
 try{
  const install=process.argv[3]==='--enable-restart-recovery';
- requireThat((process.argv.length===4&&['--initialize','--serve','--serve-managed-proxy'].includes(process.argv[3]))||(install&&process.argv.length===5),'Usage: node scripts/producer-upload-cli.mjs OPERATOR_CONFIG.json --initialize|--serve|--serve-managed-proxy|--enable-restart-recovery AUTHORIZATION_REFERENCE');
- const initialize=process.argv[3]==='--initialize';
+ requireThat((process.argv.length===4&&['--initialize','--serve','--serve-managed-proxy','--serve-t4-direct'].includes(process.argv[3]))||(install&&process.argv.length===5),'Usage: node scripts/producer-upload-cli.mjs OPERATOR_CONFIG.json --initialize|--serve|--serve-managed-proxy|--serve-t4-direct|--enable-restart-recovery AUTHORIZATION_REFERENCE');
+ const initialize=process.argv[3]==='--initialize',t4Direct=process.argv[3]==='--serve-t4-direct';
  if(process.argv[3]==='--serve-managed-proxy')producerCurlEnvironment('managed_proxy');
  const c=JSON.parse(await readFile(process.argv[2],'utf8'));
  const native=c&&Object.hasOwn(c,'native_inspect');
- requireThat(c&&Object.keys(c).sort().join()===(native?'bundle_file,native_inspect,scope,state_file':'bundle_file,publisher_database,scheduler_database,scope,state_file'),'Exact trusted operator configuration required');
- const inputs=native?[c.bundle_file]:[c.bundle_file,c.publisher_database,c.scheduler_database];
+ const fenced=c&&Object.hasOwn(c,'publisher_fence_config_file');
+ requireThat(!t4Direct||fenced,'Explicit T4 direct mode requires the designated fenced installation');
+ requireThat(!fenced||native&&!initialize&&!install,'Fenced T4 bridge requires native serve; setup remains explicit');
+ requireThat(!fenced||t4Direct||process.argv[3]==='--serve-managed-proxy','Fenced T4 bridge requires an explicit approved transport mode');
+ requireThat(c&&Object.keys(c).sort().join()===(native?(fenced?'bundle_file,native_inspect,publisher_fence_config_file,scope,state_file':'bundle_file,native_inspect,scope,state_file'):'bundle_file,publisher_database,scheduler_database,scope,state_file'),'Exact trusted operator configuration required');
+ const inputs=native?[c.bundle_file,...(fenced?[c.publisher_fence_config_file]:[])]:[c.bundle_file,c.publisher_database,c.scheduler_database];
  requireThat([c.state_file,...inputs].every(p=>typeof p==='string'&&isAbsolute(p)),'Pinned absolute paths required');
  requireThat(new Set([c.state_file,...inputs]).size===inputs.length+1,'Producer journal and original ledgers must be separate files');
  producerScope(c.scope);if(native)producerInspectScope(c.native_inspect);
@@ -37,12 +42,17 @@ try{
   emit({type:'initialized',protocol:'producer_upload_v1',write_allowed:false});
  }else{
   const unchanged=await verifyProducerJournal(c.state_file,c.scope,native?c.native_inspect:null);
+  requireThat(!unchanged.admissionPolicy||fenced&&unchanged.admissionPolicy.config_file===c.publisher_fence_config_file,'Installed T4 admission mode cannot be removed or retargeted');
+  requireThat(!fenced||unchanged.admissionPolicy,'Explicit T4 admission policy must be installed first');
+  requireThat(!t4Direct||unchanged.transportPolicy?.transport==='t4_direct_tls_v1','Explicit persisted T4 TLS transport approval required');
+  requireThat(!unchanged.transportPolicy||t4Direct,'Installed T4 transport mode cannot change silently');
+  if(fenced)await verifyAdmissionStartup(c.publisher_fence_config_file,c,unchanged.admissionPolicy);
   // Enabling recovery is explicit and offline, never an implicit serve-time
   // migration. Bind the policy to the actual journal and inherited lock inodes.
   let installation=null;
   if(install||unchanged.restartPolicy){
    requireThat(native,'Restart recovery requires native authenticated inspection');
-   requireThat(install||process.argv[3]==='--serve-managed-proxy','Installed restart recovery requires managed proxy mode');
+   requireThat(install||process.argv[3]==='--serve-managed-proxy'||t4Direct&&unchanged.transportPolicy,'Installed restart recovery requires its approved transport mode');
    const lock=await requireOriginalRunnerLock(c.state_file),info=await lstat(c.state_file,{bigint:true});
    installation={journal_device:String(info.dev),journal_inode:String(info.ino),...lock};
    if(unchanged.restartPolicy)for(const [key,value] of Object.entries(installation))requireThat(unchanged.restartPolicy[key]===value,'Original restart policy installation changed');
@@ -65,12 +75,14 @@ try{
   state=new ProducerUploadState(c.state_file,c.scope);
   const inspect=native?new ProducerInspect(state,c.native_inspect):null;
   const ready=await state.prepare(bytes);
-  if(state.get(ready.request_id).detail.recovery_id)producerCurlEnvironment('managed_proxy');
+  if(t4Direct)requireThat(!state.get(ready.request_id).detail.recovery_id,'Manual legacy recovery cannot move to T4 direct transport');
+  else if(state.get(ready.request_id).detail.recovery_id)producerCurlEnvironment('managed_proxy');
  lines=createInterface({input:process.stdin,crlfDelay:Infinity});const iterator=lines[Symbol.asyncIterator]();
  async function read(){const r=await iterator.next();requireThat(!r.done&&Buffer.byteLength(r.value)<=12*1024*1024,'Bounded trusted bridge input required');return JSON.parse(r.value);}
  const callTool=async(_tool,_args,action)=>{emit(action);const r=await read();requireThat(r.type==='native_result'&&r.operation_id===action.operation_id&&Object.hasOwn(r,'result'),'Original native result required');return r.result;};
  const adapter=new ProducerUploadAdapter(state,{
   callTool,
+  ...(fenced?{nextAction:(id,makeAction)=>withCompletionAdmission(c.publisher_fence_config_file,c,state,id,makeAction)}:{}),
   upload:args=>uploadProducerBytes(args,{transport:args.transport})
  },{transport:process.argv[3]==='--serve-managed-proxy'?'managed_proxy':'direct',restart:unchanged.restartPolicy?{started_at:Date.now(),requireLock:requireInstallation}:null});
  emit({type:'ready',protocol:'producer_upload_v1',...ready});
@@ -78,7 +90,7 @@ try{
   const cmd=await read();
   if(cmd.type==='close'&&Object.keys(cmd).length===1)break;
   if(cmd.type==='authorize_ticket_recovery'&&Object.keys(cmd).sort().join()==='authorization,type'){
-   requireThat(native,'Recovery requires native authenticated inspection');producerCurlEnvironment('managed_proxy');await requireOriginalRunnerLock(c.state_file);
+   requireThat(native&&!t4Direct,'Manual legacy recovery is unavailable in T4 direct mode');producerCurlEnvironment('managed_proxy');await requireOriginalRunnerLock(c.state_file);
    emit(state.authorizeTicketRecovery(ready.request_id,cmd.authorization));continue;
   }
   if(cmd.type==='restore_ticket'&&Object.keys(cmd).sort().join()==='result,type'){adapter.restoreTicket(ready.request_id,cmd.result);emit({type:'ticket_restored',request_id:ready.request_id});continue;}

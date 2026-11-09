@@ -32,6 +32,13 @@ INTAKE_SCHEMA = {
     'publisher_inbox_request': 'CREATE INDEX publisher_inbox_request ON publisher_inbox(request_id)',
 }
 
+PRODUCER_FENCE_SCHEMA = {
+    'producer_quarantined_dates': 'CREATE TABLE producer_quarantined_dates(report_date TEXT PRIMARY KEY,evidence_reference TEXT NOT NULL)',
+    'producer_admission_fence': 'CREATE TABLE producer_admission_fence(id INTEGER PRIMARY KEY CHECK(id=1),generation TEXT NOT NULL,activation_ts TEXT NOT NULL,producer_scope_sha256 TEXT NOT NULL,installation_json TEXT NOT NULL,migration_reference TEXT NOT NULL)',
+    'producer_admission_grants': 'CREATE TABLE producer_admission_grants(request_id TEXT PRIMARY KEY,report_date TEXT UNIQUE NOT NULL,hash TEXT NOT NULL,file_id TEXT UNIQUE NOT NULL,generation TEXT NOT NULL,operation_id TEXT UNIQUE NOT NULL,registered_at INTEGER NOT NULL,source_ts TEXT UNIQUE)',
+}
+TABLES.update(PRODUCER_FENCE_SCHEMA)
+
 
 # Authorized pre-publication corrections retain the complete original payload.
 # This historical evidence is not an unresolved live job and is never migrated.
@@ -222,6 +229,41 @@ def archive_files(raw, commit):
     return files
 
 
+def producer_fence_snapshot(database):
+    objects = database.execute("SELECT type,name,sql FROM sqlite_master WHERE tbl_name IN ('producer_admission_fence','producer_admission_grants','producer_quarantined_dates') ORDER BY name").fetchall()
+    if not objects:
+        return None
+    expected = {('table', name, sql) for name, sql in PRODUCER_FENCE_SCHEMA.items()}
+    expected |= {('index', 'sqlite_autoindex_producer_quarantined_dates_1', None)}
+    expected |= {('index', 'sqlite_autoindex_producer_admission_grants_' + str(i), None) for i in range(1, 6)}
+    if set(objects) != expected:
+        raise ValueError('unsupported_producer_fence_schema')
+    rows = database.execute('SELECT id,generation,activation_ts,producer_scope_sha256,installation_json,migration_reference FROM producer_admission_fence').fetchall()
+    if len(rows) != 1 or rows[0][0] != 1:
+        raise ValueError('incomplete_producer_fence')
+    _, generation, activation, scope, installation, reference = rows[0]
+    identity = json.loads(installation)
+    if (not re.fullmatch(r'[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}', generation)
+            or not re.fullmatch(r'\d{10}\.\d{6}', activation) or not re.fullmatch(r'[a-f0-9]{64}', scope)
+            or not isinstance(identity, dict) or set(identity) != {'journal_device', 'journal_inode', 'lock_device', 'lock_inode'}
+            or any(not isinstance(v, str) or not re.fullmatch(r'0|[1-9][0-9]{0,31}', v) for v in identity.values())
+            or not isinstance(reference, str) or not 0 < len(reference) <= 512):
+        raise ValueError('invalid_producer_fence_binding')
+    return generation, activation
+
+
+def fenced_intake_is_ineligible(database, fence, row):
+    # Match assertFencedEnvelope: a phase label cannot waive a live admission.
+    request, bundle_hash, file_id, source = row
+    prior = database.execute('SELECT hash,source_ts,detail FROM jobs WHERE id=?', (request,)).fetchone()
+    if prior:
+        original_file = json.loads(prior[2]).get('intake_file_id')
+        return not (prior[0] == bundle_hash and prior[1] == source and (not original_file or original_file == file_id))
+    grant = database.execute('SELECT generation,hash,file_id,source_ts FROM producer_admission_grants WHERE request_id=?', (request,)).fetchone()
+    return not (grant and grant[0] == fence[0] and source >= fence[1] and grant[1] == bundle_hash
+                and grant[2] == file_id and (not grant[3] or grant[3] == source))
+
+
 def snapshot(path, settled=True):
     with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)) as database:
         database.execute("PRAGMA query_only=ON")
@@ -244,6 +286,7 @@ def snapshot(path, settled=True):
         tables = database.execute("SELECT name,sql FROM sqlite_master WHERE type='table' ORDER BY name").fetchall()
         if not {"scope", "jobs"} <= {row[0] for row in tables} <= TABLES:
             raise ValueError("unsupported_ledger_schema")
+        fence = producer_fence_snapshot(database)
         replacement = database.execute("SELECT type,name,sql FROM sqlite_master WHERE tbl_name='job_replacement_audit'").fetchall()
         if replacement and set(replacement) != {
                 ("table", "job_replacement_audit", JOB_REPLACEMENT_SCHEMA),
@@ -280,7 +323,13 @@ def snapshot(path, settled=True):
             result.append([name, sql, [[{"base64": base64.b64encode(value).decode()} if isinstance(value, bytes) else value
                                       for value in row] for row in rows]])
         if settled:
+            if intake:
+                pending = database.execute("SELECT request_id,hash,file_id,source_ts,phase FROM publisher_inbox WHERE phase!='admitted'").fetchall()
+                if any(row[4] != 'fenced' or not fence or not fenced_intake_is_ineligible(database, fence, row[:4]) for row in pending):
+                    raise Deferred('in_flight_or_unknown_operation')
             for name, phase in (("publisher_inbox", "admitted"), ("jobs", "receipt_sent"), ("notices", "sender_reported"), ("notice_commands", "response_sent"), ("notice_recovery_authorizations", "consumed"), ("remote_native_runs", "complete"), ("remote_native_ops", "acknowledged"), ("scheduled_handoffs", "complete"), ("scheduled_status_replies", "sent")):
+                if name == 'publisher_inbox':
+                    continue
                 if name in {row[0] for row in tables} and database.execute("SELECT count(*) FROM " + name + " WHERE phase!=?", (phase,)).fetchone()[0]:
                     raise Deferred("in_flight_or_unknown_operation")
         return hashlib.sha256(json.dumps(result, separators=(",", ":")).encode()).hexdigest()
