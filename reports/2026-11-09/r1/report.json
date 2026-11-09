@@ -1,0 +1,190 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-11-09",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-11-09",
+  "subtitle": "缓存生命周期、访问认证与训练输入链。",
+  "articles": [
+    {
+      "id": "model-serving-gpu",
+      "title": "模型服务与 GPU 超配｜缓存访问与稀疏卸载的边界",
+      "summary": "认证、容量和任务质量分别验收，不把局部指标当平台交付收益。",
+      "sha256": "44f58b0e45c7ad0586ca24bb6eb569b667ab25c330456f37ae0b43857a1119b6"
+    },
+    {
+      "id": "hardware-status",
+      "title": "重点硬件｜H100 与 H200 分开验收",
+      "summary": "静态规格不计新闻，硬件与实现条件不能互相替换。",
+      "sha256": "fd3a283854950b2c25143e52500d15c887a74519e4068bb37ec93a28097fbdc4"
+    },
+    {
+      "id": "model-architecture-status",
+      "title": "模型与新架构｜目录更新不是架构进展",
+      "summary": "区分已核实的实质变化、已有覆盖和证据不足。",
+      "sha256": "b825eff0c5a59bc70b9c31360b5f3669cca4a53b6f7bd31e44e8b421fe7069a0"
+    },
+    {
+      "id": "embodied-training",
+      "title": "制造业具身训练｜减少 GPU 等待输入",
+      "summary": "GR00T 缩短数据准备链，但作者特定实验不构成通用倍数承诺。",
+      "sha256": "82d87ed7b0b8e7c7af0fa7404d42cc6495de3fafd1c18259e3d60f781ad5e237"
+    },
+    {
+      "id": "small-model-status",
+      "title": "前沿小模型｜按质量与可复现性筛选",
+      "summary": "没有合格新进展时保留实际检索结论，不用更新时间填数。",
+      "sha256": "940296d9f7928d46ebecefe94d261c9801e9caf844820bd9611c543a53a4669d"
+    },
+    {
+      "id": "inference-engines",
+      "title": "推理引擎每日变动｜释放之后，何时复用",
+      "summary": "vLLM 保留同权重外置 KV；SGLang 按逻辑进度延迟物理页复用。",
+      "sha256": "da6b3561ab6a56362a55bb147c3c68afd092810a11cef38bc5aeb2194b693045"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-11-09-vllm-pr-57810",
+      "event_key": "vllm-pr-57810",
+      "title": "vLLM：交还 GPU 时，可保留同权重的外置 KV",
+      "summary": "固定合入5efb24d新增reset_connector选项，将设备KV回收与连接器缓存清空解耦；默认True。保留时同步EngineCore先推进尚未完成的连接器写入，再同步设备和重置缓存，恢复同权重请求可利用外置块。合入接口与PR早期clear_connector_cache叙述不同，以固定代码为准。",
+      "source_urls": [
+        "https://api.github.com/repos/vllm-project/vllm/pulls/57810",
+        "https://api.github.com/repos/vllm-project/vllm/pulls/57810/files?per_page=100",
+        "https://raw.githubusercontent.com/vllm-project/vllm/5efb24d5420b1f28737e4e8d1b62b354ddc18069/vllm/v1/engine/core.py"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    },
+    {
+      "id": "2026-11-09-sglang-pr-48852",
+      "event_key": "sglang-pr-48852",
+      "title": "SGLang：逻辑释放与物理复用分开，避免多卡选页随时序漂移",
+      "summary": "固定合入de363613将统一延迟整理池的物理页绑定到最近未处理的已记录forward事件；逻辑ID先归还，结果按序同步后释放物理页。提前分配仅等待所需pending批次；容量按逻辑计数包含pending页，避免按本地event.query完成时序使不同TP rank选页漂移。",
+      "source_urls": [
+        "https://api.github.com/repos/sgl-project/sglang/pulls/48852",
+        "https://api.github.com/repos/sgl-project/sglang/pulls/48852/files?per_page=100",
+        "https://raw.githubusercontent.com/sgl-project/sglang/de3636131d1727b1397be98a42d58d5db95a0936/python/sglang/srt/mem_cache/kv/alloc/forward_steps.py"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    },
+    {
+      "id": "2026-11-09-groot-fast-loader-7aa0bca",
+      "event_key": "groot-fast-loader-7aa0bca",
+      "title": "GR00T：流式加载与按需解码减少训练等数据",
+      "summary": "固定提交7aa0bca的fast loader保持分片计划、样本构造与processor，改用连续episode小块加载、约一分片滚动shuffle buffer、仅解码采样所需帧与有界FFmpeg线程。给定seed取样顺序不依赖解码先后，但并非与stock逐batch等价。",
+      "source_urls": [
+        "https://raw.githubusercontent.com/NVIDIA/Isaac-GR00T/7aa0bca50f1097f8b17f5c274c98264b72a1419f/gr00t/data/dataset/fast_sharded_dataset.py",
+        "https://api.github.com/repos/NVIDIA/Isaac-GR00T/commits/7aa0bca50f10",
+        "https://raw.githubusercontent.com/NVIDIA/Isaac-GR00T/7aa0bca50f1097f8b17f5c274c98264b72a1419f/README.md",
+        "https://api.github.com/repos/NVIDIA/Isaac-GR00T/releases?per_page=5"
+      ],
+      "update_of": null,
+      "article_id": "embodied-training"
+    },
+    {
+      "id": "2026-11-09-lmcache-pr-5770",
+      "event_key": "lmcache-pr-5770",
+      "title": "LMCache：在gRPC解析前拒绝无效凭证",
+      "summary": "合入a9db748为同步和aio gRPC复用已有API key验证；拒绝路径省略protobuf反序列化，错误凭证在业务handler前失败。native模式配置密钥时拒绝启动，无key兼容无认证。该改动控制RPC准入，不承担TLS或租户对象隔离。",
+      "source_urls": [
+        "https://raw.githubusercontent.com/LMCache/LMCache/a9db748507898234ffe8a2185d512e0a3719f554/lmcache/v1/multiprocess/transport/grpc_impl/auth.py",
+        "https://api.github.com/repos/LMCache/LMCache/pulls/5770",
+        "https://api.github.com/repos/LMCache/LMCache/pulls/5770/files?per_page=100",
+        "https://api.github.com/repos/LMCache/LMCache/releases?per_page=5"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-11-09-arxiv-2611-07542-v1",
+      "event_key": "arxiv-2611-07542-v1",
+      "title": "FlashOffloading：把KV容量收益与回载等待分开核算",
+      "summary": "FlashOffloading按阶段分开KV回载：prefill一层常驻、三层缓冲轮换；decode主机保存完整KV、设备保留热点和indexer，逆索引/LIM/CopySFA减少查缺失与回载暴露时间。64K输出吞吐3787到6358 token/s的同时平均TPOT16.9到30.2ms，容量收益并非无代价。",
+      "source_urls": [
+        "https://arxiv.org/html/2611.07542v1",
+        "https://export.arxiv.org/api/query?search_query=%28all%3A%22KV+cache%22+OR+all%3A%22GPU+oversubscription%22+OR+all%3A%22model+serving%22%29+AND+submittedDate%3A%5B202611010000+TO+202611082328%5D&start=0&max_results=20&sortBy=submittedDate&sortOrder=descending",
+        "https://api.github.com/repos/vllm-project/vllm-ascend/git/trees/releases/v0.30.0?recursive=1",
+        "https://raw.githubusercontent.com/vllm-project/vllm-ascend/releases/v0.30.0/docs/source/developer_guide/Design_Documents/layerwise_and_sparse_kv_cache_offloading.md",
+        "https://raw.githubusercontent.com/vllm-project/vllm-ascend/releases/v0.30.0/docs/source/user_guide/feature_guide/layerwise_and_sparse_kv_cache_offloading.md",
+        "https://raw.githubusercontent.com/vllm-project/vllm-ascend/releases/v0.30.0/csrc/attention/fused_lightning_indexer_manage/README.md"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-11-09-hardware-coverage-20261109",
+      "event_key": "hardware-coverage-20261109",
+      "title": "重点硬件｜H100 与 H200 分开验收",
+      "summary": "H100/H200官方产品页静态覆盖；规格不计新闻，Pro5500未取得可核实精确型号资料，不映射其他型号。",
+      "source_urls": [
+        "https://www.nvidia.com/en-us/data-center/h100/",
+        "https://www.nvidia.com/en-us/data-center/h200/"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status"
+    },
+    {
+      "id": "2026-11-09-architecture-coverage-20261109",
+      "event_key": "architecture-coverage-20261109",
+      "title": "模型与新架构｜目录更新不是架构进展",
+      "summary": "GLM/DeepSeek所读官方索引未见窗口内改动；Qwen最近response template/generation tags已在11月8日报覆盖，不当作新架构；qwen.ai/blog返回CSR壳，未读取技术文章正文。",
+      "source_urls": [
+        "https://huggingface.co/api/models?author=Qwen&sort=lastModified&direction=-1&limit=10",
+        "https://huggingface.co/api/models/Qwen/Qwen3.8-27B/commits/main",
+        "https://huggingface.co/api/models?author=zai-org&sort=lastModified&direction=-1&limit=10",
+        "https://huggingface.co/api/models?author=deepseek-ai&sort=lastModified&direction=-1&limit=10"
+      ],
+      "update_of": null,
+      "article_id": "model-architecture-status"
+    },
+    {
+      "id": "2026-11-09-small-model-coverage-20261109",
+      "event_key": "small-model-coverage-20261109",
+      "title": "前沿小模型｜按质量与可复现性筛选",
+      "summary": "Smol/Gemma官方入口无可确认新模型事件；Microsoft rho更新时间对应旧checkpoint normalization/data config修正，不作新的SOTA或工厂成效声明。",
+      "source_urls": [
+        "https://huggingface.co/api/models?author=HuggingFaceTB&sort=lastModified&direction=-1&limit=10",
+        "https://huggingface.co/api/models?author=microsoft&sort=lastModified&direction=-1&limit=10",
+        "https://huggingface.co/api/models/microsoft/rho-yam-box/commits/main",
+        "https://ai.google.dev/gemma/docs"
+      ],
+      "update_of": null,
+      "article_id": "small-model-status"
+    }
+  ],
+  "images": [
+    {
+      "path": "assets/flashoffloading.png",
+      "sha256": "8fb9c70c3b8cfccddb795d24bbbded20e27246d86c31c2c4039503f04e9c20a8",
+      "alt": "依据本期原始来源绘制的原创简化机制图；非性能比例图。"
+    },
+    {
+      "path": "assets/groot-loader.png",
+      "sha256": "72e793eac1bce95cc6a9db4884c5c9e900fe8e923cd604551dd739fd89916a6a",
+      "alt": "依据本期原始来源绘制的原创简化机制图；非性能比例图。"
+    },
+    {
+      "path": "assets/lmcache-auth.png",
+      "sha256": "e33f70f2ddb5a4dba86d46f5caf70edd080655518256f7400071850e1f39fc67",
+      "alt": "依据本期原始来源绘制的原创简化机制图；非性能比例图。"
+    },
+    {
+      "path": "assets/overview.png",
+      "sha256": "fdc3158cd709599d58d2cdfb7cc01606f17755775b555e1d6186fa8be1b5d4de",
+      "alt": "本期固定六板块横版海报；与正文对应。"
+    },
+    {
+      "path": "assets/sglang-pages.png",
+      "sha256": "bbfeb58a5a1de64ddca4e24e691b9aa4475cdb197afec765af9babd572da70f3",
+      "alt": "依据本期原始来源绘制的原创简化机制图；非性能比例图。"
+    },
+    {
+      "path": "assets/vllm-sleep.png",
+      "sha256": "10deefe7c50d28baa33fd652ea38d5ec0f33a35736214d47ef91d113bcdaaa24",
+      "alt": "依据本期原始来源绘制的原创简化机制图；非性能比例图。"
+    }
+  ],
+  "poster": "assets/overview.png"
+}
