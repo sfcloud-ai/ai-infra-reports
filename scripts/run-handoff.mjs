@@ -1,3 +1,4 @@
+import {validateFenceConfig,assertFence} from './producer-admission-fence.mjs';
 import {validateScheduledConfig,advanceScheduledDelivery,advanceScheduledStatus} from "./scheduled-delivery-bridge.mjs";
 // Single bounded tick, suitable for a separately approved 120-second service timer.
 // No default config, environment token, daemon, scheduler or deployment is installed.
@@ -41,6 +42,7 @@ export function validateConfig(c){
  }
  if(c&&Object.hasOwn(c,"scheduled_delivery")){keys.push("scheduled_delivery");validateScheduledConfig(c.scheduled_delivery);}
  if(c&&Object.hasOwn(c,"durable_intake")){keys.push("durable_intake");validateIntakeConfig(c.durable_intake);}
+ if(c&&Object.hasOwn(c,'producer_fence')){keys.push('producer_fence');validateFenceConfig(c.producer_fence);requireThat(c.durable_intake&&c.scheduled_delivery,'Producer fence requires durable scheduled intake');}
  requireThat(c&&Object.keys(c).sort().join()===keys.sort().join(),"Unexpected publisher config");
  for(const [key,prefix]of [["team_id","T"],["channel_id","[CG]"],["sender_user_id","U"],["bot_user_id","U"],["bot_id","B"]])requireThat(new RegExp("^"+prefix+"[A-Z0-9]+$").test(c[key]),"Publisher identity config");
  requireThat(c.sender_user_id!==c.bot_user_id&&typeof c.ready_for_review==="boolean"&&Number.isSafeInteger(c.producer_app_id)&&c.producer_app_id>0&&Number.isSafeInteger(c.merger_app_id)&&c.merger_app_id>0&&c.producer_app_id!==c.merger_app_id,"Independent publisher identities required");
@@ -61,6 +63,7 @@ export async function prepareSlack(slack){
 // Dependencies here are supplied only by trusted runtime code, never the payload.
 export async function handoffTick(state,config,slack,io){
   const now=io.now??Date.now,errors=[];
+  assertFence(state.db,config.producer_fence);
   requireThat(config.durable_intake||!state.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='publisher_intake_scan'").get(),'Durable intake configuration cannot be removed silently');
   const capture=(stage,error,extra={})=>{if(errors.length<16)errors.push({...safeDiagnostic(error,stage),...extra});};
   const notices=config.notification_destination?new NoticeOutbox(state,notificationScope(config)):null;

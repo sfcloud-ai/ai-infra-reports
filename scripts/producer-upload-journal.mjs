@@ -7,7 +7,7 @@ import {lstat,stat,realpath,open,mkdtemp,rm} from 'node:fs/promises';
 import {dirname,join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {pipeline} from 'node:stream/promises';
-import {PRODUCER_SCHEMA,RECOVERY_SCHEMA,RESTART_SCHEMA,RESTART_RECOVERY_POLICY,producerScopeHash} from './producer-upload.mjs';
+import {PRODUCER_SCHEMA,RECOVERY_SCHEMA,RESTART_SCHEMA,ADMISSION_SCHEMA,TRANSPORT_SCHEMA,RESTART_RECOVERY_POLICY,producerScopeHash} from './producer-upload.mjs';
 import {INSPECT_SCHEMA,producerInspectScopeHash} from './producer-native-inspect.mjs';
 import {requireThat} from './report-handoff.mjs';
 function check(v,code){if(!v){const e=new Error(code);e.code=code;throw e;}}
@@ -49,7 +49,9 @@ export async function verifyProducerJournal(filename,scope,nativeConfig){
   const rows=db.prepare("SELECT type,name,sql FROM sqlite_master WHERE substr(name,1,7)!='sqlite_' ORDER BY name").all();
   const recovery=rows.some(r=>r.name==='producer_recovery_audit');
   const restart=rows.some(r=>r.name==='producer_restart_policy');
-  const schema={...expected,...(recovery?RECOVERY_SCHEMA:{}),...(restart?RESTART_SCHEMA:{})};
+  const admission=rows.some(r=>r.name==='producer_admission_policy');
+  const transport=rows.some(r=>r.name==='producer_transport_policy');
+  const schema={...expected,...(transport?TRANSPORT_SCHEMA:{}),...(admission?ADMISSION_SCHEMA:{}),...(recovery?RECOVERY_SCHEMA:{}),...(restart?RESTART_SCHEMA:{})};
   check(rows.length===Object.keys(schema).length&&rows.every(r=>r.sql===schema[r.name]),'producer_journal_schema_incompatible');
   requireThat(db.prepare('PRAGMA integrity_check').all().every(r=>r.integrity_check==='ok'),'Original journal integrity required');
   for(const [table,hash] of [['producer_scope',scopeHash],...(nativeConfig?[['producer_inspect_scope',inspectHash]]:[])]){
@@ -63,6 +65,16 @@ export async function verifyProducerJournal(filename,scope,nativeConfig){
    const policies=db.prepare('SELECT * FROM producer_restart_policy').all();
    check(!!nativeConfig&&policies.length===1&&policies[0].id===1&&policies[0].policy===RESTART_RECOVERY_POLICY&&policies[0].scope_hash===scopeHash,'producer_journal_scope_mismatch');
    assertUnchanged.restartPolicy={...policies[0]};
+  }
+  if(admission){
+   const policies=db.prepare('SELECT * FROM producer_admission_policy').all();
+   check(!!nativeConfig&&policies.length===1&&policies[0].id===1,'producer_journal_scope_mismatch');
+   assertUnchanged.admissionPolicy={...policies[0]};
+  }
+  if(transport){
+   const policies=db.prepare('SELECT * FROM producer_transport_policy').all();
+   check(admission&&policies.length===1&&policies[0].id===1&&policies[0].transport==='t4_direct_tls_v1'&&/^[A-Za-z0-9:_./-]{1,200}$/.test(policies[0].authorization_reference),'producer_journal_scope_mismatch');
+   assertUnchanged.transportPolicy={...policies[0]};
   }
   await assertUnchanged();
   return assertUnchanged;

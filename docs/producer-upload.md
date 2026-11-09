@@ -5,6 +5,10 @@ Publisher intake. It does not use the old native notice/begin/final-DM flow,
 publish to GitHub, admit scheduler requests, install services or enable an
 automation. Nothing enables it by default.
 
+For the optional host-local durable journal and admission fence, see
+[Designated T4 Producer journal](producer-t4-persistence.md). The cloud mode
+below retains its existing configuration and transport behavior.
+
 ## Configuration and execution
 
 Use Node 24, the repository's pinned dependencies, trusted curl and one

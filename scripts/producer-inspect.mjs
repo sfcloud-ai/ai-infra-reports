@@ -1,3 +1,4 @@
+import {assertFence,isFencedOut} from './producer-admission-fence.mjs';
 // Read-only, authenticated control replies. A complete snapshot is not a claim,
 // reservation, or permission to repeat an uncertain upload or delivery.
 import {decodeBundle,requireThat,REQUEST,reportDate,canonicalRequestDate,MAX_BUNDLE} from './report-handoff.mjs';
@@ -16,11 +17,13 @@ export async function inspectPublisherDay(state,config,command,sourceTs,{now=()=
  // At most one bounded bundle and its decoded files are live at a time.
  db.exec('BEGIN');
  try{
+  assertFence(db,config.producer_fence);
+  if(config.producer_fence)requireThat(!db.prepare('SELECT 1 FROM producer_quarantined_dates WHERE report_date=?').get(command.report_date),'Original unresolved date is quarantined');
   const scope=db.prepare('SELECT value FROM scope WHERE id=1').get()?.value;
   requireThat(scope===scopeDigest(handoffScope(config)),'Publisher inspect scope mismatch');
   const rows=db.prepare('SELECT id,hash,source_ts,length(bytes) AS bundle_size FROM jobs ORDER BY source_ts LIMIT 1001').all();
   requireThat(rows.length<=1000,'Publisher inspect capacity exceeded');
-  const inbox=exists(db,'publisher_inbox')?db.prepare("SELECT request_id,hash,source_ts,phase FROM publisher_inbox WHERE phase!='admitted' LIMIT 10001").all():[];
+  const inbox=exists(db,'publisher_inbox')?db.prepare("SELECT request_id,hash,file_id,source_ts,phase FROM publisher_inbox WHERE phase!='admitted' LIMIT 10001").all():[];
   requireThat(inbox.length<=10000,'Publisher intake snapshot too large');
   const scan=exists(db,'publisher_intake_scan')?db.prepare('SELECT watermark FROM publisher_intake_scan WHERE id=1').get():null;
   const day=[];let target=null;
@@ -46,6 +49,10 @@ export async function inspectPublisherDay(state,config,command,sourceTs,{now=()=
    const boundary=config.durable_intake?.not_before,dayStart=Date.parse(command.report_date+'T00:00:00+08:00')/1000;
    requireThat(TS.test(boundary??'')&&Number(boundary)<=dayStart&&scan&&scan.watermark>=sourceTs,'Publisher scan does not prove date absence');
    for(const row of inbox){
+    // Retained fenced envelopes are provably ineligible under this installed
+    // server gate, not claimed to be unexecuted Slack operations. Revalidate the
+    // gate each time; a removed/changed fence or new conflicting grant blocks.
+    if(row.phase==='fenced'){requireThat(isFencedOut(state,config.producer_fence,row),'Quarantined envelope is no longer fenced');if(row.source_ts>=config.producer_fence.activation_ts)continue;}
     const date=canonicalRequestDate(row.request_id);
     requireThat(date&&date!==command.report_date&&row.request_id!==command.request_id,'Publisher unresolved intake may occupy date');
    }

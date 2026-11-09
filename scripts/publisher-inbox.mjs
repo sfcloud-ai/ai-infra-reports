@@ -1,3 +1,4 @@
+import {assertFence,assertFencedEnvelope,consumeFencedEnvelope} from './producer-admission-fence.mjs';
 // Durable discovery is separate from publication and delivery. A scan records
 // authenticated envelopes before advancing its watermark; file reads can then
 // retry without expiring or blocking discovery of later reports.
@@ -21,6 +22,7 @@ export function intakeStatus(db,requestId){
 export class PublisherInbox{
  constructor(state,config){
   this.state=state;this.db=state.db;this.config=config;
+  assertFence(this.db,config.producer_fence);
   const boundary=validateIntakeConfig(config.durable_intake).not_before;
   installIntakeTables(this.db);
   const scope=scopeDigest({not_before:boundary,team_id:config.team_id,channel_id:config.channel_id,sender_user_id:config.sender_user_id,sender_bot_id:config.sender_bot_id??null,sender_app_id:config.sender_app_id??null,sender_user_app_id:config.sender_user_app_id??null,sender_attribution_text:config.sender_attribution_text??null});
@@ -89,6 +91,7 @@ export class PublisherInbox{
   this.db.prepare('UPDATE publisher_inbox SET last_attempt=? WHERE source_ts=?').run(now,row.source_ts);
   const event={source_ts:row.source_ts,request_id:row.request_id,file_id:row.file_id,hash:row.hash};
   try{
+   assertFencedEnvelope(this.state,this.config.producer_fence,event);
    const prior=this.state.metadata(row.request_id);
    if(prior){
     requireThat(prior.source_ts===row.source_ts&&prior.hash===row.hash,'Original admitted request conflicts with intake');
@@ -98,10 +101,15 @@ export class PublisherInbox{
     requireThat(reread&&Object.keys(event).every(key=>reread[key]===event[key]),'Original publish message changed');
     const bytes=await slack.download(event),bundle=await decodeBundle(bytes);
     requireThat(bundle.data.request_id===row.request_id&&bundle.hash===row.hash,'Original publish bundle mismatch');
+    consumeFencedEnvelope(this.state,this.config.producer_fence,event,bundle.report.date);
     this.state.admit(event,bytes);
    }
    this.db.prepare("UPDATE publisher_inbox SET phase='admitted',next_at=0,diagnostic=NULL WHERE source_ts=?").run(row.source_ts);
   }catch(error){
+   if(error.code==='producer_upload_fenced'){
+    this.db.prepare("UPDATE publisher_inbox SET phase='fenced',diagnostic=? WHERE source_ts=? AND phase='pending'").run(JSON.stringify({stage:'producer_fence',code:'producer_upload_fenced',outcome:'not_admitted'}),row.source_ts);
+    return {request_id:row.request_id,source_ts:row.source_ts,code:'producer_upload_fenced'};
+   }
    const attempts=Math.min(row.attempts+1,1000000),diagnostic=safeDiagnostic(error,'intake_file','not_started');
    this.db.prepare('UPDATE publisher_inbox SET attempts=?,next_at=?,diagnostic=? WHERE source_ts=?').run(attempts,Math.max(now+recoveryDelay(attempts),diagnostic.retry_at??0),JSON.stringify(diagnostic),row.source_ts);
    return {request_id:row.request_id,source_ts:row.source_ts,...diagnostic};

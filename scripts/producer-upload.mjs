@@ -89,12 +89,14 @@ export const RESTART_SCHEMA=Object.freeze({
  producer_restart_run_delete:"CREATE TRIGGER producer_restart_run_delete BEFORE DELETE ON producer_runs WHEN EXISTS(SELECT 1 FROM producer_restart_audit WHERE run_id=OLD.id) BEGIN SELECT RAISE(ABORT,'Original restart run immutable'); END"
 });
 export const producerScopeHash=scope=>hash({schema:1,scope:producerScope(scope)});
+export const TRANSPORT_SCHEMA={producer_transport_policy:'CREATE TABLE producer_transport_policy(id INTEGER PRIMARY KEY CHECK(id=1),transport TEXT NOT NULL,authorization_reference TEXT NOT NULL)'};
+export const ADMISSION_SCHEMA={producer_admission_policy:'CREATE TABLE producer_admission_policy(id INTEGER PRIMARY KEY CHECK(id=1),generation TEXT NOT NULL,config_file TEXT NOT NULL,installation_json TEXT NOT NULL)'};
 export class ProducerUploadState{
  constructor(filename,scope,{now=Date.now}={}){
   this.scope=producerScope(scope);this.now=now;this.db=new DatabaseSync(filename);
   try{
    const tables=this.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND substr(name,1,7)!='sqlite_'").all();
-   requireThat(tables.every(t=>['producer_scope','producer_runs','producer_ops','producer_inspect_scope','producer_inspect_queries','producer_recovery_audit','producer_restart_policy','producer_restart_audit'].includes(t.name)),'Use a dedicated Producer journal, never a Publisher, scheduler or native journal');
+   requireThat(tables.every(t=>['producer_scope','producer_runs','producer_ops','producer_inspect_scope','producer_inspect_queries','producer_recovery_audit','producer_restart_policy','producer_restart_audit','producer_admission_policy','producer_transport_policy'].includes(t.name)),'Use a dedicated Producer journal, never a Publisher, scheduler or native journal');
    this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;'+Object.values(PRODUCER_SCHEMA).map(sql=>sql.replace('CREATE TABLE ','CREATE TABLE IF NOT EXISTS ')).join(';'));
    const h=producerScopeHash(this.scope);this.db.prepare('INSERT OR IGNORE INTO producer_scope VALUES(1,?)').run(h);
    requireThat(this.db.prepare('SELECT hash FROM producer_scope WHERE id=1').get().hash===h,'Producer scope changed; use the original journal');
@@ -300,7 +302,10 @@ export class ProducerUploadAdapter{
    const recovered=this.state.recoverAbandonedTicket(id,{...this.startupTickets.get(id),started_at:this.restart.started_at});
    if(recovered){if(recovered.type==='ticket_abandoned')this.startupTickets.delete(id);return recovered;}
   }
-  const action=this.state.next(id,{postAvailable:this.tickets.has(id),transport});
+  const makeAction=()=>this.state.next(id,{postAvailable:this.tickets.has(id),transport});
+  // A local admission gate acquires its lock before committing a dispatch.
+  // Failure before makeAction leaves no intent; never synthesize/replay writes.
+  const action=this.io.nextAction?await this.io.nextAction(id,makeAction):makeAction();
   if(action.type!=='write')return action;
   try{
    let result;
