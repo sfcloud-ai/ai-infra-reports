@@ -42,6 +42,7 @@ export function installFence(db,c,migrationReference,blockedDates){
 // state, under its lock, not a caller-supplied JSON or a snapshot used to dispatch.
 export function registerCompletion(db,c,producer,id,now){
  assertFence(db,c);
+ requireThat(!db.prepare("SELECT 1 FROM sqlite_master WHERE name='slack_submission_policy'").get(),'Local completion is disabled by the installed Slack staging policy');
  requireThat(Number.isSafeInteger(now)&&now>=Number(c.activation_ts)*1000,'Post-cutover registration clock required');
  requireThat(producer instanceof ProducerUploadState,'Verified live Producer state required');
  requireThat(producerScopeHash(producer.scope)===c.producer_scope_sha256,'Designated Producer scope required');
