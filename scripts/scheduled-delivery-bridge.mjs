@@ -8,6 +8,7 @@ import {validateCheckerConfig} from './notice-checker.mjs';
 import {safeDiagnostic,isSlackWriteUnexecuted} from './handoff-recovery.mjs';
 import {producerInspection,inspectCommand,INSPECT_PREFIX} from './producer-inspect.mjs';
 import {intakeStatus} from './publisher-inbox.mjs';
+import {submissionStatus} from './slack-submission.mjs';
 export function statusImages(value){
  if(value===undefined)return [];
  requireThat(Array.isArray(value)&&value.length<=32,'Bounded image receipts required');
@@ -140,6 +141,11 @@ export async function replyScheduledStatus(state,config,event,slack,query=queryS
    const intake=intakeStatus(db,requestId);
    result.publisher_phase=job?.phase??(intake?'intake_pending':'not_found');
    if(intake&&!job)result.publisher_intake=intake;
+   if(config.slack_submission){
+    const submission=submissionStatus(db,requestId);
+    result.publisher_submission=submission;
+    if(!job&&(submission?.bundle||submission?.pending.length))result.publisher_phase=submission.bundle?'staged':'staging_pending';
+   }
  if(job){
   result.publisher_bundle_sha256=job.hash;
   result.publisher_source_ts=job.source_ts;

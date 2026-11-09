@@ -1,4 +1,5 @@
 import {validateFenceConfig,assertFence} from './producer-admission-fence.mjs';
+import {validateSubmissionConfig,assertSubmission,advanceSubmission,pendingSubmissions} from './slack-submission.mjs';
 import {validateScheduledConfig,advanceScheduledDelivery,advanceScheduledStatus} from "./scheduled-delivery-bridge.mjs";
 // Single bounded tick, suitable for a separately approved 120-second service timer.
 // No default config, environment token, daemon, scheduler or deployment is installed.
@@ -43,6 +44,7 @@ export function validateConfig(c){
  if(c&&Object.hasOwn(c,"scheduled_delivery")){keys.push("scheduled_delivery");validateScheduledConfig(c.scheduled_delivery);}
  if(c&&Object.hasOwn(c,"durable_intake")){keys.push("durable_intake");validateIntakeConfig(c.durable_intake);}
  if(c&&Object.hasOwn(c,'producer_fence')){keys.push('producer_fence');validateFenceConfig(c.producer_fence);requireThat(c.durable_intake&&c.scheduled_delivery,'Producer fence requires durable scheduled intake');}
+ if(c&&Object.hasOwn(c,'slack_submission')){keys.push('slack_submission');validateSubmissionConfig(c.slack_submission);requireThat(c.producer_fence&&c.durable_intake&&c.scheduled_delivery&&c.sender_user_app_id,'Slack staging requires fenced durable native intake');}
  requireThat(c&&Object.keys(c).sort().join()===keys.sort().join(),"Unexpected publisher config");
  for(const [key,prefix]of [["team_id","T"],["channel_id","[CG]"],["sender_user_id","U"],["bot_user_id","U"],["bot_id","B"]])requireThat(new RegExp("^"+prefix+"[A-Z0-9]+$").test(c[key]),"Publisher identity config");
  requireThat(c.sender_user_id!==c.bot_user_id&&typeof c.ready_for_review==="boolean"&&Number.isSafeInteger(c.producer_app_id)&&c.producer_app_id>0&&Number.isSafeInteger(c.merger_app_id)&&c.merger_app_id>0&&c.producer_app_id!==c.merger_app_id,"Independent publisher identities required");
@@ -64,6 +66,7 @@ export async function prepareSlack(slack){
 export async function handoffTick(state,config,slack,io){
   const now=io.now??Date.now,errors=[];
   assertFence(state.db,config.producer_fence);
+  assertSubmission(state.db,config);
   requireThat(config.durable_intake||!state.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='publisher_intake_scan'").get(),'Durable intake configuration cannot be removed silently');
   const capture=(stage,error,extra={})=>{if(errors.length<16)errors.push({...safeDiagnostic(error,stage),...extra});};
   const notices=config.notification_destination?new NoticeOutbox(state,notificationScope(config)):null;
@@ -91,6 +94,7 @@ export async function handoffTick(state,config,slack,io){
    }
    // Ignore other protocols; invalid matching commands fail closed without writes.
    if(inbox&&message?.text?.startsWith('!ai-report publish '))continue;
+   if(inbox&&config.slack_submission&&(message?.text?.startsWith('!ai-report stage ')||message?.text?.startsWith('!ai-report submit ')))continue;
    const event=acceptMessage(message,config);if(!event)continue;
    const prior=state.get(event.request_id);
    if(prior){requireThat(prior.hash===event.hash&&prior.source_ts===event.source_ts,"Duplicate request conflict");continue;}
@@ -174,7 +178,10 @@ export async function handoffTick(state,config,slack,io){
   if(inbox){
    try{const error=await inbox.admitOne(slack,now());if(error&&errors.length<16)errors.push(error);}catch(error){capture('intake_file',error);}
   }
-  const blocked_intake=inbox?.pending()??[];
+  if(config.slack_submission){
+   try{const error=await advanceSubmission(state,config,slack,io.scheduleQuery,now());if(error&&errors.length<16)errors.push(error);}catch(error){capture('slack_submission',error);}
+  }
+  const blocked_intake=[...(inbox?.pending()??[]),...(config.slack_submission?pendingSubmissions(state.db):[])];
   const pending=state.pendingMetadata();
   // A quiet/backoff tick must not erase a durable failure from service health.
   // Keep the report degraded until the original request finishes or is reconciled.

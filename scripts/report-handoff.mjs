@@ -113,7 +113,7 @@ export function acceptQueuedPublish(message,config,window,now=Date.now()){
  return acceptDataCommand(message,config,"!ai-report publish ",/^!ai-report publish ([a-z0-9][a-z0-9-]{7,79}) ([a-f0-9]{64})$/,now,window);
 }
 // Same authenticated channel and sender contract, but deliberately no file.
-function acceptReadCommand(message,config,prefix,pattern,now,window){
+export function acceptReadCommand(message,config,prefix,pattern,now,window){
  if(!message?.text?.startsWith(prefix))return null;
  const appSender=config.sender_bot_id!==undefined||config.sender_app_id!==undefined,userApp=config.sender_user_app_id!==undefined;
  const identity=message.user===config.sender_user_id&&(userApp?!appSender&&!message.bot_id&&message.app_id===config.sender_user_app_id:appSender?message.bot_id===config.sender_bot_id&&message.app_id===config.sender_app_id:!message.bot_id&&!message.app_id);

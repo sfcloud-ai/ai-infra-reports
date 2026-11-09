@@ -10,7 +10,7 @@ export function inspectCommand(value){
  return value;
 }
 const exists=(db,name)=>!!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name);
-export async function inspectPublisherDay(state,config,command,sourceTs,{now=()=>performance.now()}={}){
+export async function inspectPublisherDay(state,config,command,sourceTs,{now=()=>performance.now(),stagedRequest=null}={}){
  inspectCommand(command);requireThat(TS.test(sourceTs),'Inspect source invalid');
  const db=state.db,started=now(),budget=()=>{const elapsed=now()-started;requireThat(Number.isFinite(elapsed)&&elapsed>=0&&elapsed<=45000,'Publisher inspection read budget exceeded');};
  // Keep one read snapshot, but never materialize the historical BLOB set.
@@ -19,6 +19,10 @@ export async function inspectPublisherDay(state,config,command,sourceTs,{now=()=
  try{
   assertFence(db,config.producer_fence);
   if(config.producer_fence)requireThat(!db.prepare('SELECT 1 FROM producer_quarantined_dates WHERE report_date=?').get(command.report_date),'Original unresolved date is quarantined');
+  if(exists(db,'slack_staged_bundles')){
+   const staged=db.prepare('SELECT request_id,hash,phase,source_ts FROM slack_staged_bundles WHERE report_date=? OR request_id=?').all(command.report_date,command.request_id);
+   requireThat(staged.every(s=>s.request_id===command.request_id&&s.hash===command.bundle_sha256&&(s.request_id===stagedRequest||s.phase==='admitted'&&db.prepare('SELECT 1 FROM jobs WHERE id=? AND hash=? AND source_ts=?').get(s.request_id,s.hash,s.source_ts))),'Date reserved by original Slack staging');
+  }
   const scope=db.prepare('SELECT value FROM scope WHERE id=1').get()?.value;
   requireThat(scope===scopeDigest(handoffScope(config)),'Publisher inspect scope mismatch');
   const rows=db.prepare('SELECT id,hash,source_ts,length(bytes) AS bundle_size FROM jobs ORDER BY source_ts LIMIT 1001').all();
@@ -60,7 +64,7 @@ export async function inspectPublisherDay(state,config,command,sourceTs,{now=()=
   budget();return {publisher_scope_sha256:scope,publisher_day:day,publisher:target};
  }finally{db.exec('ROLLBACK');}
 }
-export async function producerInspection(state,config,command,sourceTs,query,now=Date.now){
+export async function producerInspection(state,config,command,sourceTs,query,now=Date.now,localOptions){
  inspectCommand(command);
  const remote=await query(config.scheduled_delivery,{action:'inspect',request_id:command.request_id,report_date:command.report_date});
  requireThat(remote&&Object.keys(remote).sort().join()==='complete,observed_at,read_context,scheduler,scheduler_day_claim'&&remote.complete===true&&Object.keys(remote.read_context??{}).join()==='scheduler_scope_sha256'&&HASH.test(remote.read_context.scheduler_scope_sha256),'Scheduler inspect incomplete');
@@ -72,7 +76,7 @@ export async function producerInspection(state,config,command,sourceTs,query,now
   requireThat(claim&&Object.keys(claim).sort().join()==='bundle_sha256,report_commit,report_date,request_id'&&Object.entries(expected).every(([k,v])=>claim[k]===v&&status[k]===v)&&SHA.test(claim.report_commit)&&claim.report_commit===status.report_commit,'Scheduler inspect binding differs');
   requireThat(['queued','sending','sent','failed','unknown','partial'].includes(status.status)&&typeof status.phase==='string'&&/^[a-z_]{1,40}$/.test(status.phase)&&Number.isSafeInteger(status.parts_total)&&status.parts_total>0&&Number.isSafeInteger(status.parts_sent)&&status.parts_sent>=0&&status.parts_sent<=status.parts_total,'Scheduler inspect status invalid');
  }
- const local=await inspectPublisherDay(state,config,command,sourceTs);
+ const local=await inspectPublisherDay(state,config,command,sourceTs,localOptions);
  if(status!==null)requireThat(local.publisher&&local.publisher.report_commit===status.report_commit,'Scheduler and publisher binding differs');
  // The wire whitelist must never grow merely because an adapter adds fields.
  const safe=status===null?null:Object.fromEntries(['request_id','report_date','report_commit','bundle_sha256','status','phase','parts_sent','parts_total','next_attempt_at','attempts'].filter(k=>Object.hasOwn(status,k)).map(k=>[k,status[k]]));

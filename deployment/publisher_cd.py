@@ -38,6 +38,12 @@ PRODUCER_FENCE_SCHEMA = {
     'producer_admission_grants': 'CREATE TABLE producer_admission_grants(request_id TEXT PRIMARY KEY,report_date TEXT UNIQUE NOT NULL,hash TEXT NOT NULL,file_id TEXT UNIQUE NOT NULL,generation TEXT NOT NULL,operation_id TEXT UNIQUE NOT NULL,registered_at INTEGER NOT NULL,source_ts TEXT UNIQUE)',
 }
 TABLES.update(PRODUCER_FENCE_SCHEMA)
+SUBMISSION_SCHEMA = {
+    'slack_submission_policy': 'CREATE TABLE slack_submission_policy(id INTEGER PRIMARY KEY CHECK(id=1),binding TEXT NOT NULL,evidence_reference TEXT NOT NULL)',
+    'slack_submission_events': "CREATE TABLE slack_submission_events(source_ts TEXT PRIMARY KEY,kind TEXT NOT NULL,request_id TEXT NOT NULL,hash TEXT NOT NULL,file_id TEXT,target_ts TEXT,phase TEXT NOT NULL DEFAULT 'pending',attempts INTEGER NOT NULL DEFAULT 0,next_at INTEGER NOT NULL DEFAULT 0,last_attempt INTEGER NOT NULL DEFAULT 0,diagnostic TEXT)",
+    'slack_staged_bundles': "CREATE TABLE slack_staged_bundles(request_id TEXT PRIMARY KEY,report_date TEXT UNIQUE NOT NULL,hash TEXT NOT NULL,source_ts TEXT UNIQUE NOT NULL,file_id TEXT NOT NULL,bytes BLOB NOT NULL,phase TEXT NOT NULL DEFAULT 'staged',submit_ts TEXT)"
+}
+TABLES.update(SUBMISSION_SCHEMA)
 
 
 # Authorized pre-publication corrections retain the complete original payload.
@@ -287,6 +293,25 @@ def snapshot(path, settled=True):
         if not {"scope", "jobs"} <= {row[0] for row in tables} <= TABLES:
             raise ValueError("unsupported_ledger_schema")
         fence = producer_fence_snapshot(database)
+        submissions = database.execute("SELECT type,name,sql FROM sqlite_master WHERE tbl_name IN ('slack_submission_policy','slack_submission_events','slack_staged_bundles') ORDER BY name").fetchall()
+        if submissions:
+            expected = {('table', name, sql) for name, sql in SUBMISSION_SCHEMA.items()} | {
+                ('index', 'sqlite_autoindex_slack_submission_events_1', None),
+                *{('index', 'sqlite_autoindex_slack_staged_bundles_' + str(n), None) for n in range(1, 4)}}
+            if set(submissions) != expected or not fence:
+                raise ValueError('unsupported_slack_submission_schema')
+            policies = database.execute('SELECT id,binding,evidence_reference FROM slack_submission_policy').fetchall()
+            if len(policies) != 1 or policies[0][0] != 1 or not policies[0][2]:
+                raise ValueError('incomplete_slack_submission_policy')
+            policy = json.loads(policies[0][1])
+            if (set(policy) != {'activation_ts', 'first_report_date', 'generation', 'publisher_scope_sha256', 'fence_generation'}
+                    or not re.fullmatch(r'[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}', policy['generation'])
+                    or not re.fullmatch(r'\d{10}\.\d{6}', policy['activation_ts']) or policy['activation_ts'] < fence[1]
+                    or datetime.date.fromisoformat(policy['first_report_date']).isoformat() != policy['first_report_date']
+                    or policy['fence_generation'] != fence[0]
+                    or policy['publisher_scope_sha256'] != database.execute('SELECT value FROM scope WHERE id=1').fetchone()[0]
+                    or database.execute('SELECT 1 FROM producer_admission_grants').fetchone()):
+                raise ValueError('invalid_slack_submission_policy')
         replacement = database.execute("SELECT type,name,sql FROM sqlite_master WHERE tbl_name='job_replacement_audit'").fetchall()
         if replacement and set(replacement) != {
                 ("table", "job_replacement_audit", JOB_REPLACEMENT_SCHEMA),
@@ -323,6 +348,9 @@ def snapshot(path, settled=True):
             result.append([name, sql, [[{"base64": base64.b64encode(value).decode()} if isinstance(value, bytes) else value
                                       for value in row] for row in rows]])
         if settled:
+            if submissions and (database.execute("SELECT 1 FROM slack_submission_events WHERE phase!='done'").fetchone()
+                                or database.execute("SELECT 1 FROM slack_staged_bundles WHERE phase!='admitted'").fetchone()):
+                raise Deferred('unfinished_slack_submission')
             if intake:
                 pending = database.execute("SELECT request_id,hash,file_id,source_ts,phase FROM publisher_inbox WHERE phase!='admitted'").fetchall()
                 if any(row[4] != 'fenced' or not fence or not fenced_intake_is_ineligible(database, fence, row[:4]) for row in pending):

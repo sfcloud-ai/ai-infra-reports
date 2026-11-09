@@ -12,6 +12,7 @@ import {ProducerUploadState,producerScopeHash} from '../scripts/producer-upload.
 import {ProducerInspect} from '../scripts/producer-native-inspect.mjs';
 import {HandoffState,handoffScope,scopeDigest} from '../scripts/handoff-state.mjs';
 import {installFence} from '../scripts/producer-admission-fence.mjs';
+import {installSubmission} from '../scripts/slack-submission.mjs';
 import {installProducerAdmissionPolicy,installT4DirectTransportPolicy} from '../scripts/producer-local-admission.mjs';
 import {encodeBundle} from '../scripts/report-handoff.mjs';
 import {digest} from '../scripts/archive.mjs';
@@ -105,4 +106,32 @@ test('admission-only installation cannot use legacy serve to bypass separate dir
    assert.equal(result.status,1,result.stdout+result.stderr);assert(!result.stdout.includes('"type":"ready"'));assert.equal(digest(await readFile(f.file)),before);
   }
  }finally{await rm(f.dir,{recursive:true,force:true});}
+});
+
+async function activateStagingFixture(f){
+ f.config.slack_submission={generation:'b1111111-1111-4111-8111-111111111111',activation_ts:(Date.now()/1000).toFixed(6),first_report_date:new Date(Date.now()+8*3600000).toISOString().slice(0,10)};
+ const publisher=new HandoffState(f.publisherFile,handoffScope(f.config));try{installSubmission(publisher.db,f.config,'synthetic staging cutover');}finally{publisher.close();}
+ await writeFile(f.configFile,JSON.stringify(f.config));
+}
+test('installed Slack staging rejects the old CLI before preparing a run or any external action',async()=>{
+ const f=await fixture();try{
+  await activateStagingFixture(f);const before=digest(await readFile(f.file));
+  const result=spawnSync('flock',['--no-fork','--nonblock',f.lock,process.execPath,'scripts/producer-upload-cli.mjs',f.operator,'--serve-t4-direct'],{input:'{"type":"tick"}\n',env:f.env,encoding:'utf8',timeout:5000});
+  assert.equal(result.status,1,result.stdout+result.stderr);assert(!result.stdout.includes('"type":"ready"'));assert(!result.stdout.includes('"type":"write"'));assert.equal(digest(await readFile(f.file)),before);
+ }finally{await rm(f.dir,{recursive:true,force:true});}
+});
+test('a policy change is rejected before an already-running CLI can create COMPLETE unknown',{timeout:30000},async()=>{
+ const f=await fixture();let cli;
+ try{
+  cli=launch(f);assert.equal((await cli.read()).type,'ready');await fresh(cli,f);
+  const ticket=await cli.send({type:'tick'});await cli.send({type:'native_result',operation_id:ticket.operation_id,result:{file_id:'F123',upload_url:'https://files.slack.com/upload/v1/SYNTHETIC'}});
+  await fresh(cli,f);await cli.send({type:'tick'});await fresh(cli,f);
+  const before=inspectDb(f.file,db=>JSON.stringify([db.prepare('SELECT * FROM producer_ops ORDER BY name,attempt').all(),db.prepare('SELECT detail FROM producer_runs').all()]));
+  // Fault injection only. Actual cutover must hold the Producer lock and cannot
+  // install while this session is live; this exercises the second dispatch gate.
+  await activateStagingFixture(f);
+  assert.equal((await cli.send({type:'tick'})).type,'blocked');await cli.ended;
+  assert.equal(inspectDb(f.file,db=>JSON.stringify([db.prepare('SELECT * FROM producer_ops ORDER BY name,attempt').all(),db.prepare('SELECT detail FROM producer_runs').all()])),before);
+  assert.equal(inspectDb(f.file,db=>db.prepare("SELECT count(*) n FROM producer_ops WHERE name='complete'").get().n),0);
+ }finally{await cli?.stop();await rm(f.dir,{recursive:true,force:true});}
 });

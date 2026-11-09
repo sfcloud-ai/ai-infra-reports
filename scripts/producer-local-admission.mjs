@@ -10,13 +10,14 @@ import {registerCompletion,assertFence} from './producer-admission-fence.mjs';
 import {requireThat} from './report-handoff.mjs';
 import {requireOriginalRunnerLock} from './producer-recovery-lock.mjs';
 export async function withCompletionAdmission(configFile,producerConfig,producer,id,makeAction){
+ const config=validateConfig(JSON.parse((await privateFile(configFile,16384)).toString('utf8')));
+ requireThat(!config.slack_submission,'Local Producer is disabled by Slack staging');
  const j=producer.get(id);
  // Other steps never need Publisher's lock. Any old COMPLETE intent remains
  // reconciliation-only; this API cannot re-emit it or register it retroactively.
  const candidate=j&&!j.detail.existing&&!j.detail.source_ts&&!j.detail.delivery&&producer.activeOp(id,'post')?.phase==='confirmed'&&!producer.activeOp(id,'complete');
  if(!candidate)return makeAction();
  const lock=await requireOriginalRunnerLock(producerConfig.state_file),journal=await lstat(producerConfig.state_file,{bigint:true});
- const config=validateConfig(JSON.parse((await privateFile(configFile,16384)).toString('utf8')));
  requireThat(config.producer_fence,'Explicit T4 Publisher fence required');
  requireThat(producer.scope.publisher_scope_sha256===scopeDigest(handoffScope(config)),'Producer inspect scope must match the local Publisher');
  const policy=producer.db.prepare('SELECT * FROM producer_admission_policy WHERE id=1').get();
@@ -37,6 +38,7 @@ export async function withCompletionAdmission(configFile,producerConfig,producer
   const state=new HandoffState(filename,handoffScope(config));
   try{
   assertFence(state.db,config.producer_fence);
+  requireThat(!state.db.prepare("SELECT 1 FROM sqlite_master WHERE name='slack_submission_policy'").get(),'Local completion is disabled by Slack staging');
   requireThat(producerScopeHash(producer.scope)===config.producer_fence.producer_scope_sha256,'Designated Producer scope required');
   requireThat(!state.db.prepare('SELECT 1 FROM producer_quarantined_dates WHERE report_date=?').get(j.date),'Original unresolved date requires explicit adjudication');
   requireThat(!state.db.prepare('SELECT 1 FROM producer_admission_grants WHERE request_id=?').get(id),'Original completion grant requires reconciliation');
@@ -75,7 +77,7 @@ export async function verifyAdmissionStartup(configFile,producerConfig,policy){
  requireThat(Object.entries(config.producer_fence.installation).every(([key,value])=>current[key]===value),'Designated T4 journal/lock installation required');
  return withHandoffLock(config.state_dir,async()=>{
   const filename=path.join(config.state_dir,'handoff.sqlite');await privateFile(filename,Number.MAX_SAFE_INTEGER,false);
-  const db=new DatabaseSync(filename,{readOnly:true});try{db.exec('PRAGMA query_only=ON');assertFence(db,config.producer_fence);requireThat(db.prepare('SELECT value FROM scope WHERE id=1').get()?.value===scopeDigest(handoffScope(config)),'Original Publisher identity required');}finally{db.close();}
+  const db=new DatabaseSync(filename,{readOnly:true});try{db.exec('PRAGMA query_only=ON');assertFence(db,config.producer_fence);requireThat(!config.slack_submission&&!db.prepare("SELECT 1 FROM sqlite_master WHERE name='slack_submission_policy'").get(),'Local Producer is disabled by Slack staging');requireThat(db.prepare('SELECT value FROM scope WHERE id=1').get()?.value===scopeDigest(handoffScope(config)),'Original Publisher identity required');}finally{db.close();}
  });
 }
 

@@ -1,4 +1,5 @@
 import {assertFence,assertFencedEnvelope,consumeFencedEnvelope} from './producer-admission-fence.mjs';
+import {assertSubmission,acceptSubmission,queueSubmission} from './slack-submission.mjs';
 // Durable discovery is separate from publication and delivery. A scan records
 // authenticated envelopes before advancing its watermark; file reads can then
 // retry without expiring or blocking discovery of later reports.
@@ -23,6 +24,7 @@ export class PublisherInbox{
  constructor(state,config){
   this.state=state;this.db=state.db;this.config=config;
   assertFence(this.db,config.producer_fence);
+  assertSubmission(this.db,config);
   const boundary=validateIntakeConfig(config.durable_intake).not_before;
   installIntakeTables(this.db);
   const scope=scopeDigest({not_before:boundary,team_id:config.team_id,channel_id:config.channel_id,sender_user_id:config.sender_user_id,sender_bot_id:config.sender_bot_id??null,sender_app_id:config.sender_app_id??null,sender_user_app_id:config.sender_user_app_id??null,sender_attribution_text:config.sender_attribution_text??null});
@@ -49,9 +51,14 @@ export class PublisherInbox{
    throw error;
   }
   requireThat(Array.isArray(page.messages)&&page.messages.length<=100&&(page.next_cursor===null||typeof page.next_cursor==='string'&&page.next_cursor.length>0&&page.next_cursor.length<=1024)&&(page.next_cursor===null||page.next_cursor!==scan.page_cursor),'Invalid intake pagination');
-  const events=[],reads=[],rejected=[];
+  const events=[],reads=[],submissions=[],rejected=[];
   for(const message of page.messages){
    requireThat(TS.test(message?.ts??'')&&message.ts>=scan.watermark&&message.ts<=scan.upper_bound,'History page outside durable range');
+   if(this.config.slack_submission&&(message?.text?.startsWith('!ai-report stage ')||message?.text?.startsWith('!ai-report submit '))){
+    try{submissions.push(acceptSubmission(message,this.config,now,{from:this.config.slack_submission.activation_ts,to:scan.upper_bound}));}
+    catch(error){rejected.push({source_ts:message.ts,...safeDiagnostic(error,'staging_command','not_started')});}
+    continue;
+   }
    if(this.config.scheduled_delivery&&(message?.text?.startsWith('!ai-report inspect ')||message?.text?.startsWith('!ai-report status '))){
     try{const range={from:this.config.durable_intake.not_before,to:scan.upper_bound};reads.push(acceptReportStatus(message,this.config,now,range)??acceptProducerInspect(message,this.config,now,range));}
     catch(error){rejected.push({source_ts:message.ts,...safeDiagnostic(error,'intake_read_command','not_started')});}
@@ -64,6 +71,7 @@ export class PublisherInbox{
   if(reads.length)installScheduledTables(this.db,['scheduled_status_replies']);
   this.db.exec('BEGIN IMMEDIATE');
   try{
+   for(const event of submissions)queueSubmission(this.db,event);
    for(const event of events){
     const prior=this.db.prepare('SELECT request_id,file_id,hash FROM publisher_inbox WHERE source_ts=?').get(event.source_ts);
     if(prior){requireThat(prior.request_id===event.request_id&&prior.file_id===event.file_id&&prior.hash===event.hash,'Original intake envelope changed');continue;}
