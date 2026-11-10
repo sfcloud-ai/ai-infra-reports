@@ -7,6 +7,7 @@ import {decodeBundle,requireThat,REQUEST} from './report-handoff.mjs';
 import {validateCheckerConfig} from './notice-checker.mjs';
 import {safeDiagnostic,isSlackWriteUnexecuted} from './handoff-recovery.mjs';
 import {producerInspection,inspectCommand,INSPECT_PREFIX} from './producer-inspect.mjs';
+import {inspectDay,dayCommand,DAY_PREFIX} from './producer-day.mjs';
 import {intakeStatus} from './publisher-inbox.mjs';
 import {submissionStatus} from './slack-submission.mjs';
 export function statusImages(value){
@@ -96,7 +97,7 @@ function admitStatus(db,event){
  const prior=db.prepare('SELECT * FROM scheduled_status_replies WHERE source_ts=?').get(event.source_ts);
  if(prior){requireThat(prior.hash===event.hash,'Status source changed');return prior;}
  requireThat(REQUEST.test(event.request_id??''),'Status request identity required');
- db.prepare("INSERT INTO scheduled_status_replies(source_ts,hash,phase,text,reply_ts) VALUES (?,?,'queued',?,NULL)").run(event.source_ts,event.hash,JSON.stringify(event.kind==='inspect'?inspectCommand({kind:event.kind,request_id:event.request_id,report_date:event.report_date,bundle_sha256:event.bundle_sha256,query_id:event.query_id}):{request_id:event.request_id}));
+ db.prepare("INSERT INTO scheduled_status_replies(source_ts,hash,phase,text,reply_ts) VALUES (?,?,'queued',?,NULL)").run(event.source_ts,event.hash,JSON.stringify(event.kind==='day'?dayCommand({kind:'day',request_id:event.request_id,report_date:event.report_date,query_id:event.query_id}):event.kind==='inspect'?inspectCommand({kind:event.kind,request_id:event.request_id,report_date:event.report_date,bundle_sha256:event.bundle_sha256,query_id:event.query_id}):{request_id:event.request_id}));
  return db.prepare('SELECT * FROM scheduled_status_replies WHERE source_ts=?').get(event.source_ts);
 }
 export async function replyScheduledStatus(state,config,event,slack,query=queryScheduled){
@@ -110,19 +111,20 @@ export async function replyScheduledStatus(state,config,event,slack,query=queryS
   return;
  }
  if(prior.phase==='sent')return;
- if(prior.phase==='ready'&&prior.text.startsWith(INSPECT_PREFIX)){
-  const old=JSON.parse(prior.text.slice(INSPECT_PREFIX.length));
+ const snapshotPrefix=[INSPECT_PREFIX,DAY_PREFIX].find(prefix=>prior.text.startsWith(prefix));
+ if(prior.phase==='ready'&&snapshotPrefix){
+  const old=JSON.parse(prior.text.slice(snapshotPrefix.length));
   if(!Number.isSafeInteger(old.observed_at)||old.observed_at<Date.now()-60000){
-   const command=inspectCommand({kind:'inspect',request_id:old.request_id,report_date:old.report_date,bundle_sha256:old.bundle_sha256,query_id:old.query_id});
+   const command=snapshotPrefix===DAY_PREFIX?dayCommand({kind:'day',request_id:old.request_id,report_date:old.report_date,query_id:old.query_id}):inspectCommand({kind:'inspect',request_id:old.request_id,report_date:old.report_date,bundle_sha256:old.bundle_sha256,query_id:old.query_id});
    db.prepare("UPDATE scheduled_status_replies SET phase='queued',text=? WHERE source_ts=? AND phase='ready'").run(JSON.stringify(command),event.source_ts);
    prior=db.prepare('SELECT * FROM scheduled_status_replies WHERE source_ts=?').get(event.source_ts);
   }
  }
  if(prior.phase==='queued'){
  const command=JSON.parse(prior.text);
- if(command.kind==='inspect'){
-  const result=await producerInspection(state,config,command,event.source_ts,query);
-  const text=INSPECT_PREFIX+JSON.stringify(result);
+ if(['inspect','day'].includes(command.kind)){
+  const result=command.kind==='day'?await inspectDay(state,config,command,event.source_ts,query):await producerInspection(state,config,command,event.source_ts,query);
+  const text=(command.kind==='day'?DAY_PREFIX:INSPECT_PREFIX)+JSON.stringify(result);
   requireThat(Buffer.byteLength(text)<=16384,'Bounded inspect receipt required');
   db.prepare("UPDATE scheduled_status_replies SET phase='ready',text=? WHERE source_ts=? AND phase='queued'").run(text,event.source_ts);
  }else{
