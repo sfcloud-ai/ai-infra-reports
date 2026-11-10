@@ -3,7 +3,8 @@ import {assertSubmission,acceptSubmission,queueSubmission} from './slack-submiss
 // Durable discovery is separate from publication and delivery. A scan records
 // authenticated envelopes before advancing its watermark; file reads can then
 // retry without expiring or blocking discovery of later reports.
-import {acceptQueuedPublish,acceptReportStatus,acceptProducerInspect,decodeBundle,requireThat} from './report-handoff.mjs';
+import {acceptQueuedPublish,acceptReportStatus,acceptProducerInspect,acceptProducerDay,decodeBundle,requireThat} from './report-handoff.mjs';
+import {dayCommand} from './producer-day.mjs';
 import {installScheduledTables} from './scheduled-delivery-state.mjs';
 import {scopeDigest} from './handoff-state.mjs';
 import {safeDiagnostic,recoveryDelay} from './handoff-recovery.mjs';
@@ -59,8 +60,8 @@ export class PublisherInbox{
     catch(error){rejected.push({source_ts:message.ts,...safeDiagnostic(error,'staging_command','not_started')});}
     continue;
    }
-   if(this.config.scheduled_delivery&&(message?.text?.startsWith('!ai-report inspect ')||message?.text?.startsWith('!ai-report status '))){
-    try{const range={from:this.config.durable_intake.not_before,to:scan.upper_bound};reads.push(acceptReportStatus(message,this.config,now,range)??acceptProducerInspect(message,this.config,now,range));}
+   if(this.config.scheduled_delivery&&(message?.text?.startsWith('!ai-report inspect ')||message?.text?.startsWith('!ai-report day ')||message?.text?.startsWith('!ai-report status '))){
+    try{const range={from:this.config.durable_intake.not_before,to:scan.upper_bound};reads.push(acceptReportStatus(message,this.config,now,range)??acceptProducerInspect(message,this.config,now,range)??acceptProducerDay(message,this.config,now,range));}
     catch(error){rejected.push({source_ts:message.ts,...safeDiagnostic(error,'intake_read_command','not_started')});}
     continue;
    }
@@ -84,7 +85,7 @@ export class PublisherInbox{
     const prior=this.db.prepare('SELECT hash FROM scheduled_status_replies WHERE source_ts=?').get(event.source_ts);
     if(prior){requireThat(prior.hash===event.hash,'Original read command changed');continue;}
     requireThat(this.db.prepare('SELECT count(*) AS n FROM scheduled_status_replies').get().n<10000,'Read command capacity reached');
-    const command=event.kind==='inspect'?{kind:event.kind,request_id:event.request_id,report_date:event.report_date,bundle_sha256:event.bundle_sha256,query_id:event.query_id}:{request_id:event.request_id};
+    const command=event.kind==='day'?dayCommand({kind:'day',request_id:event.request_id,report_date:event.report_date,query_id:event.query_id}):event.kind==='inspect'?{kind:event.kind,request_id:event.request_id,report_date:event.report_date,bundle_sha256:event.bundle_sha256,query_id:event.query_id}:{request_id:event.request_id};
     this.db.prepare("INSERT INTO scheduled_status_replies(source_ts,hash,phase,text,reply_ts) VALUES (?,?,'queued',?,NULL)").run(event.source_ts,event.hash,JSON.stringify(command));
    }
    if(page.next_cursor)this.db.prepare('UPDATE publisher_intake_scan SET page_cursor=? WHERE id=1').run(page.next_cursor);

@@ -11,7 +11,7 @@ import {HandoffState,handoffScope} from "./handoff-state.mjs";
 import {openProviderCooldowns,providerIO,PROVIDER_SCOPES} from './provider-cooldowns.mjs';
 import {NoticeOutbox,notificationScope,acceptNoticeCommand,decodeNoticeCommand,advanceNotice,MAX_NOTICE_COMMAND,remoteReceiptCanWait} from "./notice-outbox.mjs";
 import {SlackHandoff,publicGitHub,publicMergeCommit} from "./slack-handoff.mjs";
-import {acceptMessage,acceptReportStatus,acceptProducerInspect,decodeBundle,requireThat,verifyReportPublication} from "./report-handoff.mjs";
+import {acceptMessage,acceptReportStatus,acceptProducerInspect,acceptProducerDay,decodeBundle,requireThat,verifyReportPublication} from "./report-handoff.mjs";
 import {advanceHandoff} from "./handoff-worker.mjs";
 import {proposeWithApp,reconcileProposalWithApp} from "./propose-with-app.mjs";
 import {validateCheckerConfig,runNoticeChecker} from "./notice-checker.mjs";
@@ -78,8 +78,8 @@ export async function handoffTick(state,config,slack,io){
   for(const message of messages){
    try{
    let status=null;
-   if(config.scheduled_delivery&&(message?.text?.startsWith("!ai-report status ")||message?.text?.startsWith("!ai-report inspect "))){
-    try{status=acceptReportStatus(message,config)??acceptProducerInspect(message,config);}catch{continue;}
+   if(config.scheduled_delivery&&(message?.text?.startsWith("!ai-report status ")||message?.text?.startsWith("!ai-report inspect ")||message?.text?.startsWith('!ai-report day '))){
+    try{status=acceptReportStatus(message,config)??acceptProducerInspect(message,config)??acceptProducerDay(message,config);}catch{continue;}
    }
    if(status){
     // Admit every report before the separately bounded advisory status lane.
@@ -197,7 +197,7 @@ export async function handoffTick(state,config,slack,io){
    // into unconditional one-second retries after coverage is already complete.
    if(config.scheduled_delivery&&state.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='scheduled_status_replies'").get()){
     const waiting=state.db.prepare("SELECT text FROM scheduled_status_replies WHERE phase='queued' AND source_ts>? ORDER BY source_ts LIMIT 1000").all(scan.watermark);
-    if(waiting.some(row=>{try{return JSON.parse(row.text).kind==='inspect';}catch{return false;}}))due.push(now()+1000);
+    if(waiting.some(row=>{try{return ['inspect','day'].includes(JSON.parse(row.text).kind);}catch{return false;}}))due.push(now()+1000);
    }
   }
   const next_delay_ms=due.length?Math.max(1000,Math.min(120000,Math.min(...due)-now())):120000;

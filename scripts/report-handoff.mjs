@@ -136,6 +136,12 @@ export function acceptProducerInspect(message,config,now=Date.now(),window){
  requireThat(reportDate(report_date),'Inspect date invalid');
  return {kind:'inspect',request_id,report_date,bundle_sha256,query_id,source_ts:event.source_ts,hash:event.hash};
 }
+export function acceptProducerDay(message,config,now=Date.now(),window){
+ const event=acceptReadCommand(message,config,'!ai-report day ',/^!ai-report day (\d{4}-\d\d-\d\d) ([a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})$/,now,window);
+ if(!event)return null;
+ const [,report_date,query_id]=event.match;requireThat(reportDate(report_date),'Day query date invalid');
+ return {kind:'day',request_id:`morning-${report_date.replaceAll('-','')}-r1`,report_date,query_id,source_ts:event.source_ts,hash:event.hash};
+}
 export async function boundedBytes(response,limit){
  requireThat(response.ok,"Remote read failed");
  const length=response.headers.get("content-length");requireThat(length===null||(/^\d+$/.test(length)&&Number(length)<=limit),"Remote byte limit");
