@@ -385,11 +385,21 @@ raise SystemExit(m.main(['run',sys.argv[2],sys.argv[3],'idle-fixture'],idle_seco
             with self.assertRaisesRegex(ValueError, 'guard_input_idle'):
                 g.dispatch(command)
             self.assertEqual(g.record['stage']['phase'], 'not_started')
+            class MissingNativeResult:
+                # Child startup can exceed 100ms in the single-CPU CD container.
+                # Start the short native-result deadline after its write arrives.
+                idle_seconds = 5
+
+                def readline(self):
+                    return guard.LineInput(source, idle_seconds=0.1).readline()
+
+            g.input_reader = MissingNativeResult()
             code = "import json,sys;print(json.dumps({'type':'write','operation_id':'fixture','tool':'fixture'}),flush=True);sys.stdin.readline()"
             g.stage = lambda b, c: original(b, c, bridge=[sys.executable, '-c', code])
             with self.assertRaisesRegex(ValueError, 'guard_input_idle'):
                 g.dispatch(command)
             self.assertEqual(g.record['stage']['phase'], 'intent')
+            self.assertTrue(any(e['type'] == 'native_write_intent' for e in g.record['events']))
             with self.assertRaisesRegex(ValueError, 'reconciliation'):
                 g.dispatch(command)
         finally:
