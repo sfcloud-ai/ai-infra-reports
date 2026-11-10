@@ -1108,6 +1108,31 @@
       ],
       "poster": "assets/overview.png",
       "path": "reports/2026-11-09/r1/"
+    },
+    {
+      "schema_version": "1.0",
+      "date": "2026-11-10",
+      "revision": 1,
+      "title": "AI Infra 晨报 · 2026-11-10",
+      "subtitle": "部分晨报｜覆盖缺口：vLLM 代码、SGLang 代码。vLLM未覆盖11月9日10:19–12:48（北京时间）提交；部分PR详情未核验。",
+      "articles": [
+        {
+          "id": "embodied-training",
+          "title": "GR00T 2｜少量示范适配机器人操作",
+          "summary": "联合预测视频与动作，核对跨机体迁移、适配成本和 Turbo 的任务质量取舍。",
+          "sha256": "de2cbcc55eeecbfcf5cc05b4f01a1d8ded6c8510c4619c94e476398ee61be9e3",
+          "path": "reports/2026-11-10/r1/articles/embodied-training.md"
+        },
+        {
+          "id": "inference-engines",
+          "title": "推理引擎｜本期核查范围与证据缺口",
+          "summary": "分开记录 vLLM、SGLang、DeepInfer 的已读资料和待核验线索。",
+          "sha256": "1e0ae79c259a3a0e5bba161687a8ccacd85a6404ec6377b68422ec4dbbf77dec",
+          "path": "reports/2026-11-10/r1/articles/inference-engines.md"
+        }
+      ],
+      "poster": "assets/overview.png",
+      "path": "reports/2026-11-10/r1/"
     }
   ],
   "entries": [
@@ -3482,6 +3507,75 @@
       "article_id": "small-model-status",
       "fingerprint": "1abfe502dbc8ee73c958ca837457789205e1b7140389a9a179e609cf445851b0",
       "date": "2026-11-09",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-10-nvidia-groot2-corl-20261109",
+      "event_key": "nvidia-groot2-corl-20261109",
+      "title": "GR00T 2：联合视频与动作预测，五次示范改善跨机体操作",
+      "summary": "11月9日GR00T2公告及研究页给出联合视频—动作去噪与跨机体适配。50项任务来自人类视频或其他机体，平均试验成功率从零样本40%升至五次示范95%；每次LoRA适配约30分钟、单RTX5090。Turbo2B支持机载预测，但多项任务成功率低于主模型，代码标注12月开放。",
+      "source_urls": [
+        "https://blogs.nvidia.com/blog/robotics-simulation-advancements-corl/",
+        "https://research.nvidia.com/labs/gear/gr00t-2/"
+      ],
+      "update_of": null,
+      "article_id": "embodied-training",
+      "fingerprint": "0cd27e2eef8857a3fdc7d73b8a1fe505fb27652cafd7c4e0bb227209e6e48437",
+      "date": "2026-11-10",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-10-vllm-coverage-20261110",
+      "event_key": "vllm-coverage-20261110",
+      "title": "vLLM核查范围",
+      "summary": "发布、PR列表与前100条提交已读；缺少窗口早段分页及重点详情，保留线索，不声称完整覆盖或给出升级结论。",
+      "source_urls": [
+        "https://api.github.com/repos/vllm-project/vllm/commits?per_page=100&since=2026-11-09T02%3A19%3A21Z&until=2026-11-10T02%3A19%3A21Z",
+        "https://api.github.com/repos/vllm-project/vllm/pulls?direction=desc&per_page=100&sort=updated&state=all",
+        "https://api.github.com/repos/vllm-project/vllm/releases?per_page=10",
+        "https://vllm.ai/blog",
+        "https://vllm.ai/blog/archive"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "e2a88a7f41502831249a2b810a5494d06ddd7f78e48c31493a37894ed97c2829",
+      "date": "2026-11-10",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-10-sglang-coverage-20261110",
+      "event_key": "sglang-coverage-20261110",
+      "title": "SGLang核查范围",
+      "summary": "发布、PR列表及覆盖24小时窗口的94条提交已读；重点详情未完成核验，博客日期精度缺口保留。",
+      "source_urls": [
+        "https://api.github.com/repos/sgl-project/sglang/commits?per_page=100&since=2026-11-09T02%3A19%3A21Z&until=2026-11-10T02%3A19%3A21Z",
+        "https://api.github.com/repos/sgl-project/sglang/pulls?direction=desc&per_page=100&sort=updated&state=all",
+        "https://api.github.com/repos/sgl-project/sglang/releases?per_page=10",
+        "https://www.lmsys.org/blog/",
+        "https://www.sglang.io/blog"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "24e8afc4286783f673238a244d8780e3e71cd139cb6757340738dd1cfcb94db6",
+      "date": "2026-11-10",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-10-deepinfer-coverage-20261110",
+      "event_key": "deepinfer-coverage-20261110",
+      "title": "DeepInfer核查范围",
+      "summary": "本期发布列表和24小时提交查询为空；所见PR无合格部署新项，官方README和Q&A已读，不外推完整在线服务或Hopper支持。",
+      "source_urls": [
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/commits?per_page=100&since=2026-11-09T02%3A19%3A21Z&until=2026-11-10T02%3A19%3A21Z",
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/contents/doc/inference_deployment_qa.md",
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/pulls?direction=desc&per_page=100&sort=updated&state=all",
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/readme",
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/releases?per_page=10"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "ec5f666f3e9883d8ada534713eda2dbdd7d818bc3dc511188e8b40233574cd46",
+      "date": "2026-11-10",
       "revision": 1
     }
   ]
