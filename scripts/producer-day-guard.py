@@ -108,6 +108,12 @@ def read_json(path):
 def save(path, value):
     data = (json.dumps(value, ensure_ascii=False, sort_keys=True) + '\n').encode()
     require(len(data) <= 1_000_000, 'journal_size_limit')
+    save_bytes(path, data)
+
+
+def save_bytes(path, data):
+    # The caller holds the original date lock. An interrupted copy stays at an
+    # uncommitted temporary path; readers see either the complete old or new file.
     temporary = path.with_name(path.name + '.' + uuid.uuid4().hex + '.tmp')
     with os.fdopen(open_private(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL), 'wb') as stream:
         stream.write(data)
@@ -243,10 +249,7 @@ class DayGuard:
                 with os.fdopen(open_private(bundle, os.O_RDONLY), 'rb') as stream:
                     require(stream.read(8 * 1024 * 1024 + 1) == data, 'original_saved_bundle_differs')
             else:
-                with os.fdopen(open_private(bundle, os.O_WRONLY | os.O_CREAT | os.O_EXCL), 'wb') as stream:
-                    stream.write(data)
-                    stream.flush()
-                    os.fsync(stream.fileno())
+                save_bytes(bundle, data)
             self.record['stage'] = {'bundle': str(bundle), 'sha256': digest, 'phase': 'intent'}
             self.event({'type': 'stage_intent'})  # Durable before spawning any writer.
             self.stage(bundle, command['channel'])

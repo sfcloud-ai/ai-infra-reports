@@ -215,6 +215,37 @@ sys.stdin.readline()
         finally:
             g.close()
 
+    def test_interrupted_saved_bundle_never_installs_a_partial_final_file(self):
+        g = self.open()
+        self.begin(g)
+        g.close()
+        path = self.root / 'input.json'
+        data = json.dumps({'request_id': 'morning-20261111-r1', 'prompt_commit_sha': 'a' * 40}).encode()
+        path.write_bytes(data)
+        code = """import importlib.util,sys,datetime as dt,time,hashlib,os
+from pathlib import Path
+s=importlib.util.spec_from_file_location('g',sys.argv[1]);m=importlib.util.module_from_spec(s);s.loader.exec_module(m)
+g=m.DayGuard(Path(sys.argv[2]),sys.argv[3],'copy-crash-fixture',clock=lambda:dt.datetime.fromisoformat('2026-11-11T00:20:00+00:00'))
+g.snapshot={'state':'empty'};g.snapshot_deadline=time.monotonic()+60
+m.os.fsync=lambda fd:os._exit(23)
+p=Path(sys.argv[2])/'input.json'
+g.dispatch({'action':'stage','bundle':str(p),'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),'channel':'CTEST'})
+"""
+        child = subprocess.run([sys.executable, '-c', code, str(SCRIPT), str(self.root), self.generation],
+                               capture_output=True, timeout=5)
+        self.assertEqual(child.returncode, 23, child.stderr)
+        self.assertFalse((self.root / '2026-11-11.bundle.json').exists())
+        self.assertTrue(list(self.root.glob('2026-11-11.bundle.json.*.tmp')))
+        resumed = self.open()
+        try:
+            self.snapshot(resumed)
+            self.assertIsNone(resumed.record['stage'])
+            resumed.stage = lambda *args: None  # No provider IO in this filesystem regression.
+            resumed.dispatch({'action': 'stage', 'bundle': str(path), 'sha256': hashlib.sha256(data).hexdigest(), 'channel': 'CTEST'})
+            self.assertEqual((self.root / '2026-11-11.bundle.json').read_bytes(), data)
+        finally:
+            resumed.close()
+
     def test_clock_skew_is_bounded_and_monotonic_expiry_survives_wall_clock_change(self):
         g = self.open()
         try:
