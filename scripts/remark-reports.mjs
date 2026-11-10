@@ -24,7 +24,7 @@ export default function reportMarkdown(options={}) {
     if(!assets.has(u))throw Error("Image must reference a declared archive asset");
     node.url=u;
    } else if(["link","definition"].includes(node.type)){
-    const u=stableReportLink(node.url);node.url=u;
+    const u=stableReportLink(node.url,options.legacyDays);node.url=u;
     // A definition used only by an image is checked on that image node.
     if(node.type==="definition"&&(/^assets\/[a-z0-9-]+\.(png|jpg)$/.test(u)||assets.has(u)))return;
     if(u.startsWith("#")){const fragment=decodeURIComponent(u.slice(1));if(Buffer.byteLength(fragment)>512||/[\x00-\x1f\x7f<>\\]/.test(fragment))throw Error("Invalid section fragment");return;}

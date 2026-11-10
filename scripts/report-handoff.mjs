@@ -51,6 +51,7 @@ export async function decodeBundle(bytes){
  const used=new Set([dir+"report.json"]);
  for(const a of report.articles){
   requireThat(typeof a?.id==="string"&&/^[a-z0-9][a-z0-9-]{0,79}$/.test(a.id)&&a.id!=="index","Article identity");
+  requireThat(dir!==`reports/${report.date}/`||!/^r[1-9]\d*$/.test(a.id),'Revision-shaped article IDs are reserved for legacy redirects');
   const p=dir+"articles/"+a.id+".md";
   requireThat(!used.has(p)&&files.has(p)&&digest(files.get(p))===a.sha256&&files.get(p).length<=256*1024,"Article hash/size");used.add(p);
  }

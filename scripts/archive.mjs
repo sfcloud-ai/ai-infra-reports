@@ -1,4 +1,4 @@
-import {evidenceAssets} from "./evidence-assets.mjs";
+import {evidenceAssets,evidenceAssetReferences} from "./evidence-assets.mjs";
 // Report-only, data-only contract shared by the publisher, CI and trusted merge gate.
 import {createHash} from "node:crypto";
 import {readdir, readFile, lstat} from "node:fs/promises";
@@ -88,6 +88,7 @@ export function validateArchive(files, {checkIndex=true}={}) {
     for(const a of r.articles) {
       object(a,["id","title","summary","sha256"],"article");
       assert(id(a.id) && a.id!=="index" && !articles.has(a.id) && str(a.title,300) && str(a.summary,1200) && sha(a.sha256),"article metadata");
+      assert(!current||!/^r[1-9]\d*$/.test(a.id),'Revision-shaped article IDs are reserved for legacy redirects');
       const p=dir+"articles/"+a.id+".md", body=files.get(p);
       assert(body && body.length>0 && body.length<=256*1024 && digest(body)===a.sha256,"article hash/size: "+p);
       const text=new TextDecoder("utf-8",{fatal:true}).decode(body);
@@ -173,8 +174,19 @@ export function migrateArchive(base) {
   const result=validateArchive(base);
   if(base.has("reports/history.json")) return new Map(base);
   const latest=new Map();for(const r of result.reports)latest.set(r.date,r);
+  // One-time migration preserves each latest edition's exact source contract.
+  // Audit every date before constructing output; dependency repair is a normal
+  // reviewed revision, never an unversioned report.json or image rewrite.
+  for(const r of latest.values()){
+    for(const a of r.articles)for(const source of evidenceAssetReferences(base.get(a.path).toString('utf8'),r.path,base).values()){
+      if(source.startsWith(r.path))continue;
+      const asset='assets/'+source.split('/').at(-1),local=base.get(r.path+asset);
+      assert(source.startsWith('reports/'+r.date+'/')&&r.images.some(i=>i.path===asset)&&local?.equals(base.get(source)),
+        `Migration requires a self-contained latest edition: ${r.date}/${a.id} references ${source}; publish a reviewed revision with declared same-byte assets before migrating`);
+    }
+  }
   const head=new Map([["reports/history.json",exportedHistory(base)]]);
-  for(const r of latest.values())for(const [p,b] of base)if(p.startsWith(r.path))head.set("reports/"+r.date+"/"+p.slice(r.path.length),b);
+  for(const r of latest.values())for(const [p,b]of base)if(p.startsWith(r.path))head.set('reports/'+r.date+'/'+p.slice(r.path.length),b);
   return reindexArchive(head);
 }
 const sameFiles=(a,b)=>a.size===b.size&&[...a].every(([p,bytes])=>b.get(p)?.equals(bytes));

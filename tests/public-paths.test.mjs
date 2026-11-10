@@ -18,6 +18,16 @@ test('only this site article links lose revision segments; fragments and queries
  for(const prefix of ['/ai-infra-reports/','https://sfcloud-ai.github.io/ai-infra-reports/'])assert.equal(stableReportLink(prefix+'2026-11-10/r3/topic/?q=1#section'),prefix+'2026-11-10/topic/?q=1#section');
  for(const url of ['https://other.example/ai-infra-reports/2026-11-10/r3/topic/','https://sfcloud-ai.github.io.evil.test/ai-infra-reports/2026-11-10/r3/topic/','https://github.com/team/repo/r3/topic/'])assert.equal(stableReportLink(url),url);
 });
+
+test('Markdown retains the compatibility redirect for a retired article',()=>{
+ const days={'2026-11-01':['inference-engines']},old='/ai-infra-reports/2026-11-01/r1/vllm-logprobs-memory/?ref=old#evidence';
+ for(const prefix of ['', 'https://sfcloud-ai.github.io']){
+  assert.equal(stableReportLink(prefix+old,days),prefix+old);
+  const tree={type:'root',children:[{type:'link',url:prefix+old},{type:'link',url:prefix+'/ai-infra-reports/2026-11-01/r2/inference-engines/'}]};
+  reportMarkdown({legacyDays:days})(tree);
+  assert.equal(tree.children[0].url,prefix+old);assert.equal(tree.children[1].url,prefix+'/ai-infra-reports/2026-11-01/inference-engines/');
+ }
+});
 test('current article links and posters have stable URLs',()=>{
  const r={date:'2026-11-10',revision:3,path:'reports/2026-11-10/r3/',articles:[{id:'topic',title:'Topic',summary:'Summary'}],images:[{path:'assets/poster.png',alt:'Poster'}],poster:'assets/poster.png'};
  const text=dailyBody(r);assert(text.includes('(/ai-infra-reports/2026-11-10/topic/)'));assert(text.includes('(/ai-infra-reports/reports/2026-11-10/assets/poster.png)'));assert(!text.includes('/r3/'));

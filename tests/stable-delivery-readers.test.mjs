@@ -14,6 +14,14 @@ original.set(legacy+'report.json',Buffer.from(JSON.stringify(report)));original.
 const files=new Map([...original].map(([p,b])=>[current+p.slice(legacy.length),b]));
 const bundle=await decodeBundle(await encodeBundle(files,'morning-20261031-r1',commit,commit));
 const origin='https://sfcloud-ai.github.io/ai-infra-reports',edition=date+'/r1';
+
+test('current transport reserves legacy revision routes while old bundles remain decodable',async()=>{
+ const r=structuredClone(report),oldId=r.articles[0].id;r.articles[0].id='r1';r.entries.find(e=>e.article_id===oldId).article_id='r1';
+ const renamed=new Map(files);renamed.set(current+'articles/r1.md',renamed.get(current+'articles/'+oldId+'.md'));renamed.delete(current+'articles/'+oldId+'.md');renamed.set(current+'report.json',Buffer.from(JSON.stringify(r)));
+ await assert.rejects(()=>encodeBundle(renamed,'morning-20261031-r1',commit,commit),/Revision-shaped article IDs/);
+ const historical=new Map([...renamed].map(([p,b])=>[legacy+p.slice(current.length),b]));
+ assert.equal((await decodeBundle(await encodeBundle(historical,'morning-20261031-r1',commit,commit))).report.articles[0].id,'r1');
+});
 test('current transport is a strict single-date layout retaining immutable revision and bytes',async()=>{
  assert.equal(bundle.report.path,current);assert.equal(bundle.report.revision,1);
  const old=await decodeBundle(await encodeBundle(original,'morning-20261031-r1',commit,commit));assert.equal(old.report.path,legacy);

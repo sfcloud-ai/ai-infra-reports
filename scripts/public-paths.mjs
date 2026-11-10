@@ -3,7 +3,10 @@ import {evidenceAssetReferences} from './evidence-assets.mjs';
 export const REPORT_ORIGIN='https://sfcloud-ai.github.io';
 export const stableSlug=report=>report.date;
 export const editionSlug=report=>`${report.date}/r${report.revision}`;
-export function stableReportLink(value){
+export function stableReportLink(value,days){
+ const legacy=/^(?:https:\/\/sfcloud-ai\.github\.io)?\/ai-infra-reports\/(\d{4}-\d\d-\d\d)\/r[1-9]\d*\/([a-z0-9][a-z0-9-]{0,79})\/?(?=[?#]|$)/.exec(value);
+ // Preserve an old article's compatibility route if its current ID is absent.
+ if(days&&legacy&&(!Object.hasOwn(days,legacy[1])||!days[legacy[1]].includes(legacy[2])))return value;
  return value.replace(/^(https:\/\/sfcloud-ai\.github\.io)?(\/ai-infra-reports\/\d{4}-\d\d-\d\d)\/r[1-9]\d*(?=\/|$|[?#])/,'$1$2');
 }
 export function stableAssetPath(source){

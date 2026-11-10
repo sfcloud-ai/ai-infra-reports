@@ -6,6 +6,7 @@ import {tmpdir} from 'node:os';
 import {spawnSync} from 'node:child_process';
 import {DatabaseSync} from 'node:sqlite';
 import {digest} from '../scripts/archive.mjs';
+import {createNoticeManifest} from '../scripts/notice-manifest.mjs';
 import {CloudRunState,CloudSender,pinPrompts,prepareCloudRun,prepareNoSelection,ReadPending,ReconciliationRequired,PREFLIGHT_REFRESH_MS} from '../scripts/cloud-sender.mjs';
 import {rig,toClaim,arm,send,ID,TARGET,DAY,BASE,SCOPE,PROMPTS,FILES} from './helpers/cloud-sender-fixture.mjs';
 
@@ -30,12 +31,13 @@ for(const stable of [false,true])for(const unknown of [false,true])test(`route m
 
 test('reconciliation rejects an authenticated reservation inconsistent with original completion intent',()=>inRig(async r=>{
  await send(r);const read=r.io.readNoticeResponse;
+ const changed=createNoticeManifest(r.bundle.files.get(r.bundle.report.path+'report.json'),r.state.get(ID).detail.publication.commit,{stableUrls:true});
  r.io.readNoticeResponse=async args=>{
   const e=structuredClone(await read(args)),p=JSON.parse(e.message.text.slice('!ai-notice receipt '.length));
-  if(p.reason==='read_only_status')p.notice.detail.url+='other/';
+  if(p.reason==='read_only_status'){p.notice.detail.url=changed.index_url;p.notice.detail.text_sha256=digest(changed.text);}
   e.message.text='!ai-notice receipt '+JSON.stringify(p);return e;
  };
- await rejected(()=>r.makeSender().step(ID));assert.equal(r.counts.complete,1);assert.equal(r.state.get(ID).phase,'final_pending');
+ await assert.rejects(()=>r.makeSender().step(ID),/Original completion intent differs from reservation/);assert.equal(r.counts.complete,1);assert.equal(r.state.get(ID).phase,'final_pending');
 }));
 
 test('delivery deadlines reject ambiguous dates and normalize equivalent explicit instants',async()=>{

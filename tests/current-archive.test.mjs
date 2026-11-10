@@ -6,8 +6,53 @@ import {validateCIReportChange} from '../scripts/historical-backfill.mjs';
 import {evidenceAssets} from '../scripts/evidence-assets.mjs';
 import {publicAssetPlan} from '../scripts/public-paths.mjs';
 import reportMarkdown from '../scripts/remark-reports.mjs';
+import {editionSources} from '../scripts/publication-content.mjs';
 const old=await readReports('tests/fixtures/archive');
 const current=migrateArchive(old);
+
+for(const mode of ['missing','different','cross-day','same20'])test(`migration audits dependencies before producing an immutable snapshot (${mode})`,async()=>{
+ const source=new Map(old),dir='reports/2026-10-31/',first=dir+'r1/',second=dir+'r2/',asset='assets/figure.png';
+ const bytes=await sharp({create:{width:20,height:20,channels:3,background:'white'}}).png().toBuffer();
+ const other=await sharp({create:{width:20,height:20,channels:3,background:'black'}}).png().toBuffer();
+ const reference=mode==='cross-day'?'reports/2026-10-30/r1/':first;
+ if(mode==='cross-day'){
+  const prior=JSON.parse(source.get(reference+'report.json'));prior.images=[{path:asset,sha256:digest(bytes),alt:'Original figure'}];
+  source.set(reference+asset,bytes);source.set(reference+'report.json',Buffer.from(json(prior)));
+ }
+ const r=JSON.parse(source.get(first+'report.json')),article='articles/'+r.articles[0].id+'.md',url='/ai-infra-reports/'+reference+asset;
+ const body=Buffer.concat([source.get(first+article),Buffer.from(`\n![Original figure](${url})\n`)]);
+ source.set(first+article,body);r.articles[0].sha256=digest(body);r.images=[{path:asset,sha256:digest(bytes),alt:'Original figure'}];
+ source.set(first+asset,bytes);source.set(first+'report.json',Buffer.from(json(r)));
+ for(const a of r.articles)source.set(second+'articles/'+a.id+'.md',source.get(first+'articles/'+a.id+'.md'));
+ const latestBytes=mode==='different'?other:bytes,next={...r,revision:2,images:mode==='missing'?[]:[{path:asset,sha256:digest(latestBytes),alt:'Latest image'}]};
+ if(mode!=='missing')source.set(second+asset,latestBytes);
+ if(mode==='same20')for(let i=1;i<20;i++){
+  const path=`assets/figure-${i}.png`;next.images.push({path,sha256:digest(bytes),alt:'Declared image'});source.set(second+path,bytes);
+ }
+ source.set(second+'report.json',Buffer.from(json(next)));reindexArchive(source);
+ const before=new Map([...source].map(([p,b])=>[p,Buffer.from(b)]));
+ if(mode!=='same20'){
+  assert.throws(()=>migrateArchive(source),error=>error.message.includes('Migration requires a self-contained latest edition: 2026-10-31/kv-cache')&&error.message.includes(reference+asset)&&error.message.includes('publish a reviewed revision'));
+  assert.deepEqual(source,before);return;
+ }
+ const migrated=migrateArchive(source),result=validateMigration(source,migrated);
+ assert(migrated.get(dir+asset).equals(bytes));assert(migrated.get(dir+article).equals(body));
+ assert(migrated.get(dir+'report.json').equals(source.get(second+'report.json')));
+ assert.equal(JSON.parse(migrated.get(dir+'report.json')).images.length,20);
+ assert.deepEqual(editionSources(migrated,'2026-10-31/r2'),editionSources(source,'2026-10-31/r2'));
+ assert.deepEqual(evidenceAssets(body.toString(),dir,migrated),[digest(bytes)]);
+ assert(![...migrated.keys()].some(p=>/\/r[1-9]\d*\//.test(p)));
+ const paths=result.reports.flatMap(r=>r.images.map(i=>r.path+i.path)),plan=publicAssetPlan(paths,migrated,result.reports);
+ const tree={type:'root',children:[{type:'image',url}]};reportMarkdown({assets:[...plan.outputs.keys()].map(p=>'/ai-infra-reports/'+p),assetAliases:plan.aliases})(tree);
+ assert.equal(tree.children[0].url,'/ai-infra-reports/'+dir+asset);
+});
+
+test('current archive rejects revision-shaped article IDs before route generation',()=>{
+ const bad=new Map(current),dir='reports/2026-10-31/',r=JSON.parse(bad.get(dir+'report.json')),id=r.articles[0].id;
+ r.articles[0].id='r1';r.entries.find(e=>e.article_id===id).article_id='r1';
+ bad.set(dir+'articles/r1.md',bad.get(dir+'articles/'+id+'.md'));bad.delete(dir+'articles/'+id+'.md');bad.set(dir+'report.json',Buffer.from(json(r)));
+ assert.throws(()=>validateArchive(bad,{checkIndex:false}),/Revision-shaped article IDs/);
+});
 
 test('metadata-only current revisions retain legacy absolute image references and immutable evidence',async()=>{
  const source=new Map(old),legacy='reports/2026-10-31/r1/',dir='reports/2026-10-31/',image='assets/figure.png';
