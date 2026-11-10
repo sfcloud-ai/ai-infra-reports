@@ -164,7 +164,7 @@ export class NativeScheduledHost{
   return {...checked,bytes,sourceTs:source.source_ts,owner:command.owner};
  }
  boundNotice(job,b,receipt,phase){
-  const n=receipt.notice,m=createNoticeManifest(b.files.get(b.report.path+'report.json'),job.detail.report_commit);
+  const n=receipt.notice,m=createNoticeManifest(b.files.get(b.report.path+'report.json'),job.detail.report_commit,{stableUrls:n?.detail?.url===`https://sfcloud-ai.github.io/ai-infra-reports/${b.report.date}/`});
   requireThat(n&&n.report_id===job.id&&n.edition===job.edition&&n.attempt_id===job.detail.attempt_id&&n.file_id===job.detail.file_id&&(!phase||n.phase===phase)&&n.detail.bundle_sha256===b.hash&&n.detail.report_merge_sha===job.detail.report_commit&&n.detail.destination===this.state.scope.notification_destination&&n.detail.poster_original_sha256===m.poster.sha256&&n.detail.text_sha256===digest(Buffer.from(m.text))&&n.detail.url===m.index_url&&n.detail.delivery_mode===job.detail.mode&&n.detail.not_before===job.detail.not_before,'Native reservation differs from the immutable plan');
   return m;
  }

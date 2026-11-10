@@ -1,8 +1,13 @@
 ---
-// MetriCraft document route adapted to report and child-article paths.
-import Doc from "../components/Doc.astro";
-import {pages} from "../data/navigation.mjs";
-export function getStaticPaths(){return pages.map((page,index)=>({params:{slug:page.slug},props:{page,index}}));}
-const {page,index}=Astro.props;
+import Doc from '../components/Doc.astro';
+import {pages} from '../data/navigation.mjs';
+import manifest from '../../generated/manifest.json';
+export function getStaticPaths(){return [
+ ...pages.map((page,index)=>({params:{slug:page.slug},props:{page,index}})),
+ ...(manifest.redirects||[]).map(redirect=>({params:{slug:redirect.from},props:{redirect}})),
+];}
+const {page,index,redirect}=Astro.props;
+const target=redirect?import.meta.env.BASE_URL.replace(/\/$/,'')+'/'+redirect.to+'/':null;
+const canonical=target?new URL(target,Astro.site).href:null;
 ---
-<Doc page={page} index={index} locale="zh" />
+{redirect ? <html lang="zh-CN"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="robots" content="noindex" /><meta http-equiv="refresh" content={`0;url=${target}`} /><link rel="canonical" href={canonical} /><title>前往当前晨报</title></head><body data-pagefind-ignore="all"><p>正在前往当前晨报。<a href={target}>继续阅读</a></p><script is:inline define:vars={{target}}>window.location.replace(target+window.location.search+window.location.hash);</script></body></html> : <Doc page={page} index={index} locale="zh" />}

@@ -13,18 +13,18 @@
           "title": "模型服务与 GPU 超配｜拆分计算，也要给共享资源留预算",
           "summary": "RapidMoE、GPU 发起通信与 Leto 分别改变计算位置、通信控制和状态寿命；收益取决于资源竞争与故障边界。",
           "sha256": "d18e50f824815b945777522bedada443ffb0d3ef888b37a4f20f1c3cd3ff74d9",
-          "path": "reports/2026-10-03/r1/articles/model-serving-gpu.md"
+          "path": "reports/2026-10-03/articles/model-serving-gpu.md"
         },
         {
           "id": "inference-engines",
           "title": "推理引擎每日变动｜请求报错之后，KV 何时才能复用",
           "summary": "SGLang 0.5.21 的延迟释放与 ACK 生命周期修复，将 API 结束、传输排空和资源复用分开。",
           "sha256": "a6b5e7c29175f727ac2a1df73cdfc632482c1e4475126fd64e32767ac6faf964",
-          "path": "reports/2026-10-03/r1/articles/inference-engines.md"
+          "path": "reports/2026-10-03/articles/inference-engines.md"
         }
       ],
       "poster": null,
-      "path": "reports/2026-10-03/r1/"
+      "path": "reports/2026-10-03/"
     },
     {
       "schema_version": "1.0",
@@ -38,11 +38,11 @@
           "title": "模型服务与 GPU 超配｜局部优化怎样兑现为交付收益",
           "summary": "从诊断、请求集中到专家副本与通信运行时，统一核算延迟、显存和维护成本。",
           "sha256": "0aff16ea931794c4cb63bbe14082d0256e2224ae8ce720f6c1380d915b65d1c0",
-          "path": "reports/2026-10-04/r1/articles/model-serving-gpu.md"
+          "path": "reports/2026-10-04/articles/model-serving-gpu.md"
         }
       ],
       "poster": null,
-      "path": "reports/2026-10-04/r1/"
+      "path": "reports/2026-10-04/"
     },
     {
       "schema_version": "1.0",
@@ -56,18 +56,18 @@
           "title": "模型服务与 GPU 超配｜共享缓存和取消请求，都要追踪状态身份",
           "summary": "相同输入不代表 KV 可复用；Retire 的增量是版本切换执行协议，已有安全回收机制仍是强基线。",
           "sha256": "3543be6c917b8c51435897a81d0e10cb45d08ea804a011a6aa40024b89a13eec",
-          "path": "reports/2026-10-05/r1/articles/model-serving-gpu.md"
+          "path": "reports/2026-10-05/articles/model-serving-gpu.md"
         },
         {
           "id": "hardware-status",
           "title": "重点硬件｜Ascend 开源内核栈，先确认型号与依赖",
           "summary": "拆分计算、专家通信和配套算子，950 系列与 PoC HDK 的证据不能直接套到存量硬件。",
           "sha256": "03e8c33f1ed7a15f61d5903619873bd9e13351fc77b5f46232ed7b8a5571c829",
-          "path": "reports/2026-10-05/r1/articles/hardware-status.md"
+          "path": "reports/2026-10-05/articles/hardware-status.md"
         }
       ],
       "poster": null,
-      "path": "reports/2026-10-05/r1/"
+      "path": "reports/2026-10-05/"
     },
     {
       "schema_version": "1.0",
@@ -81,11 +81,11 @@
           "title": "推理引擎每日变动｜vLLM 把静态容量和运行并发分开",
           "summary": "max-num-active-seqs 细分单实例准入；不提供跨实例 GPU 隔离，也不自动改善全部延迟。",
           "sha256": "c2796592063c4492d8886ec58d498f4a14df4287e4f1fbbc54b86626df8b5c64",
-          "path": "reports/2026-10-06/r1/articles/inference-engines.md"
+          "path": "reports/2026-10-06/articles/inference-engines.md"
         }
       ],
       "poster": null,
-      "path": "reports/2026-10-06/r1/"
+      "path": "reports/2026-10-06/"
     },
     {
       "schema_version": "1.0",
@@ -99,11 +99,11 @@
           "title": "模型服务与 GPU 超配｜Kueue 补充节点可行性检查，仍需看清记账层级",
           "summary": "0.20.0 补齐部分非 hostname 拓扑的节点可行性检查；已有 TAS 占用仍按域记账，升级还涉及 v1beta1 移除。",
           "sha256": "02fa6a64b84cefcc5410d8a4d42c16997aed24a838ab177770609000abd7aaca",
-          "path": "reports/2026-10-07/r1/articles/model-serving-gpu.md"
+          "path": "reports/2026-10-07/articles/model-serving-gpu.md"
         }
       ],
       "poster": null,
-      "path": "reports/2026-10-07/r1/"
+      "path": "reports/2026-10-07/"
     },
     {
       "schema_version": "1.0",
@@ -117,11 +117,11 @@
           "title": "推理引擎每日变动｜少读权重、压缩 KV，与正确报告失败",
           "summary": "三项工程变化分别作用于加载、低精度和故障协议，不能合成一个通用加速结论。",
           "sha256": "faff397b8fdd7b434ea25a892e75a5caba02fbf529d3fae9629f58622a02d02d",
-          "path": "reports/2026-10-08/r1/articles/inference-engines.md"
+          "path": "reports/2026-10-08/articles/inference-engines.md"
         }
       ],
       "poster": null,
-      "path": "reports/2026-10-08/r1/"
+      "path": "reports/2026-10-08/"
     },
     {
       "schema_version": "1.0",
@@ -135,11 +135,11 @@
           "title": "推理引擎每日变动｜服务空闲以后，为什么仍然拒绝请求",
           "summary": "Dynamo 恢复路径、指定 worker 容量记账与 Ray/NIXL 注册检查，都在修复逻辑状态和实际资源的不一致。",
           "sha256": "8e37a6d76f73caa3293cf58e3928e48bb54b766ff35de8057e570ae9d424b428",
-          "path": "reports/2026-10-09/r1/articles/inference-engines.md"
+          "path": "reports/2026-10-09/articles/inference-engines.md"
         }
       ],
       "poster": null,
-      "path": "reports/2026-10-09/r1/"
+      "path": "reports/2026-10-09/"
     },
     {
       "schema_version": "1.0",
@@ -153,18 +153,18 @@
           "title": "模型服务与 GPU 超配｜按 GPU 时间分配预算，先区分可恢复任务",
           "summary": "Ai2 的调度实践改善预算与排队，资源占用率不能当计算效率，常驻服务也不能直接套用抢占。",
           "sha256": "ffa2fad2c8f17ddb88eaf71722353e8338629aec1cf7e44fd5fd04bfa7eab159",
-          "path": "reports/2026-10-10/r1/articles/model-serving-gpu.md"
+          "path": "reports/2026-10-10/articles/model-serving-gpu.md"
         },
         {
           "id": "inference-engines",
           "title": "推理引擎每日变动｜客户端断开后，引擎里的请求停了吗",
           "summary": "vLLM Rust gRPC 的取消提案同时监听输出和断连，复用已有引擎取消机制。",
           "sha256": "806e9969f0ad612fcc0b0e2d55b3c9e7a6c53edf0d21547cc47a65337ac27438",
-          "path": "reports/2026-10-10/r1/articles/inference-engines.md"
+          "path": "reports/2026-10-10/articles/inference-engines.md"
         }
       ],
       "poster": null,
-      "path": "reports/2026-10-10/r1/"
+      "path": "reports/2026-10-10/"
     },
     {
       "schema_version": "1.0",
@@ -178,11 +178,11 @@
           "title": "推理引擎每日变动｜多卡 worker 出错后，继续运行可能比退出更危险",
           "summary": "vLLM #60940 针对非输出 rank 的异常传播；当期仍是未合并提案，不是自动恢复方案。",
           "sha256": "55a7c2fc1877f011835a4f1742888a4000dfe92e757fa7a5a826791e5f18e857",
-          "path": "reports/2026-10-11/r1/articles/inference-engines.md"
+          "path": "reports/2026-10-11/articles/inference-engines.md"
         }
       ],
       "poster": null,
-      "path": "reports/2026-10-11/r1/"
+      "path": "reports/2026-10-11/"
     },
     {
       "schema_version": "1.0",
@@ -196,11 +196,11 @@
           "title": "推理引擎每日变动｜健康检查之外，还要守住请求与显存生命周期",
           "summary": "SGLang 补回抢占后的重新入队；vLLM 在加载边界清理闲置 allocator 缓存，均不能仅凭合入判断镜像已包含。",
           "sha256": "5e47a758f04a806548713f6735826c40ae1c1d0b782dd0211f59eae6c68a02bf",
-          "path": "reports/2026-10-12/r1/articles/inference-engines.md"
+          "path": "reports/2026-10-12/articles/inference-engines.md"
         }
       ],
       "poster": null,
-      "path": "reports/2026-10-12/r1/"
+      "path": "reports/2026-10-12/"
     },
     {
       "schema_version": "1.0",
@@ -214,11 +214,11 @@
           "title": "模型服务与 GPU 超配｜GraphTok 与 AlignQuant：局部更快，服务未必更快",
           "summary": "GPU 分词须计入共享 GPU 争用；混合量化的生成吞吐、首字延迟、质量和显存不能混成一个收益。",
           "sha256": "d7812a89b3cb87d68d662325726fd0bf2d53f5293d37ac2576f783166286c8c5",
-          "path": "reports/2026-10-13/r1/articles/model-serving-gpu.md"
+          "path": "reports/2026-10-13/articles/model-serving-gpu.md"
         }
       ],
       "poster": null,
-      "path": "reports/2026-10-13/r1/"
+      "path": "reports/2026-10-13/"
     },
     {
       "schema_version": "1.0",
@@ -232,11 +232,11 @@
           "title": "模型服务与 GPU 超配｜三条效率路线，为什么当期都未正式入选",
           "summary": "DualQuant、TokenRouter、ByteExpress 分别欠缺完整复现、可比服务基线或直接适用证据；保留比较，不改写为推荐。",
           "sha256": "be2cfa82b2ed6459e9c2a5c57e59d73d593195172b95a2f3abc3c11ce651382a",
-          "path": "reports/2026-10-14/r1/articles/model-serving-gpu.md"
+          "path": "reports/2026-10-14/articles/model-serving-gpu.md"
         }
       ],
       "poster": null,
-      "path": "reports/2026-10-14/r1/"
+      "path": "reports/2026-10-14/"
     },
     {
       "schema_version": "1.0",
@@ -250,11 +250,11 @@
           "title": "模型服务与 GPU 超配｜ATTUNE：让 AI 提候选，让独立程序决定能否采用",
           "summary": "训练自动调优的可借鉴部分是测量、参数核对和成本记录；公开包尚不构成完整预算准入与发布门禁。",
           "sha256": "e15393bfe27add20cd02b07cf7a3ffe045f3c33b41e7ee457ee8f355506a7943",
-          "path": "reports/2026-10-15/r1/articles/model-serving-gpu.md"
+          "path": "reports/2026-10-15/articles/model-serving-gpu.md"
         }
       ],
       "poster": null,
-      "path": "reports/2026-10-15/r1/"
+      "path": "reports/2026-10-15/"
     },
     {
       "schema_version": "1.0",
@@ -268,11 +268,11 @@
           "title": "模型服务与 GPU 超配｜Delta Tokenizer：历史只追加一点，分词不必全部重做",
           "summary": "稳定前缀与尾部重编码面向 CPU 会话状态；与 GPU 分词是不同取舍，高并发不保证任一路线更快。",
           "sha256": "93832e7fa4225d9aefb226d37d2b5ba680e3a0dca0c1c446b0479bdb04305825",
-          "path": "reports/2026-10-16/r1/articles/model-serving-gpu.md"
+          "path": "reports/2026-10-16/articles/model-serving-gpu.md"
         }
       ],
       "poster": null,
-      "path": "reports/2026-10-16/r1/"
+      "path": "reports/2026-10-16/"
     },
     {
       "schema_version": "1.0",
@@ -286,11 +286,11 @@
           "title": "模型服务与 GPU 超配｜DropKV 与 LCT：两种省显存方法，两套验收标准",
           "summary": "DropKV 牺牲部分历史信息，LCT 在 GPU 内无损压缩训练张量；局部 kernel 倍数不可当作服务收益。",
           "sha256": "3f4d7ff35b4511fdf46258630929d8157f997912bce24fd871e6dc980816f87a",
-          "path": "reports/2026-10-17/r1/articles/model-serving-gpu.md"
+          "path": "reports/2026-10-17/articles/model-serving-gpu.md"
         }
       ],
       "poster": null,
-      "path": "reports/2026-10-17/r1/"
+      "path": "reports/2026-10-17/"
     },
     {
       "schema_version": "1.0",
@@ -304,11 +304,11 @@
           "title": "模型服务与 GPU 超配｜缓存与训练配置：先与现成强基线比较",
           "summary": "远端 KV 应对照本机 RAM、亲和路由与重算；Primus 的配置预筛价值不能混同换精度收益。",
           "sha256": "5ed3c9df33d93b51b42282c59733626f74541a0f9ca4e9f892538bbc2b992208",
-          "path": "reports/2026-10-18/r1/articles/model-serving-gpu.md"
+          "path": "reports/2026-10-18/articles/model-serving-gpu.md"
         }
       ],
       "poster": null,
-      "path": "reports/2026-10-18/r1/"
+      "path": "reports/2026-10-18/"
     },
     {
       "schema_version": "1.0",
@@ -322,18 +322,18 @@
           "title": "重点硬件｜异构训练：利用硬件差异，而非复制原配方",
           "summary": "Meta 的生产推荐模型实践强调容量、算子与训练配方协同；不同功率配置不支持通用硬件胜负结论。",
           "sha256": "61776db844fd3ba555bc2a273cf65e9b3f278934fe2cec6320a4dca7aac4c395",
-          "path": "reports/2026-10-19/r1/articles/hardware-status.md"
+          "path": "reports/2026-10-19/articles/hardware-status.md"
         },
         {
           "id": "model-serving-gpu",
           "title": "模型服务与 GPU 超配｜GPU Fractioning：新增价值应在限额执行，而非再次包装共享",
           "summary": "已有控制面和 device plugin 是必要基线；驱动显存限额、压力驱逐与延迟隔离必须分开评估。",
           "sha256": "651ed5ef2a27f9d74b7ac19490c9eb7103ba2c04d9f0e096a3af9d565cf5c99b",
-          "path": "reports/2026-10-19/r1/articles/model-serving-gpu.md"
+          "path": "reports/2026-10-19/articles/model-serving-gpu.md"
         }
       ],
       "poster": null,
-      "path": "reports/2026-10-19/r1/"
+      "path": "reports/2026-10-19/"
     },
     {
       "schema_version": "1.0",
@@ -347,11 +347,11 @@
           "title": "模型服务与 GPU 超配｜筛选复盘：压缩和命中率为何还不够",
           "summary": "PN-Mix、Agent KV 驻留分析与 Difflet 均未正式入选：公开实现、恢复代价和强基线仍限制结论。",
           "sha256": "ce0a343ad8e15509f2163caa12a7cd578c7edcddacb35f9382baa6d75bda2bb2",
-          "path": "reports/2026-10-20/r1/articles/model-serving-gpu.md"
+          "path": "reports/2026-10-20/articles/model-serving-gpu.md"
         }
       ],
       "poster": null,
-      "path": "reports/2026-10-20/r1/"
+      "path": "reports/2026-10-20/"
     },
     {
       "schema_version": "1.0",
@@ -365,11 +365,11 @@
           "title": "模型服务与 GPU 超配｜看见等待，再定义怎样排队",
           "summary": "SigmaTrace 补充 GPU 发起通信观测；llm-d 1.0 将公平排队与故障取舍纳入交付验证。",
           "sha256": "c0d412ef25b601d229966ce4df3189b045fdf9cd8516c62a45d5d5d81a177235",
-          "path": "reports/2026-10-21/r1/articles/model-serving-gpu.md"
+          "path": "reports/2026-10-21/articles/model-serving-gpu.md"
         }
       ],
       "poster": null,
-      "path": "reports/2026-10-21/r1/"
+      "path": "reports/2026-10-21/"
     },
     {
       "schema_version": "1.0",
@@ -383,18 +383,18 @@
           "title": "前沿小模型｜BitMTP 把训练与多 token 执行一起优化",
           "summary": "单请求解码提速具有质量与显存取舍，不能直接换算成平台吞吐。",
           "sha256": "776919b182102b88bbdbd5be3700484fcd7f658e6d91a30f28eab928d7dcd7b2",
-          "path": "reports/2026-10-22/r1/articles/small-model-status.md"
+          "path": "reports/2026-10-22/articles/small-model-status.md"
         },
         {
           "id": "hardware-status",
           "title": "重点硬件｜硬件与执行栈｜Confidential G4 的可核验边界",
           "summary": "正式可用增加单卡安全交付选项，环境证明不等于应用或端到端自动可信。",
           "sha256": "557591c9de4e94741fbb2a94400f9decb8aa7a56c8609265108b3d7ea3e8def8",
-          "path": "reports/2026-10-22/r1/articles/hardware-status.md"
+          "path": "reports/2026-10-22/articles/hardware-status.md"
         }
       ],
       "poster": null,
-      "path": "reports/2026-10-22/r1/"
+      "path": "reports/2026-10-22/"
     },
     {
       "schema_version": "1.0",
@@ -408,18 +408,18 @@
           "title": "模型服务与 GPU 超配｜先降低精度，再衡量结构化稀疏",
           "summary": "稀疏收益必须扣除索引、预处理、质量恢复和旧版本维护成本。",
           "sha256": "575cfdc3b47ee7c3c506993d1e8a8a3413ecd8288f531c406ff20fd0c185b743",
-          "path": "reports/2026-10-23/r1/articles/model-serving-gpu.md"
+          "path": "reports/2026-10-23/articles/model-serving-gpu.md"
         },
         {
           "id": "hardware-status",
           "title": "重点硬件｜硬件与执行栈｜TorchTPU 降低接口摩擦，不消除迁移工作",
           "summary": "开源带来原生 PyTorch 入口，模型、依赖与硬件矩阵仍需逐栈验证。",
           "sha256": "adf171ebe9392074723d60a59364bfe4dbc465551391d65426ff0d89a71c4de2",
-          "path": "reports/2026-10-23/r1/articles/hardware-status.md"
+          "path": "reports/2026-10-23/articles/hardware-status.md"
         }
       ],
       "poster": null,
-      "path": "reports/2026-10-23/r1/"
+      "path": "reports/2026-10-23/"
     },
     {
       "schema_version": "1.0",
@@ -433,11 +433,11 @@
           "title": "推理引擎每日变动｜Elastic EP 与 Humming 的两笔成本账",
           "summary": "扩容停顿不等于产能就绪；执行后端加速与 FP8 激活变化必须拆开。",
           "sha256": "789e56c2ae8d67a1d81540f6004784ab6f7d670a967f26934540c764f9664cdb",
-          "path": "reports/2026-10-24/r1/articles/inference-engines.md"
+          "path": "reports/2026-10-24/articles/inference-engines.md"
         }
       ],
       "poster": null,
-      "path": "reports/2026-10-24/r1/"
+      "path": "reports/2026-10-24/"
     },
     {
       "schema_version": "1.0",
@@ -451,11 +451,11 @@
           "title": "模型服务与 GPU 超配｜GLM 长上下文的容量换通信",
           "summary": "PCP、DCP 与 HiSparse 组合有原生路径，但八路持久 KV 分片不是总显存缩小八倍。",
           "sha256": "4c8bb83ce746f78508a5a593aff0969680be24c29216b30e12ab6c4b1d6054f2",
-          "path": "reports/2026-10-25/r1/articles/model-serving-gpu.md"
+          "path": "reports/2026-10-25/articles/model-serving-gpu.md"
         }
       ],
       "poster": null,
-      "path": "reports/2026-10-25/r1/"
+      "path": "reports/2026-10-25/"
     },
     {
       "schema_version": "1.0",
@@ -469,11 +469,11 @@
           "title": "前沿小模型｜OPTIC 的百倍压缩，先看最后一点空间值多少",
           "summary": "PLE 表压缩降低容量压力，收益取决于并发档位、质量和接入成本，而非压缩倍数本身。",
           "sha256": "4edcf67fad979d4198ca71b744dbf7dee33b018e7b854bab976c2397bc3e581e",
-          "path": "reports/2026-10-26/r1/articles/small-model-status.md"
+          "path": "reports/2026-10-26/articles/small-model-status.md"
         }
       ],
       "poster": null,
-      "path": "reports/2026-10-26/r1/"
+      "path": "reports/2026-10-26/"
     },
     {
       "schema_version": "1.0",
@@ -487,11 +487,11 @@
           "title": "模型服务与 GPU 超配｜KVStream 与 TrainBridge 的条件性增量",
           "summary": "跨层动态读取和编译证据迁移各有价值，不能忽略已有缓存与目标原生执行栈。",
           "sha256": "0f06c8d0a02bd943b8dc3252e041aa86f72e3c514dfaab5fa4e0e8c14b817258",
-          "path": "reports/2026-10-27/r1/articles/model-serving-gpu.md"
+          "path": "reports/2026-10-27/articles/model-serving-gpu.md"
         }
       ],
       "poster": null,
-      "path": "reports/2026-10-27/r1/"
+      "path": "reports/2026-10-27/"
     },
     {
       "schema_version": "1.0",
@@ -505,11 +505,11 @@
           "title": "模型服务与 GPU 超配｜HiLO 把降级变成预先验证的配置",
           "summary": "优先复用限流与扩缩容，仅在确有跨服务失配和允许降级空间时评估联合策略。",
           "sha256": "7e1e8f628712ecb56e5c48e9e28cd39d5deb3d862a3b8ad44bad92f6c181d52a",
-          "path": "reports/2026-10-28/r1/articles/model-serving-gpu.md"
+          "path": "reports/2026-10-28/articles/model-serving-gpu.md"
         }
       ],
       "poster": null,
-      "path": "reports/2026-10-28/r1/"
+      "path": "reports/2026-10-28/"
     },
     {
       "schema_version": "1.0",
@@ -523,11 +523,11 @@
           "title": "模型服务与 GPU 超配｜筛选复盘：Gandalf、ZipFusion 与 HyScale 的证据缺口",
           "summary": "保留三项研究方向，但未正式入选；完整实现、基线和全流程收益仍不足。",
           "sha256": "c6c17483be8db78c6e8ebb9f7701fa63bdb02e863aecd7125476ce3a59df04f0",
-          "path": "reports/2026-10-29/r1/articles/model-serving-gpu.md"
+          "path": "reports/2026-10-29/articles/model-serving-gpu.md"
         }
       ],
       "poster": null,
-      "path": "reports/2026-10-29/r1/"
+      "path": "reports/2026-10-29/"
     },
     {
       "schema_version": "1.0",
@@ -541,18 +541,18 @@
           "title": "模型服务与 GPU 超配｜TAO 将工具返回纳入副本选择",
           "summary": "调度器需要工具状态才能预判下一轮，缓存价值与容量必须一起看。",
           "sha256": "4a0a5fa4d2503de1db9c6f16458ca238406fb41e57406abf0014c64f920b58e3",
-          "path": "reports/2026-10-30/r1/articles/model-serving-gpu.md"
+          "path": "reports/2026-10-30/articles/model-serving-gpu.md"
         },
         {
           "id": "embodied-training",
           "title": "制造业具身训练｜同一镜像从仿真走到真机",
           "summary": "Nebius × Positronic 将固定制品、资源上限和推理耗时纳入评测，比赛指标仍不等于工业可靠性。",
           "sha256": "eb83b758a0787877ad7e6e0a58a277629e4ed9790ec716a16b2d189eea20c9b4",
-          "path": "reports/2026-10-30/r1/articles/embodied-training.md"
+          "path": "reports/2026-10-30/articles/embodied-training.md"
         }
       ],
       "poster": null,
-      "path": "reports/2026-10-30/r1/"
+      "path": "reports/2026-10-30/"
     },
     {
       "schema_version": "1.0",
@@ -566,71 +566,18 @@
           "title": "模型服务与 GPU 超配｜命中之后、休眠之后，还剩多少等待",
           "summary": "FlatCake、TableTune 与 PhOSv1 分别优化恢复、核验和上下文开销，收益需放回完整服务口径。",
           "sha256": "aa91b487a8c3bca4a56bb00dca332d111b2dc79ece96e40348e94dd6cd13ea6e",
-          "path": "reports/2026-10-31/r1/articles/model-serving-gpu.md"
+          "path": "reports/2026-10-31/articles/model-serving-gpu.md"
         },
         {
           "id": "inference-engines",
           "title": "推理引擎每日变动｜备份内存、缓存导入与不可恢复请求",
           "summary": "保留 10 月 31 日截止时状态：三项已合并变动与一项仍 open 提案，不反投射后续发布。",
           "sha256": "961434032e9742db9a76626f63117d4abf604ef8e97ccb818224e9d4c17880c0",
-          "path": "reports/2026-10-31/r1/articles/inference-engines.md"
+          "path": "reports/2026-10-31/articles/inference-engines.md"
         }
       ],
       "poster": null,
-      "path": "reports/2026-10-31/r1/"
-    },
-    {
-      "schema_version": "1.0",
-      "date": "2026-11-01",
-      "revision": 1,
-      "title": "AI Infra 晨报 · 2026-11-01",
-      "subtitle": "显存预算之外，还要守住升级与服务边界",
-      "articles": [
-        {
-          "id": "vllm-logprobs-memory",
-          "title": "vLLM 将分块 logprobs 的重复结果驻留移出峰值",
-          "summary": "临时结果也要计入显存预算：分块结果预分配避免最终拼接副本，但跨调度步驻留仍未解决。",
-          "sha256": "7221a329f71fff555bbca34c541b7470a1e8bbb8f3f7e6dee171563bc73f0316",
-          "path": "reports/2026-11-01/r1/articles/vllm-logprobs-memory.md"
-        },
-        {
-          "id": "vllm-tool-parser",
-          "title": "vLLM 降低工具解析对健康检查的影响",
-          "summary": "单 H200 的强制参数循环案例显示，CPU 解析会拖垮健康检查；缓存已闭合参数缓解退化路径，不代表普遍推理提速。",
-          "sha256": "0e4b05a0cc74674a986dcdb60513e4240eb76f7597a5c36f3821db6a3bb9629e",
-          "path": "reports/2026-11-01/r1/articles/vllm-tool-parser.md"
-        },
-        {
-          "id": "sglang-persistent-buffers",
-          "title": "SGLang 先扣持久缓冲 再给 KV cache 定容",
-          "summary": "DeepSeek MegaMoE 把持久缓冲提前分配，KV 池相应缩小以避免漏算；GB300 证据不能外推到 H100/H200。",
-          "sha256": "3bb8ce79457744177dfd25a568176be36963fee927a8731cef42859ece50689a",
-          "path": "reports/2026-11-01/r1/articles/sglang-persistent-buffers.md"
-        },
-        {
-          "id": "sglang-pd-boundaries",
-          "title": "SGLang 的 PD 升级要同时检查协议与乱序请求",
-          "summary": "注册协议改版要求 P/D 同版；迟到 staging 请求不应重新占用已完成 chunk 的 ring slot。",
-          "sha256": "77a544a19e9f9bc6cf126f3c565cc11dad682e736940d3a36e091c027c2487f1",
-          "path": "reports/2026-11-01/r1/articles/sglang-pd-boundaries.md"
-        },
-        {
-          "id": "vllm-direct-reload",
-          "title": "vLLM direct reload 已合并但不宜默认开启",
-          "summary": "原地更新节约副本不能凌驾于正确性：失败更新可能以错误布局继续服务，默认 layerwise 仍应保留。",
-          "sha256": "90945e9d481f0c0abb3f7566cd4a589e0b8bef184832d9fd4c71928b1d9bbc80",
-          "path": "reports/2026-11-01/r1/articles/vllm-direct-reload.md"
-        },
-        {
-          "id": "engine-status-and-checks",
-          "title": "DeepInfer 持续跟踪 不补凑新闻",
-          "summary": "DeepInfer 主线近72小时无新提交；记录离线硬件边界，并给出本期按正确性、资源账和服务行为排序的验证清单。",
-          "sha256": "a85121fcb3e3f153bcfa0b6bfe081fb3b6dc828110238dd73f109d3d02e4bb90",
-          "path": "reports/2026-11-01/r1/articles/engine-status-and-checks.md"
-        }
-      ],
-      "poster": "assets/service-boundaries.png",
-      "path": "reports/2026-11-01/r1/"
+      "path": "reports/2026-10-31/"
     },
     {
       "schema_version": "1.0",
@@ -644,46 +591,46 @@
           "title": "模型服务与 GPU 超配｜HAMi 统一配额单位",
           "summary": "HAMi 对齐上限与用量单位；本轮未取得超配容量增加的证据。",
           "sha256": "d0e903d7e469ce21a8f408f98381d78d5ef2628785f96fbc27e241a98ad73789",
-          "path": "reports/2026-11-01/r2/articles/model-serving-gpu.md"
+          "path": "reports/2026-11-01/articles/model-serving-gpu.md"
         },
         {
           "id": "hardware-status",
           "title": "重点硬件｜本轮无合格新进展",
           "summary": "保留 H100、H200、Pro5500 关注栏，不将静态产品页面当作新发布。",
           "sha256": "bbae5b9954cee78182fd524e00c0cbce1e4cf0d1c145a4be54394e26bef1fee4",
-          "path": "reports/2026-11-01/r2/articles/hardware-status.md"
+          "path": "reports/2026-11-01/articles/hardware-status.md"
         },
         {
           "id": "model-architecture-status",
           "title": "模型与新架构｜本轮无合格新进展",
           "summary": "本轮没有核实到满足条件的新架构事件；引擎适配修复统一归入引擎栏目。",
           "sha256": "9f77c6394eed184ad01e3128bf311e7390e0118f5336bdb5776206cd4527f34f",
-          "path": "reports/2026-11-01/r2/articles/model-architecture-status.md"
+          "path": "reports/2026-11-01/articles/model-architecture-status.md"
         },
         {
           "id": "embodied-training",
           "title": "制造业具身训练｜RynnVLA-Latent 与 GR00T",
           "summary": "7 日补充：视频潜在动作训练方法与动作填充掩码的一致性边界。",
           "sha256": "616901db4e3047f2d95fe05488523b2c10fbb13d6c8d2f2bf5ef68a96668e2a8",
-          "path": "reports/2026-11-01/r2/articles/embodied-training.md"
+          "path": "reports/2026-11-01/articles/embodied-training.md"
         },
         {
           "id": "small-model-status",
           "title": "前沿小模型｜本轮无合格新进展",
           "summary": "本轮没有新增合格条目；Rynn 骨干规模不重复作为本栏新闻。",
           "sha256": "4d694666d161b4591acc397e1db98938d5d32a7f2f6be66f8130d8608c086e28",
-          "path": "reports/2026-11-01/r2/articles/small-model-status.md"
+          "path": "reports/2026-11-01/articles/small-model-status.md"
         },
         {
           "id": "inference-engines",
           "title": "推理引擎日报｜vLLM、SGLang 与 DeepInfer",
           "summary": "同项目归组呈现显存、解析、热更新与 PD 正确性变化；DeepInfer 只保留状态。",
           "sha256": "07545cb0f658c84d576feffc27684f6074b6cb3db92605ba737831cc3126be60",
-          "path": "reports/2026-11-01/r2/articles/inference-engines.md"
+          "path": "reports/2026-11-01/articles/inference-engines.md"
         }
       ],
       "poster": "assets/overview.png",
-      "path": "reports/2026-11-01/r2/"
+      "path": "reports/2026-11-01/"
     },
     {
       "schema_version": "1.0",
@@ -697,46 +644,46 @@
           "title": "模型服务与 GPU 超配｜本次无合格新进展",
           "summary": "候选已检索；实现、强基线与服务延迟证据尚不足。",
           "sha256": "5c95c511afda3b60c412981219db5cede716dd9580516fff8efa9864902bd546",
-          "path": "reports/2026-11-02/r1/articles/model-serving-gpu.md"
+          "path": "reports/2026-11-02/articles/model-serving-gpu.md"
         },
         {
           "id": "hardware-status",
           "title": "重点硬件｜本次无合格新进展",
           "summary": "保留硬件核查结果，不把静态规格当新发布。",
           "sha256": "f0c423c522c3e1ae75315b3e7129d52ff8f021c1653f6c056e66bf992e5ca8ca",
-          "path": "reports/2026-11-02/r1/articles/hardware-status.md"
+          "path": "reports/2026-11-02/articles/hardware-status.md"
         },
         {
           "id": "model-architecture-status",
           "title": "模型与新架构｜本次无合格新进展",
           "summary": "保留官方来源核查与候选取舍，不把开放权重当作架构进展。",
           "sha256": "a7c6fab768b071cdc867d9db983a2815384f24244d3e7d76d44990716639504c",
-          "path": "reports/2026-11-02/r1/articles/model-architecture-status.md"
+          "path": "reports/2026-11-02/articles/model-architecture-status.md"
         },
         {
           "id": "embodied-training",
           "title": "制造业具身训练｜先验收环境，再扩大训练",
           "summary": "Gym-Anything 将生成、独立审查与修复分开；训练环境也需要可复现交付。",
           "sha256": "6e9d47277b9ef7ea65ed79e8b8ca907a3f731c79a0f1f97ffda7109b2cf72d6e",
-          "path": "reports/2026-11-02/r1/articles/embodied-training.md"
+          "path": "reports/2026-11-02/articles/embodied-training.md"
         },
         {
           "id": "small-model-status",
           "title": "前沿小模型｜本次无合格新进展",
           "summary": "未取得满足任务质量、部署成本和实现条件的合格新增。",
           "sha256": "f0edda53f3ff3efbe0af305c1f452a6fc72713a3278cc1b6793b537caac8a94f",
-          "path": "reports/2026-11-02/r1/articles/small-model-status.md"
+          "path": "reports/2026-11-02/articles/small-model-status.md"
         },
         {
           "id": "inference-engines",
           "title": "推理引擎每日变动｜排空请求与大 KV 池正确性",
           "summary": "vLLM 完善退出排空；SGLang 修复大池地址溢出；DeepInfer 保留核查状态。",
           "sha256": "1ed806928cb39ec10dc7873b19ddeff3f1484353aa04b9950150bf59791ab7f3",
-          "path": "reports/2026-11-02/r1/articles/inference-engines.md"
+          "path": "reports/2026-11-02/articles/inference-engines.md"
         }
       ],
       "poster": "assets/overview.png",
-      "path": "reports/2026-11-02/r1/"
+      "path": "reports/2026-11-02/"
     },
     {
       "schema_version": "1.0",
@@ -750,46 +697,46 @@
           "title": "模型服务与 GPU 超配｜先筛能跑，再算加卡成本",
           "summary": "微调配置扫描把可行性与扩容成本分开；独立模型权重/KV超配候选保留明确取舍。",
           "sha256": "c416f7a5bc4883089351b8d6d1ab0aa5b9a00743207471bccccf1898992ed463",
-          "path": "reports/2026-11-03/r1/articles/model-serving-gpu.md"
+          "path": "reports/2026-11-03/articles/model-serving-gpu.md"
         },
         {
           "id": "hardware-status",
           "title": "重点硬件｜本次无合格新进展",
           "summary": "核查H100、H200及Pro5500，静态规格不当新进展；硬件身份冲突的能耗候选不入选。",
           "sha256": "a22f496a81601d69e7c82f6937d06781fc59a04b3402f20239c5eb28bbbb84ad",
-          "path": "reports/2026-11-03/r1/articles/hardware-status.md"
+          "path": "reports/2026-11-03/articles/hardware-status.md"
         },
         {
           "id": "model-architecture-status",
           "title": "模型与新架构｜本次无合格新进展",
           "summary": "已查Qwen、GLM、DeepSeek官方模型资料，不把旧模型卡或自动更新时间当架构新进展。",
           "sha256": "d94355f9feb20c0ba1f68414820797fe0a2ffbcc1298a184b06df93499156065",
-          "path": "reports/2026-11-03/r1/articles/model-architecture-status.md"
+          "path": "reports/2026-11-03/articles/model-architecture-status.md"
         },
         {
           "id": "embodied-training",
           "title": "制造业具身训练｜先修控制流程，再决定是否训练",
           "summary": "RoboArchitect冻结策略，根据失败轨迹修订外层控制程序；用未参与修改的仿真场景验收。",
           "sha256": "aff2bbf0b85347dffdf0cb5b0d8e406b6bb5727e7cca1058f326fd93ce3be655",
-          "path": "reports/2026-11-03/r1/articles/embodied-training.md"
+          "path": "reports/2026-11-03/articles/embodied-training.md"
         },
         {
           "id": "small-model-status",
           "title": "前沿小模型｜EmbeddingGemma2 按任务缩向量",
           "summary": "新技术报告补齐模态裁剪和向量截断证据；节省原始向量存储，须验收检索质量。",
           "sha256": "f5da2ea36dd9fe9793cbb0f1436d2efdfe8520456222152b458aa586361d426b",
-          "path": "reports/2026-11-03/r1/articles/small-model-status.md"
+          "path": "reports/2026-11-03/articles/small-model-status.md"
         },
         {
           "id": "inference-engines",
           "title": "推理引擎每日变动｜显存热身与缓存状态",
           "summary": "vLLM按最大批采样热身、成功卸载后同步命中状态；SGLang编译模式分开K/V；DeepInfer保留核查结果。",
           "sha256": "8ebb0ab76a9b19b83a9cdfea4d1e4256b6e0baf70e6a05aea7566f7cd0fda5c7",
-          "path": "reports/2026-11-03/r1/articles/inference-engines.md"
+          "path": "reports/2026-11-03/articles/inference-engines.md"
         }
       ],
       "poster": "assets/overview.png",
-      "path": "reports/2026-11-03/r1/"
+      "path": "reports/2026-11-03/"
     },
     {
       "schema_version": "1.0",
@@ -803,46 +750,46 @@
           "title": "模型服务与 GPU 超配｜缓存复用先划清兼容边界",
           "summary": "DeepInfer披露生产缓存兼容键与失效条件，不等同完整开源缓存服务。",
           "sha256": "c5a7c6dd5b9944976b5928d36f7cd3cec7e666f6c80d9e848cacff9ad9ea50a3",
-          "path": "reports/2026-11-04/r1/articles/model-serving-gpu.md"
+          "path": "reports/2026-11-04/articles/model-serving-gpu.md"
         },
         {
           "id": "hardware-status",
           "title": "重点硬件｜本次无合格新进展",
           "summary": "静态规格不作为新事件，B200/GB300性能不外推H100/H200，Pro5500型号待核实。",
           "sha256": "9b8f90b6b1fdd850bf5d21e12fe253aa8dd3165f45cd85fd314cd02e97996d12",
-          "path": "reports/2026-11-04/r1/articles/hardware-status.md"
+          "path": "reports/2026-11-04/articles/hardware-status.md"
         },
         {
           "id": "model-architecture-status",
           "title": "模型与新架构｜本次无合格新进展",
           "summary": "核查Qwen、GLM、DeepSeek官方模型资料，未发现满足架构与缓存适配证据的新事件。",
           "sha256": "5c337b5de4a90c1f6b64a043fc411ebfc84a2e62842a219ad28d25bb562b7718",
-          "path": "reports/2026-11-04/r1/articles/model-architecture-status.md"
+          "path": "reports/2026-11-04/articles/model-architecture-status.md"
         },
         {
           "id": "embodied-training",
           "title": "制造业具身训练｜用成功率反推推理时限",
           "summary": "VLALagBench区分观测陈旧与同步停顿，用任务曲线评估延迟预算，非工厂SLO保证。",
           "sha256": "8dbc2a863e0905eb02fca8f1eb9bdeaede584ed1031471870161430ce03dcb21",
-          "path": "reports/2026-11-04/r1/articles/embodied-training.md"
+          "path": "reports/2026-11-04/articles/embodied-training.md"
         },
         {
           "id": "small-model-status",
           "title": "前沿小模型｜kniv v7 把英文抽取移到 CPU",
           "summary": "动态标签与实体标记让专用英文抽取运行于CPU；INT8必须验收任务质量、窗口与延迟。",
           "sha256": "c98e99a53d4cfe6cc8b576c745bbf93f29d92dea2c52588b74ae380e3dbedacd",
-          "path": "reports/2026-11-04/r1/articles/small-model-status.md"
+          "path": "reports/2026-11-04/articles/small-model-status.md"
         },
         {
           "id": "inference-engines",
           "title": "推理引擎每日变动｜扩缓存与批量写回",
           "summary": "vLLM接入HiSparse可扩展KV，SGLang在可批处理路径中每批统一等待；按负载解读收益。",
           "sha256": "6b8b2b8a704b084e7d638d77cd5487fac351c3873ce2deb815dfd1c36f09ff1f",
-          "path": "reports/2026-11-04/r1/articles/inference-engines.md"
+          "path": "reports/2026-11-04/articles/inference-engines.md"
         }
       ],
       "poster": "assets/overview.png",
-      "path": "reports/2026-11-04/r1/"
+      "path": "reports/2026-11-04/"
     },
     {
       "schema_version": "1.0",
@@ -856,46 +803,46 @@
           "title": "模型服务与 GPU 超配｜算清索引与预填充峰值",
           "summary": "LeanSparse 降低索引和预填充驻留，但 TTFT 改善伴随 TPOT 上升；Bevy 的专家就绪调度仅有本地设备证据。",
           "sha256": "afcb9348947aad6616501492b27512613ba2a854e806098c0bcff54a3e6e7021",
-          "path": "reports/2026-11-05/r1/articles/model-serving-gpu.md"
+          "path": "reports/2026-11-05/articles/model-serving-gpu.md"
         },
         {
           "id": "hardware-status",
           "title": "重点硬件｜Hopper MPS 正确性修复",
           "summary": "CUDA 13.5 修复限定算法与限额组合的错误结果；MPS 内存驱逐不是透明卸载，Pro5500 仍须核对具体型号。",
           "sha256": "c6ad04e26c1680e1552f5c4cb84d3279e492b3fdc158d1028e0e797e2eac3221",
-          "path": "reports/2026-11-05/r1/articles/hardware-status.md"
+          "path": "reports/2026-11-05/articles/hardware-status.md"
         },
         {
           "id": "model-architecture-status",
           "title": "模型与新架构｜本轮无合格新发布",
           "summary": "已检查 GLM、DeepSeek、Qwen 官方模型索引与代码入口；未找到符合架构与缓存适配条件的新发布，Qwen 博客正文仍不可读。",
           "sha256": "1842118ba14e838e144bd1b5f859280c89f7a8cc42e72621f4a9a9e658610952",
-          "path": "reports/2026-11-05/r1/articles/model-architecture-status.md"
+          "path": "reports/2026-11-05/articles/model-architecture-status.md"
         },
         {
           "id": "embodied-training",
           "title": "制造业具身训练｜GR00T 掩码进入 TensorRT",
           "summary": "GR00T 补齐训练掩码与动作头 TensorRT 路径，需重导出并匹配开关；没有工厂收益或真实机器人错误率证据。",
           "sha256": "d89366f3f77e193b4498c93c2398dba6e142f6691124681d2470b579a1130938",
-          "path": "reports/2026-11-05/r1/articles/embodied-training.md"
+          "path": "reports/2026-11-05/articles/embodied-training.md"
         },
         {
           "id": "small-model-status",
           "title": "前沿小模型｜CPU 决策服务算闲置成本",
           "summary": "DiffusionGemma 的单步结构化决策在 CPU 上减少重复前向；26B 总参数不能按 4B 激活参数估显存，低流量须算常驻成本。",
           "sha256": "2b8f4da6b2b1a21ad8a004f1ff3653c610b41360b114c4559c73eaa0e349776f",
-          "path": "reports/2026-11-05/r1/articles/small-model-status.md"
+          "path": "reports/2026-11-05/articles/small-model-status.md"
         },
         {
           "id": "inference-engines",
           "title": "推理引擎每日变动｜缓存准入与草稿预算",
           "summary": "vLLM 在有限窗口内优先命中前缀，SGLang 按 DCP 展开行数计入草稿 KV；两项已合并未发布，DeepInfer 未发现合格新增。",
           "sha256": "3823751d4660cd1bf23c99ffdc70c3da158312f10892e9cdf4c580236a9a597e",
-          "path": "reports/2026-11-05/r1/articles/inference-engines.md"
+          "path": "reports/2026-11-05/articles/inference-engines.md"
         }
       ],
       "poster": "assets/overview.png",
-      "path": "reports/2026-11-05/r1/"
+      "path": "reports/2026-11-05/"
     },
     {
       "schema_version": "1.0",
@@ -909,46 +856,46 @@
           "title": "模型服务与 GPU 超配｜KV 安全与达标成本",
           "summary": "KVGuard 检查请求权限和块生命周期；ServerBench 用闭环负载与延迟门槛判断并发收益，两者都不是跨模型共享方案。",
           "sha256": "a6ae6e7b9f45b0734ec8ee1be7b5896194ada914ef3b91c6a5c6f373d731a8b7",
-          "path": "reports/2026-11-06/r1/articles/model-serving-gpu.md"
+          "path": "reports/2026-11-06/articles/model-serving-gpu.md"
         },
         {
           "id": "hardware-status",
           "title": "重点硬件｜规格复核与新进展筛选",
           "summary": "静态核对 H100、H200 与可能对应 Pro5500 的官方型号；当日系统综述缺少可迁移的新实验，不重复计算昨日修复。",
           "sha256": "1a9ea3c1ce77a427c25adc5ff020fdb6db972efb4483632e73582db164baa6d8",
-          "path": "reports/2026-11-06/r1/articles/hardware-status.md"
+          "path": "reports/2026-11-06/articles/hardware-status.md"
         },
         {
           "id": "model-architecture-status",
           "title": "模型与新架构｜分支隔离的草稿训练",
           "summary": "SpecOPD 为稀疏与线性注意力处理草稿分支，代码和硬件披露仍不足；训练提速不能代替在线服务验收。",
           "sha256": "b988bfcca11df80911c808d4f89ccb127639048c02802b3e421775cc46b24883",
-          "path": "reports/2026-11-06/r1/articles/model-architecture-status.md"
+          "path": "reports/2026-11-06/articles/model-architecture-status.md"
         },
         {
           "id": "embodied-training",
           "title": "制造业具身训练｜训练管线与在线纠偏",
           "summary": "LeRobot 0.7.0 的训练与数据管线须分指标验收；TwinBridge 的在线改进局限于五个实验室任务。",
           "sha256": "ccafdf83a66b25fdce6128ce5a9eadbc8c72a6055f1e1da81f7da9e861acaca5",
-          "path": "reports/2026-11-06/r1/articles/embodied-training.md"
+          "path": "reports/2026-11-06/articles/embodied-training.md"
         },
         {
           "id": "small-model-status",
           "title": "前沿小模型｜Clover 的双向草稿边界",
           "summary": "Clover 约 35B 总参数与 3B 激活量不能混算显存；AR 与自推测路径支持不同，H200 数字须带质量与负载条件。",
           "sha256": "61367ff254a9540da4629c2751726f617562c65bf92cadc9412c9e147dab41ec",
-          "path": "reports/2026-11-06/r1/articles/small-model-status.md"
+          "path": "reports/2026-11-06/articles/small-model-status.md"
         },
         {
           "id": "inference-engines",
           "title": "推理引擎每日变动｜身份、取消与恢复",
           "summary": "vLLM 区分缓存身份与安全释放，SGLang 保留混合状态完整恢复点；均为主线合并，DeepInfer 无合格新增。",
           "sha256": "eae1e4d1f93ae9ba7e5a250138b149cd041c321432379280be43d02f2b516371",
-          "path": "reports/2026-11-06/r1/articles/inference-engines.md"
+          "path": "reports/2026-11-06/articles/inference-engines.md"
         }
       ],
       "poster": "assets/overview.png",
-      "path": "reports/2026-11-06/r1/"
+      "path": "reports/2026-11-06/"
     },
     {
       "schema_version": "1.0",
@@ -962,46 +909,46 @@
           "title": "模型服务与 GPU 超配｜缓存准入和显存释放",
           "summary": "Basin 区分真实硬件与模拟收益；LMCache 为跨进程 KV 映射 的 sleep/wake 补齐物理页引用处理，超时仍需谨慎。",
           "sha256": "2a89120090c1ff46ff95c99f555eb4d0adef286e11b65515342317a73c0096fc",
-          "path": "reports/2026-11-07/r1/articles/model-serving-gpu.md"
+          "path": "reports/2026-11-07/articles/model-serving-gpu.md"
         },
         {
           "id": "hardware-status",
           "title": "重点硬件｜H100 与 H200 的适用边界",
           "summary": "静态产品规格与新实验分别核对；Pro5500 保留型号待核实，不将其他芯片成绩迁移为兼容承诺。",
           "sha256": "e67512b4eceab68c957ad2f611f6066de35d8284ecdfb09261916c59ce499e87",
-          "path": "reports/2026-11-07/r1/articles/hardware-status.md"
+          "path": "reports/2026-11-07/articles/hardware-status.md"
         },
         {
           "id": "model-architecture-status",
           "title": "模型与新架构｜异步训练先对齐数值",
           "summary": "Zero Mismatch 将同权重算子误差与权重滞后拆开；小模型长程训练和大模型数值对齐的证据范围不同。",
           "sha256": "a76be0dc8d12f0e20c41c12d6a40244a9c6fe28f762cbac318fd8646ec2d111c",
-          "path": "reports/2026-11-07/r1/articles/model-architecture-status.md"
+          "path": "reports/2026-11-07/articles/model-architecture-status.md"
         },
         {
           "id": "embodied-training",
           "title": "制造业具身训练｜仿真动作先验的样本账",
           "summary": "Latent RL Prior 用特权状态预训练动作解码器，再由视觉预测上下文；示范减少不代表总训练成本下降，尚无真机结果。",
           "sha256": "959eeca3ec0e6087efed87b4860c7abe10396a47373e98925b1d7dce096e89db",
-          "path": "reports/2026-11-07/r1/articles/embodied-training.md"
+          "path": "reports/2026-11-07/articles/embodied-training.md"
         },
         {
           "id": "small-model-status",
           "title": "前沿小模型｜去重与证据覆盖结果",
           "summary": "复核模型与提交来源，区分模型卡更新和真实模型能力变化；本栏不以旧闻或弱线索补位。",
           "sha256": "de5d867e982c0cdf5ecf6adcb025774d01c7d6b93f94c903e06209174224db2d",
-          "path": "reports/2026-11-07/r1/articles/small-model-status.md"
+          "path": "reports/2026-11-07/articles/small-model-status.md"
         },
         {
           "id": "inference-engines",
           "title": "推理引擎每日变动｜休眠状态与页面回收",
           "summary": "vLLM 保留非参数构建状态，SGLang 约束复用页面的后续写者；主线合并与稳定发布分开记录。",
           "sha256": "f7b3e24d5c9f59a1e5fe215e26677d410cad0c4e35300118116844608db6bafb",
-          "path": "reports/2026-11-07/r1/articles/inference-engines.md"
+          "path": "reports/2026-11-07/articles/inference-engines.md"
         }
       ],
       "poster": "assets/overview.png",
-      "path": "reports/2026-11-07/r1/"
+      "path": "reports/2026-11-07/"
     },
     {
       "schema_version": "1.0",
@@ -1015,46 +962,46 @@
           "title": "模型服务与GPU超配｜LoRA缓存不能串身份",
           "summary": "LMCache把适配器身份贯穿对象键与延迟写回；名称路径不是权重哈希，旧L2污染需处理。",
           "sha256": "b1cfaccd8d29fa01c0fbf99e22099917de36117dc7e81fd5aa4f13ea05522d56",
-          "path": "reports/2026-11-08/r1/articles/model-serving-gpu.md"
+          "path": "reports/2026-11-08/articles/model-serving-gpu.md"
         },
         {
           "id": "hardware-status",
           "title": "重点硬件｜H100与H200分开验收",
           "summary": "静态规格不计新闻，MIG不等于显存超配；Pro5500仍保留型号待核实。",
           "sha256": "dcb4cd712c1d6f2d2e274116a4de584767d941e091c692a12ccc17297e1cef95",
-          "path": "reports/2026-11-08/r1/articles/hardware-status.md"
+          "path": "reports/2026-11-08/articles/hardware-status.md"
         },
         {
           "id": "model-architecture-status",
           "title": "模型与新架构｜模板更新不等于缓存变革",
           "summary": "Qwen模板标记更新已核读，未作为新架构新闻；保留实际博客正文访问缺口。",
           "sha256": "b4b3fc57095971309aff01b337ebd59934675be7ad1ccf856c68b8c1550cc6ac",
-          "path": "reports/2026-11-08/r1/articles/model-architecture-status.md"
+          "path": "reports/2026-11-08/articles/model-architecture-status.md"
         },
         {
           "id": "embodied-training",
           "title": "制造业具身｜H100长padding的数值安全",
           "summary": "GR00T以最小有限值替代负无穷掩码，修复H100融合attention长padding的NaN风险。",
           "sha256": "a0dd679aa51fe3420009eefa41ecce8ca876d7c979cc13ff95502749a68364ec",
-          "path": "reports/2026-11-08/r1/articles/embodied-training.md"
+          "path": "reports/2026-11-08/articles/embodied-training.md"
         },
         {
           "id": "small-model-status",
           "title": "前沿小模型｜来源覆盖与未入选理由",
           "summary": "官方模型入口已核；旧模型、索引更新时间与缺运行证据的配置修复不冒充SOTA新进展。",
           "sha256": "2f50f995b75b54d13b427285b626b586cb9c44d257a58a321b14f20553fe1c49",
-          "path": "reports/2026-11-08/r1/articles/small-model-status.md"
+          "path": "reports/2026-11-08/articles/small-model-status.md"
         },
         {
           "id": "inference-engines",
           "title": "推理引擎每日变动｜工作区峰值与KV握手",
           "summary": "vLLM统一CPU KV映射；SGLang分块复制循环状态并在传输前核对草稿KV语义。",
           "sha256": "48f21d704ab54f03f4a208a37a347d3365865155ae3d2c9a9ef9317d45301bdf",
-          "path": "reports/2026-11-08/r1/articles/inference-engines.md"
+          "path": "reports/2026-11-08/articles/inference-engines.md"
         }
       ],
       "poster": "assets/overview.png",
-      "path": "reports/2026-11-08/r1/"
+      "path": "reports/2026-11-08/"
     },
     {
       "schema_version": "1.0",
@@ -1068,103 +1015,99 @@
           "title": "模型服务与 GPU 超配｜缓存访问与稀疏卸载的边界",
           "summary": "认证、容量和任务质量分别验收，不把局部指标当平台交付收益。",
           "sha256": "44f58b0e45c7ad0586ca24bb6eb569b667ab25c330456f37ae0b43857a1119b6",
-          "path": "reports/2026-11-09/r1/articles/model-serving-gpu.md"
+          "path": "reports/2026-11-09/articles/model-serving-gpu.md"
         },
         {
           "id": "hardware-status",
           "title": "重点硬件｜H100 与 H200 分开验收",
           "summary": "静态规格不计新闻，硬件与实现条件不能互相替换。",
           "sha256": "fd3a283854950b2c25143e52500d15c887a74519e4068bb37ec93a28097fbdc4",
-          "path": "reports/2026-11-09/r1/articles/hardware-status.md"
+          "path": "reports/2026-11-09/articles/hardware-status.md"
         },
         {
           "id": "model-architecture-status",
           "title": "模型与新架构｜目录更新不是架构进展",
           "summary": "区分已核实的实质变化、已有覆盖和证据不足。",
           "sha256": "b825eff0c5a59bc70b9c31360b5f3669cca4a53b6f7bd31e44e8b421fe7069a0",
-          "path": "reports/2026-11-09/r1/articles/model-architecture-status.md"
+          "path": "reports/2026-11-09/articles/model-architecture-status.md"
         },
         {
           "id": "embodied-training",
           "title": "制造业具身训练｜减少 GPU 等待输入",
           "summary": "GR00T 缩短数据准备链，但作者特定实验不构成通用倍数承诺。",
           "sha256": "82d87ed7b0b8e7c7af0fa7404d42cc6495de3fafd1c18259e3d60f781ad5e237",
-          "path": "reports/2026-11-09/r1/articles/embodied-training.md"
+          "path": "reports/2026-11-09/articles/embodied-training.md"
         },
         {
           "id": "small-model-status",
           "title": "前沿小模型｜按质量与可复现性筛选",
           "summary": "没有合格新进展时保留实际检索结论，不用更新时间填数。",
           "sha256": "940296d9f7928d46ebecefe94d261c9801e9caf844820bd9611c543a53a4669d",
-          "path": "reports/2026-11-09/r1/articles/small-model-status.md"
+          "path": "reports/2026-11-09/articles/small-model-status.md"
         },
         {
           "id": "inference-engines",
           "title": "推理引擎每日变动｜释放之后，何时复用",
           "summary": "vLLM 保留同权重外置 KV；SGLang 按逻辑进度延迟物理页复用。",
           "sha256": "da6b3561ab6a56362a55bb147c3c68afd092810a11cef38bc5aeb2194b693045",
-          "path": "reports/2026-11-09/r1/articles/inference-engines.md"
+          "path": "reports/2026-11-09/articles/inference-engines.md"
         }
       ],
       "poster": "assets/overview.png",
-      "path": "reports/2026-11-09/r1/"
+      "path": "reports/2026-11-09/"
     },
     {
       "schema_version": "1.0",
       "date": "2026-11-10",
-      "revision": 1,
+      "revision": 3,
       "title": "AI Infra 晨报 · 2026-11-10",
-      "subtitle": "部分晨报｜覆盖缺口：vLLM 代码、SGLang 代码。vLLM未覆盖11月9日10:19–12:48（北京时间）提交；部分PR详情未核验。",
-      "articles": [
-        {
-          "id": "embodied-training",
-          "title": "GR00T 2｜少量示范适配机器人操作",
-          "summary": "联合预测视频与动作，核对跨机体迁移、适配成本和 Turbo 的任务质量取舍。",
-          "sha256": "de2cbcc55eeecbfcf5cc05b4f01a1d8ded6c8510c4619c94e476398ee61be9e3",
-          "path": "reports/2026-11-10/r1/articles/embodied-training.md"
-        },
-        {
-          "id": "inference-engines",
-          "title": "推理引擎｜本期核查范围与证据缺口",
-          "summary": "分开记录 vLLM、SGLang、DeepInfer 的已读资料和待核验线索。",
-          "sha256": "1e0ae79c259a3a0e5bba161687a8ccacd85a6404ec6377b68422ec4dbbf77dec",
-          "path": "reports/2026-11-10/r1/articles/inference-engines.md"
-        }
-      ],
-      "poster": "assets/overview.png",
-      "path": "reports/2026-11-10/r1/"
-    },
-    {
-      "schema_version": "1.0",
-      "date": "2026-11-10",
-      "revision": 2,
-      "title": "AI Infra 晨报 · 2026-11-10",
-      "subtitle": "KV与状态管理、引擎内存效率及GR00T2适配；代码早段、硬件专项和独立小模型等覆盖缺口见正文。",
+      "subtitle": "六个方向：模型共驻、硬件支持、状态与分片、具身训练、专用小模型及推理引擎。",
       "articles": [
         {
           "id": "model-serving-gpu",
-          "title": "模型服务与 GPU 超配｜状态、分片与回载带宽",
-          "summary": "从混合状态淘汰、Kimi 缓存分片和外部内存实验看容量、恢复与尾延迟。",
-          "sha256": "3562ecd6ce30a5398ac8746d88e7c56419aca7ebef84e6aeb9bb88350b4012fc",
-          "path": "reports/2026-11-10/r2/articles/model-serving-gpu.md"
+          "title": "模型服务与 GPU 超配｜隔离共驻、路由与卸载",
+          "summary": "区分静态MIG、KV-aware路由、专家权重卸载与外置KV的实验边界。",
+          "sha256": "28270dddce2a9ed0eee63a9dddc4cbcdb406205224fba3056cafbb3e7e10dc67",
+          "path": "reports/2026-11-10/articles/model-serving-gpu.md"
         },
         {
-          "id": "inference-engines",
-          "title": "推理引擎每日变动｜内存去重与页生命周期",
-          "summary": "vLLM 的主机表与导入页、SGLang 的 PP 屏障，以及三家引擎实际覆盖范围。",
-          "sha256": "9695da0ffbd10f843fa3056d58b90a29694417aba6d135adce1215254d5b567e",
-          "path": "reports/2026-11-10/r2/articles/inference-engines.md"
+          "id": "hardware-status",
+          "title": "重点硬件｜R620 与 MIG 支持边界",
+          "summary": "核对H100/H200、RTX PRO 5500、驱动平台与云服务矩阵。",
+          "sha256": "6b7c305bcd89bbc19445eb1d5285a86e42d588ebe1c70d5d8d199a4b37fb6b55",
+          "path": "reports/2026-11-10/articles/hardware-status.md"
+        },
+        {
+          "id": "model-architecture-status",
+          "title": "模型与新架构｜API、状态与缓存分片",
+          "summary": "Muse Ember、GLM混合状态和Kimi分片机制，保留官方入口覆盖范围。",
+          "sha256": "904a07faff44845cf17ecb8764246fc10036c043ac7d987c7cf6529095a2ea35",
+          "path": "reports/2026-11-10/articles/model-architecture-status.md"
         },
         {
           "id": "embodied-training",
-          "title": "GR00T 2｜少量示范适配机器人操作",
-          "summary": "联合预测视频与动作，核对跨机体迁移、适配成本和 Turbo 的任务质量取舍。",
-          "sha256": "de2cbcc55eeecbfcf5cc05b4f01a1d8ded6c8510c4619c94e476398ee61be9e3",
-          "path": "reports/2026-11-10/r2/articles/embodied-training.md"
+          "title": "制造业具身训练｜GR00T 2 与 LeRobot 升级",
+          "summary": "少量示范适配、训练恢复兼容及OpenPI本轮实际检索范围。",
+          "sha256": "282d68796df557754cf22064ab060a3a35f7befa275464557b1b769c5d6b4504",
+          "path": "reports/2026-11-10/articles/embodied-training.md"
+        },
+        {
+          "id": "small-model-status",
+          "title": "前沿小模型｜2B 文档字段抽取",
+          "summary": "按字段质量、JSON合规与成本口径判断，明确权重和许可证缺口。",
+          "sha256": "8a2d617d103756474f93a4d62924ef2b01c18b9a683c087cc4714fd704eda390",
+          "path": "reports/2026-11-10/articles/small-model-status.md"
+        },
+        {
+          "id": "inference-engines",
+          "title": "推理引擎每日变动｜ABI 与页生命周期",
+          "summary": "vLLM兼容性与内存去重、SGLang物理页复用，以及DeepInfer覆盖。",
+          "sha256": "c4c3ebd7fc2e0b1993844ff402caf2859629d15ad8fb23b431236bd0893d5324",
+          "path": "reports/2026-11-10/articles/inference-engines.md"
         }
       ],
       "poster": "assets/overview.png",
-      "path": "reports/2026-11-10/r2/"
+      "path": "reports/2026-11-10/"
     }
   ],
   "entries": [
@@ -2142,108 +2085,6 @@
       "article_id": "inference-engines",
       "fingerprint": "10c3ac2c106dccc3db20871cefc8902b2a2b40e3f202eff979133c0de8f59195",
       "date": "2026-10-31",
-      "revision": 1
-    },
-    {
-      "id": "2026-11-01-vllm-pr-64841",
-      "event_key": "vllm-pr-64841",
-      "title": "vLLM 将分块 logprobs 的重复结果驻留移出峰值",
-      "summary": "临时结果也要计入显存预算：分块结果预分配避免最终拼接副本，但跨调度步驻留仍未解决。",
-      "source_urls": [
-        "https://github.com/vllm-project/vllm/pull/64841"
-      ],
-      "update_of": null,
-      "article_id": "vllm-logprobs-memory",
-      "fingerprint": "b8816254c6dd73500eeaa92e9225175ea9eb2a64a0986d91b077a0b710f0ede7",
-      "date": "2026-11-01",
-      "revision": 1
-    },
-    {
-      "id": "2026-11-01-vllm-pr-64675",
-      "event_key": "vllm-pr-64675",
-      "title": "vLLM 降低工具解析对健康检查的影响",
-      "summary": "单 H200 的强制参数循环案例显示，CPU 解析会拖垮健康检查；缓存已闭合参数缓解退化路径，不代表普遍推理提速。",
-      "source_urls": [
-        "https://github.com/vllm-project/vllm/pull/64675"
-      ],
-      "update_of": null,
-      "article_id": "vllm-tool-parser",
-      "fingerprint": "40a4b51e4a9bc265d7dc4f0eb5a2118a4e289f9c784984f005b860df685b6245",
-      "date": "2026-11-01",
-      "revision": 1
-    },
-    {
-      "id": "2026-11-01-sglang-pr-47577",
-      "event_key": "sglang-pr-47577",
-      "title": "SGLang 先扣持久缓冲 再给 KV cache 定容",
-      "summary": "DeepSeek MegaMoE 把持久缓冲提前分配，KV 池相应缩小以避免漏算；GB300 证据不能外推到 H100/H200。",
-      "source_urls": [
-        "https://github.com/sgl-project/sglang/pull/47577"
-      ],
-      "update_of": null,
-      "article_id": "sglang-persistent-buffers",
-      "fingerprint": "78cae701a485e1ea7d33dbea703acca489995916e7f7922291616ce798928d41",
-      "date": "2026-11-01",
-      "revision": 1
-    },
-    {
-      "id": "2026-11-01-sglang-47638",
-      "event_key": "sglang-pr-47638",
-      "title": "SGLang #47638：PD 注册协议升级边界",
-      "summary": "PD 注册帧布局变化，新旧 P/D 构建不能混跑，升级须保持两端同版。",
-      "source_urls": [
-        "https://github.com/sgl-project/sglang/pull/47638"
-      ],
-      "update_of": null,
-      "article_id": "sglang-pd-boundaries",
-      "fingerprint": "f3558728ddc46d797aca599c9f13d10fdb0d16e210b7d1dd163ba8e1997ac45d",
-      "date": "2026-11-01",
-      "revision": 1
-    },
-    {
-      "id": "2026-11-01-sglang-47652",
-      "event_key": "sglang-pr-47652",
-      "title": "SGLang #47652：迟到 staging 请求修复",
-      "summary": "通过保留 CHUNK_SCATTERED 状态忽略迟到申请，避免重新分配孤儿 ring slot。",
-      "source_urls": [
-        "https://github.com/sgl-project/sglang/pull/47652"
-      ],
-      "update_of": null,
-      "article_id": "sglang-pd-boundaries",
-      "fingerprint": "decf681438421cea1b6a03ebcc75cc856c8dac159bc2d911e9ca63a3ba76b212",
-      "date": "2026-11-01",
-      "revision": 1
-    },
-    {
-      "id": "2026-11-01-vllm-pr-64336",
-      "event_key": "vllm-pr-64336",
-      "title": "vLLM direct reload 已合并但不宜默认开启",
-      "summary": "原地更新节约副本不能凌驾于正确性：失败更新可能以错误布局继续服务，默认 layerwise 仍应保留。",
-      "source_urls": [
-        "https://github.com/vllm-project/vllm/pull/64336"
-      ],
-      "update_of": null,
-      "article_id": "vllm-direct-reload",
-      "fingerprint": "95ba7a0f3c9ddd372945da3eec2c40693142256b1b96f268436ad772388fdac0",
-      "date": "2026-11-01",
-      "revision": 1
-    },
-    {
-      "id": "2026-11-01-deepinfer-status-2026-11-01",
-      "event_key": "deepinfer-status-2026-11-01",
-      "title": "DeepInfer 持续跟踪 不补凑新闻",
-      "summary": "DeepInfer 主线近72小时无新提交；记录离线硬件边界，并给出本期按正确性、资源账和服务行为排序的验证清单。",
-      "source_urls": [
-        "https://api.github.com/repos/deepseek-ai/DeepInfer/commits?per_page=10",
-        "https://api.github.com/repos/deepseek-ai/DeepInfer/releases?per_page=10",
-        "https://github.com/deepseek-ai/DeepInfer/blob/553741557a57df44a46fb3ab72b6aafeaf945337/README.md",
-        "https://github.com/sgl-project/sglang/releases",
-        "https://github.com/vllm-project/vllm/releases"
-      ],
-      "update_of": null,
-      "article_id": "engine-status-and-checks",
-      "fingerprint": "8c8c43d60707489905324a8617497adc48fe6c01aa3ab11c4a67cbeb542568b6",
-      "date": "2026-11-01",
       "revision": 1
     },
     {
@@ -3542,7 +3383,139 @@
       "revision": 1
     },
     {
-      "id": "2026-11-10-nvidia-groot2-corl-20261109",
+      "id": "2026-11-10-sglang-pr-49430-r3",
+      "event_key": "sglang-pr-49430",
+      "title": "混合模型：KV 与 recurrent state 需要共同保留",
+      "summary": "11月10日10:08北京时间提出，复核仍open。GreedyDual-Size按相对保留祖先的重算成本淘汰循环状态，Full KV仍LRU；默认关闭，hybrid不兼容session-radix-cache。CPU模拟64会话的平均未缓存token下降，但中位数略升；H200结果仅dummy八层模型，非完整模型生产收益。",
+      "source_urls": [
+        "https://github.com/sgl-project/sglang/pull/49430"
+      ],
+      "update_of": "2026-11-10-sglang-pr-49430",
+      "article_id": "model-architecture-status",
+      "fingerprint": "66bce6b2322c69f46f1445f0af6e36227b80707114d6242a1723fa0597d1f56d",
+      "date": "2026-11-10",
+      "revision": 3
+    },
+    {
+      "id": "2026-11-10-sglang-kimi-k31-memory-20261104-r3",
+      "event_key": "sglang-kimi-k31-memory-20261104",
+      "title": "Kimi K3.1：PCP 的计算切分与 DCP 的缓存分片分开判断",
+      "summary": "11月4日官方文章：PCP下DSA KV仍在CP组复制，DCP按token分片。32×H200 LoRA rollout的DP-attention在256请求时降低每卡KV与decode step，但64请求时step变慢；recipes使用preview image，收益依赖负载。",
+      "source_urls": [
+        "https://www.sglang.io/blog/kimi-k3.1-pro-day0-support"
+      ],
+      "update_of": "2026-11-10-sglang-kimi-k31-memory-20261104",
+      "article_id": "model-architecture-status",
+      "fingerprint": "a3a272098e228db982d7e883b8c488f8c03d2ad9bb05ead81f221f8f13633374",
+      "date": "2026-11-10",
+      "revision": 3
+    },
+    {
+      "id": "2026-11-10-xm-sparse-memory-study-20261105-r3",
+      "event_key": "xm-sparse-memory-study-20261105",
+      "title": "XM-Sparse：外部 KV 容量还需回载带宽",
+      "summary": "页面日期11月5日。4×B300 decode加4×B300 HBM模拟memory banks，synthetic KV、固定miss rate、prefetch关闭；24TB是容量预算，芯片尚未交付。峰值2.09–3.04倍；长上下文的收益兼有容量与带宽因素，不能当实物线上验证。",
+      "source_urls": [
+        "https://www.lmsys.org/blog/2026-11-04-xm-sparse/"
+      ],
+      "update_of": "2026-11-10-xm-sparse-memory-study-20261105",
+      "article_id": "model-serving-gpu",
+      "fingerprint": "0e23d16296c7537a83318f98f8221ff06938760b6fc97683af100020af3eaaa3",
+      "date": "2026-11-10",
+      "revision": 3
+    },
+    {
+      "id": "2026-11-10-vllm-pr-66605-r3",
+      "event_key": "vllm-pr-66605",
+      "title": "外置 KV connector：声明实际内存访问需求",
+      "summary": "11月10日00:22北京时间提出，复核仍open。当前diff使用KVCacheAccess flags及kv_cache_access()，汇总注册与导出需求；EXPORTS_FD导出尚未实现，legacy IPC不能和extensible KV并用。8×H800验证来自下游初始hook，未覆盖当前全部泛化改动。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/66605"
+      ],
+      "update_of": "2026-11-10-vllm-pr-66605",
+      "article_id": "model-serving-gpu",
+      "fingerprint": "486a52d3d435a82cef57b4ffaed10a5fd7403902a63b3d773cc2b2f3cb65a7f3",
+      "date": "2026-11-10",
+      "revision": 3
+    },
+    {
+      "id": "2026-11-10-vllm-pr-60390-r3",
+      "event_key": "vllm-pr-60390",
+      "title": "vLLM：同一 engine 的 DP 副本共享 CPU PLE 表",
+      "summary": "11月10日00:16北京时间合入main，dp_shared_memory开启且embedding_across_dp关闭时，共享同节点DP组的CPU PLE表；失败整组回退私有表。4×GB300、Qwen3.8-Flash-Next FP8、DP4+EP报告host RAM 307.8→100.1GiB；独立P/D engine不共享，非H100/H200实测。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/60390"
+      ],
+      "update_of": "2026-11-10-vllm-pr-60390",
+      "article_id": "inference-engines",
+      "fingerprint": "71065718c1dfaf8c27996806e254a5ae1ea5f9de5ce0dff2ec53bb64c75c6e0a",
+      "date": "2026-11-10",
+      "revision": 3
+    },
+    {
+      "id": "2026-11-10-vllm-pr-65888-r3",
+      "event_key": "vllm-pr-65888",
+      "title": "vLLM HiSparse：导入页晋升同时改变 ITL 与 TTFT",
+      "summary": "11月10日06:39北京时间合入main。P/D导入仍先到host，再用watermark以上空闲GPU页晋升；abort等拷贝完成再回收源/目标页。两节点TP4 GB300、GLM-5.3-NVFP4、1P1D、64K多轮/C8：ITL p50 11.36→10.40ms，TTFT p50 1469→1954ms。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/65888"
+      ],
+      "update_of": "2026-11-10-vllm-pr-65888",
+      "article_id": "inference-engines",
+      "fingerprint": "6b2aa796b7e60ffbc4144aa8b246211b28ecc2854382a3e16c37fbec91c11780",
+      "date": "2026-11-10",
+      "revision": 3
+    },
+    {
+      "id": "2026-11-10-sglang-pr-49386-r3",
+      "event_key": "sglang-pr-48852",
+      "title": "SGLang：PP 完成事件显式覆盖本 rank forward",
+      "summary": "昨日延迟释放机制的后续增量：#49386于11月10日09:07北京时间合入main，接收与跳过输出两条路径先等待本地microbatch forward_done，再记录统一完成事件；skip-output用侧流。指定H100/H20定向测试不代表所有组合验收，合入不等于发布。",
+      "source_urls": [
+        "https://github.com/sgl-project/sglang/pull/49386"
+      ],
+      "update_of": "2026-11-10-sglang-pr-49386",
+      "article_id": "inference-engines",
+      "fingerprint": "892585d7c3f150b2865f57ddeffa138a479e60eef5e97eb33a803326ba543a6b",
+      "date": "2026-11-10",
+      "revision": 3
+    },
+    {
+      "id": "2026-11-10-sglang-pr-49419-r3",
+      "event_key": "sglang-pr-49419",
+      "title": "SGLang：streaming session 借还页保留 namespace",
+      "summary": "11月10日08:50北京时间提出，复核仍open。session slot绑定namespace并拒绝异身份借页；借出后身份变化的abort只释放未保护tail，避免以新key重复插入原前缀。证据是补丁与CPU回归测试，未有GPU/生产端到端复现。",
+      "source_urls": [
+        "https://github.com/sgl-project/sglang/pull/49419"
+      ],
+      "update_of": "2026-11-10-sglang-pr-49419",
+      "article_id": "inference-engines",
+      "fingerprint": "4ca82dc3a57bfaa00b1445cae58a32c2db0ace7a0432f2f1403e07cbaa676de1",
+      "date": "2026-11-10",
+      "revision": 3
+    },
+    {
+      "id": "2026-11-10-deepinfer-coverage-20261110-r2-r3",
+      "event_key": "deepinfer-coverage-20261110",
+      "title": "DeepInfer：保留已查入口与部署边界",
+      "summary": "本轮重新读取releases、原cutoff前七日至复核时的commits、按updated排序前100 PR、README与官方Q&A。发布列表空，所查提交仅已报道的11/3 Q&A v0.2；PR仍有活跃提案，不能说没有变化。Trainium提案晚于原cutoff且仍open/basic mode，不写平台支持已发布。",
+      "source_urls": [
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/commits?per_page=100&since=2026-11-03T02%3A19%3A21Z&until=2026-11-10T06%3A30%3A11Z",
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/contents/doc/inference_deployment_qa.md",
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/pulls?direction=desc&per_page=100&sort=updated&state=all",
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/readme",
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/releases?per_page=10",
+        "https://github.com/deepseek-ai/DeepInfer/pull/220",
+        "https://github.com/deepseek-ai/DeepInfer/pull/282"
+      ],
+      "update_of": "2026-11-10-deepinfer-coverage-20261110-r2",
+      "article_id": "inference-engines",
+      "fingerprint": "7216c643446327a9b67e8a5b4c48f9f7f1978bfeefb21fb6a7991e2ce326ced1",
+      "date": "2026-11-10",
+      "revision": 3
+    },
+    {
+      "id": "2026-11-10-nvidia-groot2-corl-20261109-r3",
       "event_key": "nvidia-groot2-corl-20261109",
       "title": "GR00T 2：联合视频与动作预测，五次示范改善跨机体操作",
       "summary": "11月9日GR00T2公告及研究页给出联合视频—动作去噪与跨机体适配。50项任务来自人类视频或其他机体，平均试验成功率从零样本40%升至五次示范95%；每次LoRA适配约30分钟、单RTX5090。Turbo2B支持机载预测，但多项任务成功率低于主模型，代码标注12月开放。",
@@ -3550,195 +3523,169 @@
         "https://blogs.nvidia.com/blog/robotics-simulation-advancements-corl/",
         "https://research.nvidia.com/labs/gear/gr00t-2/"
       ],
+      "update_of": "2026-11-10-nvidia-groot2-corl-20261109",
+      "article_id": "embodied-training",
+      "fingerprint": "6e7b6fb1899ec93c46a7dd6748aa955e88e349ff33c10b4fee6d23ebe05708ec",
+      "date": "2026-11-10",
+      "revision": 3
+    },
+    {
+      "id": "2026-11-10-vllm-stable-abi-20261106",
+      "event_key": "vllm-stable-abi-20261106",
+      "title": "vLLM CUDA wheel 迁移到 LibTorch Stable ABI",
+      "summary": "v0.33.0起发布Stable ABI CUDA wheel；审计示例min torch2.13.0，展示2.14.1到2.15.0无需重编vLLM。不是吞吐优化，Python/CUDA/第三方依赖仍约束兼容性，CPU/ROCm整包迁移未完成。",
+      "source_urls": [
+        "https://vllm.ai/blog/2026-11-06-stable-abi-cuda"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "136420b45deaafe0962a3f864ded01837f82a1a9748533cb98ff13ff1c7c911c",
+      "date": "2026-11-10",
+      "revision": 3
+    },
+    {
+      "id": "2026-11-10-kinference-control-plane-20261104",
+      "event_key": "kinference-control-plane-20261104",
+      "title": "Kinference KV-aware控制面：基准收益与alpha实现边界",
+      "summary": "相同模型不同worker的KV-aware请求路由，不跨模型共享KV/权重；3×L40S、Qwen3.8-27B-FP8、vLLM0.31基准共享前缀TTFT中位6.88→0.31秒。7.4倍是自定SLO的峰值goodput对比；README仍将/v1/messages、rate limiting、semantic classifiers和多控制面副本列缺失。",
+      "source_urls": [
+        "https://github.com/Kinference-AI/kinference/blob/c12a4c8f1ecf22f09280652d75eee9deb54470de/README.md",
+        "https://vllm.ai/blog/2026-11-04-introducing-kinference",
+        "https://www.buoyant.io/blog/distributed-inference-benchmarks-kinference-vs-plain-kubernetes"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "9f74a5cdb87565a27dade2cede7ae344b48ed67ae7d9220b8636a71dd68891db",
+      "date": "2026-11-10",
+      "revision": 3
+    },
+    {
+      "id": "2026-11-10-bevy-weight-offload-20261103",
+      "event_key": "bevy-weight-offload-2611-04794",
+      "title": "Bevy：以请求交错改善MoE专家权重卸载",
+      "summary": "预印本在llama.cpp用按层动态合批和落后优先调度重叠专家SSD读取；M6和Jetson Thor、2个Q4_0 MoE模型的decode吞吐相对llama.cpp1.26–3.46倍。实验排除预热与SSD慢读步；非H100/H200、非多模型统一超配、无线上p99结论。",
+      "source_urls": [
+        "https://arxiv.org/abs/2611.04794",
+        "https://arxiv.org/html/2611.04794v1"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "4574b2fd764e4ab9586b2daa9ddf9e5df0b0cbc084fdb00d14b96b5f94aa4aff",
+      "date": "2026-11-10",
+      "revision": 3
+    },
+    {
+      "id": "2026-11-10-aws-sagemaker-mig-20261106",
+      "event_key": "aws-sagemaker-mig-20261106",
+      "title": "SageMaker：独立模型静态MIG分区共驻",
+      "summary": "11/6七日补读。实时inference component一副本占一固定MIG分区，布局需新端点变更。单模型副本H1003g.40gb对比完整A10040GB；成本收益负载相关、按整实例分摊，非16模型满载实测或独立切片售卖。不是显存超配或跨模型权重/KV共享。",
+      "source_urls": [
+        "https://aws.amazon.com/blogs/machine-learning/sagemaker-inference-now-supports-multi-instance-gpu-to-maximize-gpu-utilization-for-model-endpoints/",
+        "https://docs.aws.amazon.com/sagemaker/latest/dg/inference-components-accelerator-partitioning.html",
+        "https://docs.nvidia.com/datacenter/tesla/mig-user-guide/latest/supported-mig-profiles.html"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "88f5c712276d91f15bc4e735bb509c1239036ab3428f1df91cb5085ec3159617",
+      "date": "2026-11-10",
+      "revision": 3
+    },
+    {
+      "id": "2026-11-10-nvidia-r620-20261104",
+      "event_key": "nvidia-r620-20261104",
+      "title": "R620 LTS：支持表与CC兼容条件",
+      "summary": "11/4七日补读。Linux620.70.06/Windows621.14，LTS至2029年9月；相对R615.71.10支持表新增RTX PRO5500 Blackwell Workstation Edition列项，不等于所有驱动首次支持或全部MIG/vGPU组合验收。CC attestation要求SDK不早于2026.10.02，非CC不受此变化影响；VBIOS/DCGM条件在R615已存在。",
+      "source_urls": [
+        "https://docs.nvidia.com/datacenter/tesla/drivers/supported-drivers-and-cuda-toolkit-versions.html",
+        "https://docs.nvidia.com/datacenter/tesla/tesla-release-notes-615-71-10/index.html",
+        "https://docs.nvidia.com/datacenter/tesla/tesla-release-notes-620-70-06/index.html",
+        "https://www.nvidia.com/en-in/products/workstations/professional-desktop-gpus/rtx-pro-5500/"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status",
+      "fingerprint": "cd08ba6003305de099fcc6b9cd27ce1be4bb78325ac9cf3ceb949666dcec84b4",
+      "date": "2026-11-10",
+      "revision": 3
+    },
+    {
+      "id": "2026-11-10-meta-muse-ember-20261109",
+      "event_key": "meta-muse-ember-20261109",
+      "title": "Muse Ember：代理子任务API模型",
+      "summary": "页面11/9但未确认时分/时区，按七日补充。提供文本/图像/音频/视频输入、1M上下文与最高512K输出；API价在200K提示阈值上下不同。未披露参数量/开权重，不推断自托管GPU要求；部分外部基准harness不一致，不称全面领先。",
+      "source_urls": [
+        "https://research.meta.ai/blog/muse-ember",
+        "https://research.meta.ai/static/muse-ember-evaluation-report"
+      ],
+      "update_of": null,
+      "article_id": "model-architecture-status",
+      "fingerprint": "a421cd3fbb844f1fb1713d18bdbbdbd9cc840de24551c81e9f8e847214340d2c",
+      "date": "2026-11-10",
+      "revision": 3
+    },
+    {
+      "id": "2026-11-10-dharma-field-extractor-20261104",
+      "event_key": "dharma-field-extractor-20261104",
+      "title": "Dharma：2B专用文档字段抽取",
+      "summary": "11/4七日补读。2B DharmaOCR-LITE v1.1+LoRA，按schema输出JSON；作者546文档/1638案例综合分0.834，对照低推理档，非通用OCR分数。成本按L40S GPU时间与API价比较；未确认新2B模型权重、许可证或完整复现，旧OCR链接不能替代。",
+      "source_urls": [
+        "https://huggingface.co/blog/Dharma-AI/dharma-field-extractor"
+      ],
+      "update_of": null,
+      "article_id": "small-model-status",
+      "fingerprint": "84114a73ff71bc3f5e0dc33fc42d00e856610b3e3b60cbf94f7bb4469115caad",
+      "date": "2026-11-10",
+      "revision": 3
+    },
+    {
+      "id": "2026-11-10-lerobot-v070",
+      "event_key": "lerobot-v070",
+      "title": "LeRobot v0.7.0：数据流、分布式训练与远程推理",
+      "summary": "11/5 17:13:20UTC发布，七日补读。无盘流、FSDP2/HSDP、remote推理与交互rollout；旧FSDP checkpoint不能resume但model.safetensors仍可载。Linux默认CUDA13路径需580.65+，可先装匹配CUDA12 torch。G0.5非商用，不把框架许可泛化到模型。",
+      "source_urls": [
+        "https://github.com/huggingface/lerobot/blob/81b8c5bfdd5591ec59e512cfc7ac6db8151c70ee/README.md",
+        "https://github.com/huggingface/lerobot/releases/tag/v0.7.0",
+        "https://huggingface.co/blog/lerobot/lerobot-release-v070"
+      ],
       "update_of": null,
       "article_id": "embodied-training",
-      "fingerprint": "0cd27e2eef8857a3fdc7d73b8a1fe505fb27652cafd7c4e0bb227209e6e48437",
+      "fingerprint": "8889059193a2c49997b88843d30c182c8ac8e7499baee187ef6cf4df05daaea1",
       "date": "2026-11-10",
-      "revision": 1
+      "revision": 3
     },
     {
-      "id": "2026-11-10-vllm-coverage-20261110",
-      "event_key": "vllm-coverage-20261110",
-      "title": "vLLM核查范围",
-      "summary": "发布、PR列表与前100条提交已读；缺少窗口早段分页及重点详情，保留线索，不声称完整覆盖或给出升级结论。",
+      "id": "2026-11-10-lerobot-pr-5293",
+      "event_key": "lerobot-pr-5293",
+      "title": "LeRobot：RoboCasa/MuJoCo Docker依赖兼容修复",
+      "summary": "北京时间11/9 21:23合入。避免先装robosuite拉入MuJoCo4拆分包后再降至3.3.1留下残余，将依赖解析与约束合并。属于环境兼容，不是训练吞吐提升。OpenPI本轮release与七日默认分支查询空，只是所查入口无新项。",
       "source_urls": [
-        "https://api.github.com/repos/vllm-project/vllm/commits?per_page=100&since=2026-11-09T02%3A19%3A21Z&until=2026-11-10T02%3A19%3A21Z",
-        "https://api.github.com/repos/vllm-project/vllm/pulls?direction=desc&per_page=100&sort=updated&state=all",
-        "https://api.github.com/repos/vllm-project/vllm/releases?per_page=10",
-        "https://vllm.ai/blog",
-        "https://vllm.ai/blog/archive"
+        "https://github.com/Physical-Intelligence/openpi/blob/215abfb217dbac7d5f1273282331b9b1866c0479/README.md",
+        "https://github.com/Physical-Intelligence/openpi/releases",
+        "https://github.com/huggingface/lerobot/commit/81b8c5bfdd5591ec59e512cfc7ac6db8151c70ee",
+        "https://github.com/huggingface/lerobot/pull/5293"
       ],
       "update_of": null,
-      "article_id": "inference-engines",
-      "fingerprint": "e2a88a7f41502831249a2b810a5494d06ddd7f78e48c31493a37894ed97c2829",
+      "article_id": "embodied-training",
+      "fingerprint": "508295bc12809a42a891d4f185d121a79c5fbf8cb307d2d747c06db9ddbd56db",
       "date": "2026-11-10",
-      "revision": 1
+      "revision": 3
     },
     {
-      "id": "2026-11-10-sglang-coverage-20261110",
-      "event_key": "sglang-coverage-20261110",
-      "title": "SGLang核查范围",
-      "summary": "发布、PR列表及覆盖24小时窗口的94条提交已读；重点详情未完成核验，博客日期精度缺口保留。",
+      "id": "2026-11-10-architecture-coverage-20261110",
+      "event_key": "architecture-coverage-20261110",
+      "title": "模型入口覆盖：模板维护不计架构发布",
+      "summary": "本轮查Qwen/deepseek-ai/zai-org按lastModified排序各前50项及代表提交。Qwen11/7为模板维护；DeepSeek1017新增模板晚cutoff3分35秒，不改权重不回填新闻。GLM所查50项无七日更新。Qwen/Z.ai完整博客正文仍有读取缺口，不称所有官方源无新闻。",
       "source_urls": [
-        "https://api.github.com/repos/sgl-project/sglang/commits?per_page=100&since=2026-11-09T02%3A19%3A21Z&until=2026-11-10T02%3A19%3A21Z",
-        "https://api.github.com/repos/sgl-project/sglang/pulls?direction=desc&per_page=100&sort=updated&state=all",
-        "https://api.github.com/repos/sgl-project/sglang/releases?per_page=10",
-        "https://www.lmsys.org/blog/",
-        "https://www.sglang.io/blog"
+        "https://huggingface.co/Qwen/Qwen3.8-27B/commit/37561816e66b5b9153b1b64c10968c18c1e6f4a0",
+        "https://huggingface.co/api/models?author=Qwen&direction=-1&limit=50&sort=lastModified",
+        "https://huggingface.co/api/models?author=deepseek-ai&direction=-1&limit=50&sort=lastModified",
+        "https://huggingface.co/api/models?author=zai-org&direction=-1&limit=50&sort=lastModified",
+        "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash-1017/commit/08c8657f02291e11b6f6b63e0e16014f8e748518"
       ],
       "update_of": null,
-      "article_id": "inference-engines",
-      "fingerprint": "24e8afc4286783f673238a244d8780e3e71cd139cb6757340738dd1cfcb94db6",
+      "article_id": "model-architecture-status",
+      "fingerprint": "ee72f66b66ca662db2aef7644064c4edeea109e6c45856b911fcf4c171e911db",
       "date": "2026-11-10",
-      "revision": 1
-    },
-    {
-      "id": "2026-11-10-deepinfer-coverage-20261110",
-      "event_key": "deepinfer-coverage-20261110",
-      "title": "DeepInfer核查范围",
-      "summary": "本期发布列表和24小时提交查询为空；所见PR无合格部署新项，官方README和Q&A已读，不外推完整在线服务或Hopper支持。",
-      "source_urls": [
-        "https://api.github.com/repos/deepseek-ai/DeepInfer/commits?per_page=100&since=2026-11-09T02%3A19%3A21Z&until=2026-11-10T02%3A19%3A21Z",
-        "https://api.github.com/repos/deepseek-ai/DeepInfer/contents/doc/inference_deployment_qa.md",
-        "https://api.github.com/repos/deepseek-ai/DeepInfer/pulls?direction=desc&per_page=100&sort=updated&state=all",
-        "https://api.github.com/repos/deepseek-ai/DeepInfer/readme",
-        "https://api.github.com/repos/deepseek-ai/DeepInfer/releases?per_page=10"
-      ],
-      "update_of": null,
-      "article_id": "inference-engines",
-      "fingerprint": "ec5f666f3e9883d8ada534713eda2dbdd7d818bc3dc511188e8b40233574cd46",
-      "date": "2026-11-10",
-      "revision": 1
-    },
-    {
-      "id": "2026-11-10-sglang-pr-49430",
-      "event_key": "sglang-pr-49430",
-      "title": "混合模型：KV 与 recurrent state 需要共同保留",
-      "summary": "11月10日10:08北京时间提出，复核仍open。GreedyDual-Size按相对保留祖先的重算成本淘汰循环状态，Full KV仍LRU；默认关闭，hybrid不兼容session-radix-cache。CPU模拟64会话的平均未缓存token下降，但中位数略升；H200结果仅dummy八层模型，非完整模型生产收益。",
-      "source_urls": [
-        "https://github.com/sgl-project/sglang/pull/49430"
-      ],
-      "update_of": null,
-      "article_id": "model-serving-gpu",
-      "fingerprint": "9a0973d133fabe729002263f321b1a423801083dbff5f5a1677f7304f3bd5c66",
-      "date": "2026-11-10",
-      "revision": 2
-    },
-    {
-      "id": "2026-11-10-sglang-kimi-k31-memory-20261104",
-      "event_key": "sglang-kimi-k31-memory-20261104",
-      "title": "Kimi K3.1：PCP 的计算切分与 DCP 的缓存分片分开判断",
-      "summary": "11月4日官方文章：PCP下DSA KV仍在CP组复制，DCP按token分片。32×H200 LoRA rollout的DP-attention在256请求时降低每卡KV与decode step，但64请求时step变慢；recipes使用preview image，收益依赖负载。",
-      "source_urls": [
-        "https://www.sglang.io/blog/kimi-k3.1-pro-day0-support"
-      ],
-      "update_of": null,
-      "article_id": "model-serving-gpu",
-      "fingerprint": "0e58875b4c474d7417ec18664d984d8912b9fe97dffffb2c277881cb1a1d15b9",
-      "date": "2026-11-10",
-      "revision": 2
-    },
-    {
-      "id": "2026-11-10-xm-sparse-memory-study-20261105",
-      "event_key": "xm-sparse-memory-study-20261105",
-      "title": "XM-Sparse：外部 KV 容量还需回载带宽",
-      "summary": "页面日期11月5日。4×B300 decode加4×B300 HBM模拟memory banks，synthetic KV、固定miss rate、prefetch关闭；24TB是容量预算，芯片尚未交付。峰值2.09–3.04倍；长上下文的收益兼有容量与带宽因素，不能当实物线上验证。",
-      "source_urls": [
-        "https://www.lmsys.org/blog/2026-11-04-xm-sparse/"
-      ],
-      "update_of": null,
-      "article_id": "model-serving-gpu",
-      "fingerprint": "e8a19ef4be253f025caaa5640928177b496a52e894cb594eef806dba571e5572",
-      "date": "2026-11-10",
-      "revision": 2
-    },
-    {
-      "id": "2026-11-10-vllm-pr-66605",
-      "event_key": "vllm-pr-66605",
-      "title": "外置 KV connector：声明实际内存访问需求",
-      "summary": "11月10日00:22北京时间提出，复核仍open。当前diff使用KVCacheAccess flags及kv_cache_access()，汇总注册与导出需求；EXPORTS_FD导出尚未实现，legacy IPC不能和extensible KV并用。8×H800验证来自下游初始hook，未覆盖当前全部泛化改动。",
-      "source_urls": [
-        "https://github.com/vllm-project/vllm/pull/66605"
-      ],
-      "update_of": null,
-      "article_id": "model-serving-gpu",
-      "fingerprint": "c87d499fcc9cd4efcba381ebe11fc3e7e8562096816793680452498a1b891be5",
-      "date": "2026-11-10",
-      "revision": 2
-    },
-    {
-      "id": "2026-11-10-vllm-pr-60390",
-      "event_key": "vllm-pr-60390",
-      "title": "vLLM：同一 engine 的 DP 副本共享 CPU PLE 表",
-      "summary": "11月10日00:16北京时间合入main，dp_shared_memory开启且embedding_across_dp关闭时，共享同节点DP组的CPU PLE表；失败整组回退私有表。4×GB300、Qwen3.8-Flash-Next FP8、DP4+EP报告host RAM 307.8→100.1GiB；独立P/D engine不共享，非H100/H200实测。",
-      "source_urls": [
-        "https://github.com/vllm-project/vllm/pull/60390"
-      ],
-      "update_of": null,
-      "article_id": "inference-engines",
-      "fingerprint": "25a54af4cd727dede54af051a8b7bbac27de1666efcf59f3cd3cc45dbd8f4d4e",
-      "date": "2026-11-10",
-      "revision": 2
-    },
-    {
-      "id": "2026-11-10-vllm-pr-65888",
-      "event_key": "vllm-pr-65888",
-      "title": "vLLM HiSparse：导入页晋升同时改变 ITL 与 TTFT",
-      "summary": "11月10日06:39北京时间合入main。P/D导入仍先到host，再用watermark以上空闲GPU页晋升；abort等拷贝完成再回收源/目标页。两节点TP4 GB300、GLM-5.3-NVFP4、1P1D、64K多轮/C8：ITL p50 11.36→10.40ms，TTFT p50 1469→1954ms。",
-      "source_urls": [
-        "https://github.com/vllm-project/vllm/pull/65888"
-      ],
-      "update_of": null,
-      "article_id": "inference-engines",
-      "fingerprint": "2a1058e9dbac0bbbfcee0af18f3168eb9ebc51af518541deea2c8fcd93d7beba",
-      "date": "2026-11-10",
-      "revision": 2
-    },
-    {
-      "id": "2026-11-10-sglang-pr-49386",
-      "event_key": "sglang-pr-48852",
-      "title": "SGLang：PP 完成事件显式覆盖本 rank forward",
-      "summary": "昨日延迟释放机制的后续增量：#49386于11月10日09:07北京时间合入main，接收与跳过输出两条路径先等待本地microbatch forward_done，再记录统一完成事件；skip-output用侧流。指定H100/H20定向测试不代表所有组合验收，合入不等于发布。",
-      "source_urls": [
-        "https://github.com/sgl-project/sglang/pull/49386"
-      ],
-      "update_of": "2026-11-09-sglang-pr-48852",
-      "article_id": "inference-engines",
-      "fingerprint": "ff858ba7f8aad46cf82a972662bce5ade46f018122e9445758f4155741f0abca",
-      "date": "2026-11-10",
-      "revision": 2
-    },
-    {
-      "id": "2026-11-10-sglang-pr-49419",
-      "event_key": "sglang-pr-49419",
-      "title": "SGLang：streaming session 借还页保留 namespace",
-      "summary": "11月10日08:50北京时间提出，复核仍open。session slot绑定namespace并拒绝异身份借页；借出后身份变化的abort只释放未保护tail，避免以新key重复插入原前缀。证据是补丁与CPU回归测试，未有GPU/生产端到端复现。",
-      "source_urls": [
-        "https://github.com/sgl-project/sglang/pull/49419"
-      ],
-      "update_of": null,
-      "article_id": "inference-engines",
-      "fingerprint": "cbed946fc780d4b096f16830448af7b78d8eb252d729916f29c1b011c2dbed88",
-      "date": "2026-11-10",
-      "revision": 2
-    },
-    {
-      "id": "2026-11-10-deepinfer-coverage-20261110-r2",
-      "event_key": "deepinfer-coverage-20261110",
-      "title": "DeepInfer：保留已查入口与部署边界",
-      "summary": "本期已查发布、PR、提交、README与官方Q&A；窗口内发布与提交列表为空，所见PR无新增高相关部署事项，旧Q&A不重复计新闻。该范围不能证明全部开发活动无变化，也不证明完整在线服务或Hopper兼容性。",
-      "source_urls": [
-        "https://api.github.com/repos/deepseek-ai/DeepInfer/commits?per_page=100&since=2026-11-09T02%3A19%3A21Z&until=2026-11-10T02%3A19%3A21Z",
-        "https://api.github.com/repos/deepseek-ai/DeepInfer/contents/doc/inference_deployment_qa.md",
-        "https://api.github.com/repos/deepseek-ai/DeepInfer/pulls?direction=desc&per_page=100&sort=updated&state=all",
-        "https://api.github.com/repos/deepseek-ai/DeepInfer/readme",
-        "https://api.github.com/repos/deepseek-ai/DeepInfer/releases?per_page=10"
-      ],
-      "update_of": "2026-11-10-deepinfer-coverage-20261110",
-      "article_id": "inference-engines",
-      "fingerprint": "830dced1bd88263ca876ce230c60f72d45ecd48677de7c5038de3e3befcc477a",
-      "date": "2026-11-10",
-      "revision": 2
+      "revision": 3
     }
   ]
 }

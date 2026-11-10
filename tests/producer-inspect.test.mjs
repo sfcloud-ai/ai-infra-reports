@@ -203,3 +203,22 @@ test('inspection read budget and oversized blob fail closed without leaving an o
   assert.equal((await inspectPublisherDay(s,config,command,source)).publisher.file_id,'F123');
  }finally{s.close();}
 });
+
+test('day lookup retains legacy original bytes and completion intent after public source migration',async()=>{
+ const s=state();try{
+  admit(s);
+  const detail={...s.get(id).detail,completion_intent:{url:`https://sfcloud-ai.github.io/ai-infra-reports/${DAY}/r1/`,text_sha256:'c'.repeat(64)}};
+  s.db.prepare('UPDATE jobs SET detail=? WHERE id=?').run(JSON.stringify(detail),id);
+  const before=s.get(id),decoded=await decodeBundle(before.bytes);
+  assert.equal(decoded.report.path,`reports/${DAY}/r1/`);
+  const result=await inspectPublisherDay(s,config,command,source);
+  assert.equal(result.publisher.bundle_sha256,digest(bytes));assert.equal(result.publisher.report_commit,MERGE);
+  assert.deepEqual(s.get(id),before);assert.deepEqual(before.bytes,bytes);
+  // The same day cannot be treated as absent using a newly encoded/current bundle.
+  const currentFiles=new Map([...decoded.files].map(([p,b])=>[p.replace(decoded.report.path,`reports/${DAY}/`),b]));
+  const currentBytes=await encodeBundle(currentFiles,id,'a'.repeat(40),'b'.repeat(40));
+  assert.notEqual(digest(currentBytes),hash);
+  await assert.rejects(inspectPublisherDay(s,config,{...command,bundle_sha256:digest(currentBytes)},source),/conflicts/);
+  assert.deepEqual(s.get(id),before);
+ }finally{s.close();}
+});

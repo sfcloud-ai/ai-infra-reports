@@ -12,8 +12,8 @@ async function decodeInput(input){
  requireThat(bytes.toString('base64')===input.bundle_base64,'Canonical base64 required');
  return decodeBundle(bytes);
 }
-function deliveryPlan(bundle,commit){
- const manifest=createNoticeManifest(bundle.files.get(bundle.report.path+'report.json'),commit);
+function deliveryPlan(bundle,commit,stableUrls=bundle.report.path===`reports/${bundle.report.date}/`){
+ const manifest=createNoticeManifest(bundle.files.get(bundle.report.path+'report.json'),commit,{stableUrls});
  const poster=bundle.files.get(bundle.report.path+bundle.report.poster);
  return {report_request_id:bundle.data.request_id,report_date:bundle.report.date,report_commit:commit,bundle_sha256:bundle.hash,
   notice_key:manifest.index_url,text:manifest.text,poster_base64:poster.toString('base64'),
@@ -21,8 +21,8 @@ function deliveryPlan(bundle,commit){
 }
 export async function verifyScheduledDelivery(input,fetcher=fetch,cache){
  const bundle=await decodeInput(input);
- await verifyReportPublication(input.report_commit,bundle,fetcher,cache);
- return deliveryPlan(bundle,input.report_commit);
+ const proof=await verifyReportPublication(input.report_commit,bundle,fetcher,cache);
+ return deliveryPlan(bundle,input.report_commit,proof.url===`https://sfcloud-ai.github.io/ai-infra-reports/${bundle.report.date}/`);
 }
 export async function verifyHistoricalDelivery(input,fetcher=fetch){
  const bundle=await decodeInput(input);

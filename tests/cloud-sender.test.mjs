@@ -6,11 +6,39 @@ import {tmpdir} from 'node:os';
 import {spawnSync} from 'node:child_process';
 import {DatabaseSync} from 'node:sqlite';
 import {digest} from '../scripts/archive.mjs';
+import {createNoticeManifest} from '../scripts/notice-manifest.mjs';
 import {CloudRunState,CloudSender,pinPrompts,prepareCloudRun,prepareNoSelection,ReadPending,ReconciliationRequired,PREFLIGHT_REFRESH_MS} from '../scripts/cloud-sender.mjs';
 import {rig,toClaim,arm,send,ID,TARGET,DAY,BASE,SCOPE,PROMPTS,FILES} from './helpers/cloud-sender-fixture.mjs';
 
 async function inRig(run,options){const r=await rig(options);try{return await run(r);}finally{r.close();}}
 const rejected=fn=>assert.rejects(fn);
+
+for(const stable of [false,true])for(const unknown of [false,true])test(`route migration after cached publication retains one authenticated completion (${stable}, ${unknown})`,async()=>{
+ const directory=await mkdtemp(join(tmpdir(),'cloud-route-migration-')),filename=join(directory,'state.sqlite');
+ const r=await rig({filename,stable});let reopened;
+ try{
+  await toClaim(r);const cached=r.state.get(ID).detail.publication;
+  r.setStableRoutes(!stable);await r.sender.step(ID);
+  const reserved=r.outbox.notice(ID);assert.notEqual(reserved.detail.url,cached.url);
+  r.modes.finalTimeout=unknown;await r.makeSender().step(ID);
+  assert.equal(r.counts.complete,1);assert.equal(r.state.op(ID,'final_complete').phase,unknown?'unknown':'acknowledged');
+  r.setStableRoutes(stable);r.state.close();reopened=new CloudRunState(filename,SCOPE);
+  await r.makeSender(reopened).step(ID);await r.makeSender(reopened).step(ID);
+  assert.equal(reopened.get(ID).phase,'sender_reported');assert.equal(r.counts.complete,1);assert.equal(r.claimCount(),1);
+  assert.equal(r.outbox.notice(ID).detail.url,reserved.detail.url);assert.equal(r.outbox.notice(ID).detail.text_sha256,reserved.detail.text_sha256);
+ }finally{reopened?.close();if(!reopened)r.state.close();r.publisher.close();await rm(directory,{recursive:true,force:true});}
+});
+
+test('reconciliation rejects an authenticated reservation inconsistent with original completion intent',()=>inRig(async r=>{
+ await send(r);const read=r.io.readNoticeResponse;
+ const changed=createNoticeManifest(r.bundle.files.get(r.bundle.report.path+'report.json'),r.state.get(ID).detail.publication.commit,{stableUrls:true});
+ r.io.readNoticeResponse=async args=>{
+  const e=structuredClone(await read(args)),p=JSON.parse(e.message.text.slice('!ai-notice receipt '.length));
+  if(p.reason==='read_only_status'){p.notice.detail.url=changed.index_url;p.notice.detail.text_sha256=digest(changed.text);}
+  e.message.text='!ai-notice receipt '+JSON.stringify(p);return e;
+ };
+ await assert.rejects(()=>r.makeSender().step(ID),/Original completion intent differs from reservation/);assert.equal(r.counts.complete,1);assert.equal(r.state.get(ID).phase,'final_pending');
+}));
 
 test('delivery deadlines reject ambiguous dates and normalize equivalent explicit instants',async()=>{
  const state=new CloudRunState(':memory:',SCOPE);

@@ -20,7 +20,7 @@ test("required CI detects manual deletion even with a correctly rebuilt index",a
   const reduced=new Map(files);
   for(const p of files.keys())if(p.startsWith("reports/2026-10-30/")){await unlink(path.join(root,p));reduced.delete(p);}
   await save("reports/index.json",Buffer.from(json(validateArchive(reduced,{checkIndex:false}).index)));
-  assert.throws(()=>execFileSync(process.execPath,[script],{cwd:root,env,stdio:"pipe"}),e=>e.stderr.toString().includes("Published history is immutable"));
+  assert.throws(()=>execFileSync(process.execPath,[script],{cwd:root,env,stdio:"pipe"}),e=>/(Published history is immutable|published reports are immutable)/.test(e.stderr.toString()));
  }finally{
   const target=await realpath(root);assert.equal(path.dirname(target),temp);assert(path.basename(target).startsWith("ai-report-ci-test-"));await rm(target,{recursive:true,force:true});
  }

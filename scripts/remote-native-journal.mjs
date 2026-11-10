@@ -70,7 +70,7 @@ function binding(outbox,job,n){
  return {schema_version:'1.0',report_id:job.id,edition:n.edition,bundle_sha256:job.hash,report_commit:job.detail.commit,attempt_id:n.attempt_id,file_id:n.file_id,destination:d.destination,mode:d.delivery_mode,not_before:d.not_before,url:d.url,text_sha256:d.text_sha256,poster_sha256:d.poster_original_sha256,scope_sha256:outbox.db.prepare('SELECT value FROM notice_scope WHERE id=1').get().value};
 }
 export function remoteFinalInputHash(bundle,notice){
- const manifest=createNoticeManifest(bundle.files.get(bundle.report.path+'report.json'),notice.detail.report_merge_sha);
+ const manifest=createNoticeManifest(bundle.files.get(bundle.report.path+'report.json'),notice.detail.report_merge_sha,{stableUrls:notice.detail.url===`https://sfcloud-ai.github.io/ai-infra-reports/${bundle.report.date}/`});
  return digest(Buffer.from(JSON.stringify({file_id:notice.file_id,channel_id:notice.detail.destination,initial_comment:manifest.text,title:'ai-brief-bundle.json'})));
 }
 function evidence(outbox,c,job,n,op){

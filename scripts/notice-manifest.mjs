@@ -32,7 +32,7 @@ export function latestNoticeEdition(reports) {
 
 // The overview and notification both use the complete articles array. This is
 // a data-only artifact: it never sends, changes a destination or grants access.
-export function createNoticeManifest(reportBytes, commit) {
+export function createNoticeManifest(reportBytes, commit, {stableUrls=false}={}) {
  requireThat(Buffer.isBuffer(reportBytes) && reportBytes.length > 0 && reportBytes.length < 128 * 1024,
   "Notification source report size");
  requireThat(typeof commit === "string" && (SHA.test(commit) || commit === "local-preview"),
@@ -50,7 +50,8 @@ export function createNoticeManifest(reportBytes, commit) {
  const poster = r.images.filter(i => i && i.path === r.poster);
  requireThat(poster.length === 1 && typeof poster[0].sha256 === "string" && HASH.test(poster[0].sha256),
   "Notification poster hash");
- const index_url = `${NOTICE_ORIGIN}/${r.date}/r${r.revision}/`;
+ const publicSlug=stableUrls?r.date:`${r.date}/r${r.revision}`;
+ const index_url = `${NOTICE_ORIGIN}/${publicSlug}/`;
  const seen = new Set();
  let incompatibleTitle = false;
  const articles = r.articles.map(a => {
@@ -68,7 +69,7 @@ export function createNoticeManifest(reportBytes, commit) {
  if (Buffer.byteLength(text) > NOTICE_TEXT_LIMIT) throw new NoticeBudgetError();
  const manifest = {schema_version:"1.0", commit, date:r.date, revision:r.revision,
   index_url, articles, text,
-  poster:{url:`${NOTICE_ORIGIN}/reports/${r.date}/r${r.revision}/${r.poster}`, sha256:poster[0].sha256},
+  poster:{url:`${NOTICE_ORIGIN}/reports/${publicSlug}/${r.poster}`, sha256:poster[0].sha256},
   report_sha256:sha256(reportBytes)};
  requireThat(Buffer.byteLength(JSON.stringify(manifest)) <= NOTICE_MANIFEST_LIMIT, "Notification manifest size");
  return manifest;
@@ -77,8 +78,8 @@ export function createNoticeManifest(reportBytes, commit) {
 // An old archive-validated report may predate this format's byte budget or stricter single-line titles. Do not break
 // the whole archive to retrofit it, but never suppress a malformed manifest or
 // silently omit the newest report's notification.
-export function noticeManifestForBuild(reportBytes, commit, {historical=false}={}) {
- try {return createNoticeManifest(reportBytes, commit);}
+export function noticeManifestForBuild(reportBytes, commit, {historical=false,stableUrls=false}={}) {
+ try {return createNoticeManifest(reportBytes, commit, {stableUrls});}
  catch (error) {
   if (historical && (error instanceof NoticeBudgetError || error instanceof NoticeFormatError)) return null;
   throw error;

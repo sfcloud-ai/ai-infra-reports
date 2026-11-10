@@ -1,5 +1,5 @@
 import {pathToFileURL} from "node:url";
-import {contentHash,editionSources} from "./publication-content.mjs";
+import {contentHash,editionSources,gitBlobHash} from "./publication-content.mjs";
 import {operationError,rateLimitInfo} from "./github.mjs";
 const origin="https://sfcloud-ai.github.io/ai-infra-reports";
 const api="https://api.github.com/repos/sfcloud-ai/ai-infra-reports";
@@ -50,7 +50,10 @@ async function sourceAt(commit,slug,fetcher){
  requireThat(source.sha===commit&&sha(source.tree?.sha),"Source commit identity mismatch");
  const {value:tree}=await documentAt(`${api}/git/trees/${source.tree.sha}?recursive=1`,16*1024*1024,fetcher);
  requireThat(tree.sha===source.tree.sha&&tree.truncated===false&&Array.isArray(tree.tree)&&tree.tree.length<=100000,"Incomplete source tree");
- const prefix=`reports/${slug}/`,entries=[];
+ const date=slug.split('/')[0],legacy=`reports/${slug}/`,current=`reports/${date}/`;
+ const hasLegacy=tree.tree.some(e=>e.path===legacy+'report.json'),hasCurrent=tree.tree.some(e=>e.path===current+'report.json');
+ requireThat(!(hasLegacy&&hasCurrent),'Ambiguous edition source layout');
+ const prefix=hasCurrent?current:legacy,entries=[];
  for(const entry of tree.tree){
   if(typeof entry.path!=="string"||!entry.path.startsWith(prefix)||entry.type==="tree")continue;
   const path=entry.path.slice(prefix.length);
@@ -59,6 +62,15 @@ async function sourceAt(commit,slug,fetcher){
  }
  const sources=Object.fromEntries(entries);
  requireThat(entries.length===Object.keys(sources).length&&sha(sources["report.json"]),"Missing or ambiguous source edition");
+ if(hasCurrent){
+  const hash=sources['report.json'];
+  const {value:blob}=await documentAt(`${api}/git/blobs/${hash}`,256*1024,fetcher);
+  requireThat(blob.sha===hash&&blob.encoding==='base64'&&typeof blob.content==='string','Current source report blob identity mismatch');
+  const bytes=Buffer.from(blob.content,'base64');
+  requireThat(bytes.length<128*1024&&gitBlobHash(bytes)===hash,'Current source report blob hash mismatch');
+  const report=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));
+  requireThat(report.date===date&&Number.isSafeInteger(report.revision)&&`${report.date}/r${report.revision}`===slug,'Current source revision mismatch');
+ }
  return sources;
 }
 // Historical bookkeeping only: validates an immutable source snapshot, never
@@ -94,14 +106,15 @@ export async function verifyPublication(expectedCommit,date,revision,fetcher=fet
  const sources=cached??await sourceAt(expectedCommit,slug,fetcher);
  requireThat(same(sources,edition.sources),"Published edition source differs from the report source commit");
  if(expectedFiles)requireThat(same(sources,editionSources(expectedFiles,slug)),"Report bundle differs from the source commit");
- const paths=[slug,...Object.keys(sources).filter(p=>p.startsWith("articles/")).map(p=>slug+"/"+p.slice(9,-3))].sort();
+ const pageRoot=Object.hasOwn(edition.pages,date)?date:slug;
+ const paths=[pageRoot,...Object.keys(sources).filter(p=>p.startsWith("articles/")).map(p=>pageRoot+"/"+p.slice(9,-3))].sort();
  requireThat(paths.join()===Object.keys(edition.pages).sort().join()&&Object.values(edition.pages).every(h=>typeof h==="string"&&HASH.test(h)),"Incomplete rendered edition proof");
  for(const path of paths){
   const bytes=await bytesAt(`${origin}/${path}/`,2*1024*1024,fetcher,"text/html"),html=bytes.toString("utf8");
   requireThat(contentHash(bytes)===edition.pages[path],"Published page hash mismatch");
-  requireThat(html.includes(`data-report-id="${path}"`)&&(path===slug||html.includes("data-report-sources")),"Unexpected report page identity/evidence");
+  requireThat(html.includes(`data-report-id="${path}"`)&&(path===pageRoot||html.includes("data-report-sources")),"Unexpected report page identity/evidence");
  }
- const proof={publication_status:"verified",commit:expectedCommit,deployment_commit:m.commit,edition:slug,publication_sha256:published.hash,edition_proof_sha256:artifact.hash,url:`${origin}/${slug}/`,checked_at:new Date().toISOString(),delivery_allowed:false,reason:"Slack and WeCom receipts remain separate"};
+ const proof={publication_status:"verified",commit:expectedCommit,deployment_commit:m.commit,edition:slug,publication_sha256:published.hash,edition_proof_sha256:artifact.hash,url:`${origin}/${pageRoot}/`,checked_at:new Date().toISOString(),delivery_allowed:false,reason:"Slack and WeCom receipts remain separate"};
  await verifyPublicationUnchanged(proof,fetcher);
  if(cache&&!cached){
   if(cache.size>=32)cache.delete(cache.keys().next().value);

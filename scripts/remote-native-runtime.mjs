@@ -118,7 +118,7 @@ export class RemoteNativeRuntime{
   const b=await decodeBundle(this.bundleBytes);
   requireThat(b.hash===this.fixed.bundle_sha256&&b.data.request_id===this.fixed.report_request_id,'Runtime bundle identity changed');
   await this.journalCommand(open?'journal_open':'journal_read',open?{expected_revision:0}:{});
-  const j=this.journal.binding,manifest=createNoticeManifest(b.files.get(b.report.path+'report.json'),j.report_commit),poster=b.files.get(b.report.path+b.report.poster);
+  const j=this.journal.binding,manifest=createNoticeManifest(b.files.get(b.report.path+'report.json'),j.report_commit,{stableUrls:j.url===`https://sfcloud-ai.github.io/ai-infra-reports/${b.report.date}/`}),poster=b.files.get(b.report.path+b.report.poster);
   requireThat(j.edition===`${b.report.date}/r${b.report.revision}`&&j.not_before===b.report.date+'T00:00:00.000Z'&&j.mode==='native_bundle_v1'&&j.url===manifest.index_url&&j.text_sha256===digest(Buffer.from(manifest.text))&&j.poster_sha256===digest(poster),'Remote journal differs from original publication');
   if(this.journal.phase==='complete')return {type:'complete',run_id:this.fixed.report_request_id,slack_status:'verified',wecom_status:'not_checked'};
   while(true){

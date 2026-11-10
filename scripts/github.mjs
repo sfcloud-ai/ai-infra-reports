@@ -80,6 +80,6 @@ export function assertReportOnly(base,head) {
  for(const p of new Set([...base.tree.keys(),...head.tree.keys()])) {
   const a=base.tree.get(p),b=head.tree.get(p);
   if(a?.sha===b?.sha&&a?.mode===b?.mode&&a?.type===b?.type)continue;
-  if(!p.startsWith("reports/")||!b||b.mode!=="100644"||b.type!=="blob")throw Error("Non-report path or mode changed: "+p);
+  if(!p.startsWith("reports/")||!(b||a)||(b||a).mode!=="100644"||(b||a).type!=="blob")throw Error("Non-report path or mode changed: "+p);
  }
 }

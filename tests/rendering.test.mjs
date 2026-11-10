@@ -52,7 +52,7 @@ test("metadata stays literal while evidence remains outside arbitrary Markdown",
  const processor=await createMarkdownProcessor({syntaxHighlight:false,remarkPlugins:[reportMarkdown]});
  const index=await processor.render(dailyBody(r));
  assert(!index.code.includes('href="https://unexpected.example/'));
- assert(index.code.includes('href="/ai-infra-reports/2026-10-31/r1/topic/"'));
+ assert(index.code.includes('href="/ai-infra-reports/2026-10-31/topic/"'));
  assert(index.code.includes("**literal**"));assert(!index.code.includes("<strong>literal"));
  const source=articleBody(r,r.articles[0],"正文。\n"+String.fromCharCode(96).repeat(3)+"text\nunterminated");
  assert(!source.includes("来源与证据"));

@@ -48,7 +48,8 @@ function completionArguments(receipt,{bytes,config,reportJson,poster,bundleBytes
  const d=n.detail;
  exact(d,["poster_policy","bundle_sha256","report_merge_sha","url","poster_original_sha256","text_sha256","destination","delivery_mode","not_before","completion_command_id","completion_command_sha256",...(recovering?["recovery"]:[])]);
  if(recovering){exact(d.recovery,["recovery_id","fence_sha256","original_begin_sha256","original_file_id","original_attempt_id"]);requireThat(d.recovery.recovery_id===c.attempt_id&&d.recovery.fence_sha256===c.fence_sha256&&d.recovery.original_begin_sha256===c.original_begin_sha256&&d.recovery.original_file_id!==c.file_id,"Recovery grant must bind the new explicit attempt");}
- const manifest=createNoticeManifest(reportJson,d.report_merge_sha);
+ const sourceReport=JSON.parse(reportJson);
+ const manifest=createNoticeManifest(reportJson,d.report_merge_sha,{stableUrls:d.url===`https://sfcloud-ai.github.io/ai-infra-reports/${sourceReport.date}/`});
  requireThat(["native_v1","native_bundle_v1"].includes(d.delivery_mode)&&d.poster_policy==="original_bytes_v1"&&d.completion_command_id===c.command_id&&d.completion_command_sha256===digest(bytes)&&d.bundle_sha256===c.bundle_sha256&&d.destination===config.notification_destination&&d.url===manifest.index_url&&n.edition===`${manifest.date}/r${manifest.revision}`&&d.text_sha256===digest(Buffer.from(manifest.text))&&d.poster_original_sha256===manifest.poster.sha256,"Native grant differs from the report plan");
  if(d.delivery_mode==="native_bundle_v1")requireThat(Buffer.isBuffer(bundleBytes)&&bundleBytes.length>0&&bundleBytes.length<=8*1024*1024&&digest(bundleBytes)===d.bundle_sha256,"Final bundle differs from reserved source");
  requireThat(Buffer.isBuffer(poster)&&poster.length>0&&poster.length<=2000000&&digest(poster)===d.poster_original_sha256,"Final poster bytes differ from the verified original");

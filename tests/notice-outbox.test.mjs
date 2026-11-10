@@ -36,6 +36,20 @@ function admit(r,c,source="1793448100.000001"){
 const checkCommand=(c=claim(),id="checker-command-01")=>({...c,command_id:id,action:"check",message_ts:"1793448700.000001"});
 function checkerResult(request){return {slack_status:"verified",wecom_status:"not_checked",publication_status:"not_checked",receipt:{channel:config.notification_destination,ts:request.message_ts,relay_request_id:"auto:"+request.message_ts,file_id:request.file_id,transport_sha256:digest(png),transport_bytes:png.length},observed_publication_commit:"e".repeat(40),messages_sent:0,state_changed:false};}
 
+for(const mode of ['prepare','prepare_bundle'])for(const stable of [false,true])test(`native ${mode} retains original binding across route migration (${stable})`,async()=>{
+ const r=rig();try{
+  const stableURL='https://sfcloud-ai.github.io/ai-infra-reports/2026-10-31/';
+  const io={...r.io,verify:async()=>({...proof,url:stable?stableURL:proof.url})};
+  const c={...claim('prepare-route-migration'),action:mode};admit(r,c);await advanceNotice(r.outbox,c.command_id,io);
+  const original=r.outbox.notice(request);io.verify=async()=>({...proof,url:stable?proof.url:stableURL});
+  const begin={...c,action:'begin',command_id:'begin-route-migration'};admit(r,begin,'1793448200.000001');await advanceNotice(r.outbox,begin.command_id,io);
+  assert.equal(r.outbox.command(begin.command_id).response.send_authorized,true);
+  const detail=r.outbox.notice(request).detail;for(const [key,value]of Object.entries(original.detail))assert.deepEqual(detail[key],value);
+  const again={...begin,command_id:'begin-route-repeated'};admit(r,again,'1793448300.000001');await advanceNotice(r.outbox,again.command_id,io);
+  assert.equal(r.outbox.command(again.command_id).response.send_authorized,false);
+ }finally{r.state.close();}
+});
+
 test('known Slack cooldown preserves the prepared notice response before send intent',async()=>{
  const r=rig(),c=claim();let clock=1000;
  const slack=new SlackHandoff(config,'synthetic',()=>assert.fail('no HTTP needed'),{now:()=>clock,cooldowns:{deadline:()=>5000}});
@@ -474,4 +488,26 @@ test("new grants require persisted byte policy and commands cannot choose legacy
   admit(r,record,"1793448101.000001");await assert.rejects(()=>advanceNotice(r.outbox,record.command_id,r.io),/Unknown persisted/);
   assert.equal(r.outbox.notice(request).phase,"reserved");
  }finally{r.state.close();}
+});
+
+test('legacy reserved and completion-intent messages remain checkable after same-edition stable publication without rewriting their binding',async()=>{
+ for(const phase of ['reserved','completion_intent']){
+  const r=rig();try{
+   const c=phase==='reserved'?claim():{...claim('prepare-legacy-check'),action:'prepare'};
+   admit(r,c);await advanceNotice(r.outbox,c.command_id,r.io);
+   if(phase==='completion_intent'){
+    const begin={...c,action:'begin',command_id:'begin-legacy-check'};admit(r,begin,'1793448200.000001');await advanceNotice(r.outbox,begin.command_id,r.io);
+   }
+   const before=r.outbox.notice(request),job=r.state.get(request),original=createNoticeManifest(files.get(dir+'report.json'),merge);
+   assert.equal(before.phase,phase);assert.equal(before.detail.url,proof.url);assert.equal(before.detail.text_sha256,digest(original.text));
+   const check=checkCommand(c);admit(r,check,'1793448800.000001');let reads=0;
+   const io={...r.io,verify:async()=>({...proof,url:'https://sfcloud-ai.github.io/ai-infra-reports/2026-10-31/'}),checkNotice:async input=>{
+    reads++;assert.deepEqual(input.notice_manifest,original);return checkerResult(input);
+   }};
+   await advanceNotice(r.outbox,check.command_id,io);await advanceNotice(r.outbox,check.command_id,io);
+   const response=r.outbox.command(check.command_id).response;
+   assert.equal(reads,1);assert.equal(response.send_authorized,false);assert.equal(response.verification.slack_status,'verified');
+   assert.deepEqual(r.outbox.notice(request),before);assert.deepEqual(r.state.get(request),job);assert.deepEqual(r.state.get(request).bytes,bytes);
+  }finally{r.state.close();}
+ }
 });

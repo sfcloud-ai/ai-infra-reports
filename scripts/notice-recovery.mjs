@@ -59,8 +59,8 @@ export function activateNoticeRecovery(outbox,c,job,bundle,proof){
  const {notice}=originalNotice(outbox,{binding:r.binding,binding_sha256:r.binding_sha256});
  requireThat(JSON.stringify(notice)===JSON.stringify(r.original_notice)&&c.file_id!==notice.file_id,'Recovery must retain the original notice and use its own new upload');
  requireThat(!noticeIdentityReserved(outbox,c.attempt_id,c.file_id),'Recovery upload or attempt already reserved');
- const manifest=createNoticeManifest(bundle.files.get(bundle.report.path+'report.json'),job.detail.commit);
- requireThat(proof.bundle_sha256===job.hash&&proof.poster_sha256===notice.detail.poster_original_sha256&&proof.url===notice.detail.url&&digest(Buffer.from(manifest.text))===notice.detail.text_sha256,'Recovered publication differs from original');
+ const manifest=createNoticeManifest(bundle.files.get(bundle.report.path+'report.json'),job.detail.commit,{stableUrls:notice.detail.url===`https://sfcloud-ai.github.io/ai-infra-reports/${bundle.report.date}/`});
+ requireThat(proof.bundle_sha256===job.hash&&proof.poster_sha256===notice.detail.poster_original_sha256&&manifest.index_url===notice.detail.url&&digest(Buffer.from(manifest.text))===notice.detail.text_sha256,'Recovered publication differs from original');
  const detail={...notice.detail,completion_command_id:c.command_id,completion_command_sha256:outbox.command(c.command_id).hash,
   recovery:{recovery_id:r.recovery_id,fence_sha256:r.binding_sha256,original_begin_sha256:r.binding.original_begin_sha256,original_file_id:notice.file_id,original_attempt_id:notice.attempt_id}};
  requireThat(outbox.db.prepare("UPDATE notice_recovery_authorizations SET phase='consumed',grant_command_id=?,replacement_file_id=? WHERE recovery_id=? AND phase='approved'").run(c.command_id,c.file_id,r.recovery_id).changes===1,'Recovery already consumed');

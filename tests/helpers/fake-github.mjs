@@ -18,7 +18,7 @@ export class FakeGitHub {
   if(method==="POST"&&p==="/git/blobs")return {sha:this.putBlob(Buffer.from(body.content,"base64"))};
   if(method==="POST"&&p==="/git/trees"){
    const tree=new Map(this.trees.get(body.base_tree).map(e=>[e.path,e]));
-   for(const e of body.tree)tree.set(e.path,{...e,size:this.blobs.get(e.sha).length});
+   for(const e of body.tree)if(e.sha===null)tree.delete(e.path);else tree.set(e.path,{...e,size:this.blobs.get(e.sha).length});
    const entries=[...tree.values()],sha=digest(json(entries)).slice(0,40);this.trees.set(sha,entries);return {sha};
   }
   if(method==="POST"&&p==="/git/commits"){const sha=digest(json(body)).slice(0,40);this.commits.set(sha,{sha,tree:{sha:body.tree},parents:body.parents.map(sha=>({sha}))});return {sha};}
