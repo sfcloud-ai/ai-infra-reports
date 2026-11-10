@@ -13,12 +13,12 @@ function report(count=2) {
   images:[{path:"assets/poster.png", sha256:HASH, alt:"An original diagram"}], poster:"assets/poster.png"};
 }
 test("all article titles and URLs, but no summaries or edition theme", () => {
- const r=report(), m=createNoticeManifest(bytes(r), COMMIT);
- const root=NOTICE_ORIGIN+"/2026-11-01/r1/";
+ const r=report(), m=createNoticeManifest(bytes(r), COMMIT, {stableUrls:true});
+ const root=NOTICE_ORIGIN+"/2026-11-01/";
  assert.equal(m.text, "AI Infra 晨报 · 2026-11-01\n\nTopic 1\n"+root+"article-1/\n\nTopic 2\n"+root+"article-2/");
  assert.deepEqual(m.articles, r.articles.map(a => ({id:a.id,title:a.title,url:root+a.id+"/"})));
  assert.equal(m.index_url,root);
- assert.deepEqual(m.poster,{url:NOTICE_ORIGIN+"/reports/2026-11-01/r1/assets/poster.png",sha256:HASH});
+ assert.deepEqual(m.poster,{url:NOTICE_ORIGIN+"/reports/2026-11-01/assets/poster.png",sha256:HASH});
  assert.ok(!m.text.includes("Summary") && !m.text.includes(r.subtitle));
  assert.deepEqual(Object.keys(m),["schema_version","commit","date","revision","index_url","articles","text","poster","report_sha256"]);
 });
@@ -106,7 +106,7 @@ test("archive-valid legacy title formatting skips historical notices only", () =
 test("archive-valid historical title whitespace keeps pages valid without a notification manifest", async () => {
  const {readReports,validateArchive,json}=await import("../scripts/archive.mjs");
  const files=await readReports(".");
- const filename="reports/2026-11-01/r1/report.json", original=JSON.parse(files.get(filename));
+ const filename=files.has("reports/2026-11-01/report.json")?"reports/2026-11-01/report.json":"reports/2026-11-01/r1/report.json", original=JSON.parse(files.get(filename));
  for(const title of [" "+original.articles[0].title+" ",original.articles[0].title+"\u0085",original.articles[0].title+"\u2028"]){
   const r=structuredClone(original);r.articles[0].title=title;files.set(filename,bytes(r));
   files.set("reports/index.json",Buffer.from(json(validateArchive(files,{checkIndex:false}).index)));
@@ -114,4 +114,12 @@ test("archive-valid historical title whitespace keeps pages valid without a noti
   assert.equal(noticeManifestForBuild(files.get(filename),COMMIT,{historical:true}),null);
   assert.throws(()=>noticeManifestForBuild(files.get(filename),COMMIT),/single-line/);
  }
+});
+test('legacy notice defaults preserve receipt text and stable URLs require explicit selection',()=>{
+ const r=report(),legacy=createNoticeManifest(bytes(r),COMMIT),stable=createNoticeManifest(bytes(r),COMMIT,{stableUrls:true});
+ assert.equal(legacy.index_url,NOTICE_ORIGIN+'/2026-11-01/r1/');
+ assert.equal(legacy.poster.url,NOTICE_ORIGIN+'/reports/2026-11-01/r1/assets/poster.png');
+ assert.equal(stable.index_url,NOTICE_ORIGIN+'/2026-11-01/');
+ assert.equal(stable.revision,legacy.revision);assert.equal(stable.report_sha256,legacy.report_sha256);
+ assert.deepEqual(noticeManifestForBuild(bytes(r),COMMIT,{stableUrls:true}),stable);
 });

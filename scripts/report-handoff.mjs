@@ -7,8 +7,12 @@ export const MAX_BUNDLE=8*1024*1024;
 export const SHA=/^[a-f0-9]{40}$/;
 const HASH=/^[a-f0-9]{64}$/;
 export const REQUEST=/^[a-z0-9][a-z0-9-]{7,79}$/;
-const FILE=/^reports\/(\d{4}-\d\d-\d\d)\/r([1-9]\d*)\/(report\.json|articles\/[a-z0-9][a-z0-9-]{0,79}\.md|assets\/[a-z0-9][a-z0-9-]{0,79}\.(png|jpg))$/;
+const FILE=/^reports\/(\d{4}-\d\d-\d\d)\/(?:r([1-9]\d*)\/)?(report\.json|articles\/[a-z0-9][a-z0-9-]{0,79}\.md|assets\/[a-z0-9][a-z0-9-]{0,79}\.(png|jpg))$/;
 export function requireThat(ok,message){if(!ok)throw Error(message);}
+export function isEditionPublicURL(url,edition){
+ const match=/^(\d{4}-\d\d-\d\d)\/r[1-9]\d*$(?![\s\S])/.exec(edition);
+ return !!match&&reportDate(match[1])&&(url===`https://sfcloud-ai.github.io/ai-infra-reports/${edition}/`||url===`https://sfcloud-ai.github.io/ai-infra-reports/${match[1]}/`);
+}
 function exact(value,keys){requireThat(value&&typeof value==="object"&&!Array.isArray(value)&&Object.keys(value).sort().join()===keys.sort().join(),"Unexpected transport fields");}
 export function reportDate(value){
  return typeof value==='string'&&/^\d{4}-\d\d-\d\d$/.test(value)&&Number.isFinite(Date.parse(value+'T00:00:00Z'))&&new Date(value+'T00:00:00Z').toISOString().slice(0,10)===value;
@@ -32,7 +36,7 @@ export async function decodeBundle(bytes){
   const b=Buffer.from(f.base64,"base64");
   requireThat(b.length>0&&b.toString("base64")===f.base64&&digest(b)===f.sha256,"Bundle file hash/encoding");
   total+=b.length;requireThat(total<=6*1024*1024,"Decoded bundle limit");
-  files.set(f.path,b);dirs.add(f.path.split("/").slice(0,3).join("/")+"/");
+  files.set(f.path,b);dirs.add(f.path.split("/").slice(0,FILE.exec(f.path)[2]?3:2).join("/")+"/");
  }
  requireThat(dirs.size===1,"One edition per request");
  const dir=[...dirs][0],meta=files.get(dir+"report.json");
@@ -42,7 +46,7 @@ export async function decodeBundle(bytes){
  const requestDate=canonicalRequestDate(data.request_id);
  requireThat(!requestDate||requestDate===report.date&&data.request_id.endsWith('-r'+report.revision),'Canonical request edition differs from bundle');
  requireThat(reportDate(report.date),'Report date invalid');
- requireThat(report.schema_version==="1.0"&&Number.isSafeInteger(report.revision)&&dir===`reports/${report.date}/r${report.revision}/`,"Edition identity");
+ requireThat(report.schema_version==="1.0"&&Number.isSafeInteger(report.revision)&&report.revision>0&&(dir===`reports/${report.date}/r${report.revision}/`||dir===`reports/${report.date}/`),"Edition identity");
  requireThat(Array.isArray(report.articles)&&report.articles.length>0&&report.articles.length<=30&&Array.isArray(report.images)&&report.images.length<=20,"Edition collections");
  const used=new Set([dir+"report.json"]);
  for(const a of report.articles){
@@ -154,8 +158,9 @@ export async function verifyReportPublication(commit,bundle,fetcher=fetch,source
  const {report:r}=bundle,proof=await verifyPublication(commit,r.date,r.revision,fetcher,bundle.files,sourceCache);
  const slug=`${r.date}/r${r.revision}`,origin="https://sfcloud-ai.github.io/ai-infra-reports";
  const get=url=>fetcher(url,{redirect:"error",cache:"no-store",signal:AbortSignal.timeout(15000)});
+ const publicSourcePath=proof.url===`${origin}/${r.date}/`?`reports/${r.date}/`:r.path;
  for(const i of r.images){
-  const response=await get(origin+"/"+r.path+i.path);
+  const response=await get(origin+"/"+publicSourcePath+i.path);
   const type=i.path.endsWith(".png")?"image/png":"image/jpeg";
   requireThat(response.headers.get("content-type")?.split(";")[0]===type,"Image content type");
   requireThat(digest(await boundedBytes(response,2*1024*1024))===i.sha256,"Published image hash mismatch");

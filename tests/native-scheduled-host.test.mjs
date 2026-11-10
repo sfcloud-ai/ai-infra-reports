@@ -317,6 +317,19 @@ test('explicit first-completion recovery fences the original, preserves audit, g
   await assert.rejects(()=>fenceNativeRecovery(r.state,a.plan));
  }finally{r.close();}
 });
+
+test('explicit recovery retains the legacy notice after public routes migrate',async()=>{
+ const r=await rig({deliveryMode:'native_bundle_v1'});try{
+  const a=await armRecovery(r),original=r.outbox.notice(ID);
+  r.proof.url='https://sfcloud-ai.github.io/ai-infra-reports/2026-11-01/';
+  await a.host.step(ID);await a.host.step(ID);
+  assert.equal(r.state.get(ID).phase,'recovery_final_ready');
+  assert.equal(r.outbox.notice(ID).detail.url,original.detail.url);assert.equal(r.outbox.notice(ID).detail.text_sha256,original.detail.text_sha256);
+  await a.host.step(ID);await a.host.step(ID);await a.host.step(ID);
+  assert.equal(r.state.get(ID).phase,'sender_reported');assert.equal(r.counts.final,1);
+  assert.deepEqual(noticeRecovery(r.outbox,ID).original_notice,original);
+ }finally{r.close();}
+});
 for(const phase of ['started','unknown','acknowledged'])test('recovery refuses any prior final intent '+phase,async()=>{
  const r=await rig({deliveryMode:'native_bundle_v1'});try{
   await r.arm();r.state.begin(ID,'final_complete',{});if(phase!=='started')r.state.settle(ID,'final_complete',phase,null);

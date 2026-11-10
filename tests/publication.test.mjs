@@ -130,3 +130,53 @@ test("failed verification, fresh process capability and forged cache cannot seed
  s.tree.truncated=false;await verifyPublication(source,"2026-11-01",1,s.fetcher,files,cache);
  await assert.rejects(()=>verifyPublication(source,"2026-11-01",1,blocked,files,createPublicationSourceCache()),/unavailable/);
 });
+
+const currentDate='2026-11-01';
+function currentSite(revision=1){
+ const currentFiles=new Map([...files].map(([p,b])=>[p.replace('/r1/','/'),b]));
+ currentFiles.set(`reports/${currentDate}/report.json`,Buffer.from(JSON.stringify({date:currentDate,revision})));
+ return {currentFiles,s:publicationSite({files:currentFiles,slug:`${currentDate}/r${revision}`,sourceCommit:source,deploymentCommit:later,stable:true})};
+}
+test('current source layout verifies immutable report revision and stable rendered pages',async()=>{
+ const {s,currentFiles}=currentSite();
+ const p=await verifyPublication(source,currentDate,1,s.fetcher,currentFiles);
+ assert.equal(p.url,`${ORIGIN}/${currentDate}/`);assert.equal(p.edition,slug);
+ assert.ok(s.calls.some(c=>c.url.includes('/git/blobs/')));
+ assert.ok(s.calls.every(c=>c.options.redirect==='error'));
+});
+test('stable pages reject stale revisions, mixed page sets and tampered source blobs',async()=>{
+ const {s,currentFiles}=currentSite(2);
+ s.root.reports=[slug];s.proof.edition=slug;
+ const staleFetcher=(u,o)=>u===`${ORIGIN}/reports/${slug}/publication-proof.json`?Response.json(s.proof):s.fetcher(u,o);
+ await assert.rejects(()=>verifyPublication(source,currentDate,1,staleFetcher),/revision mismatch/);
+ assert.throws(()=>editionSources(currentFiles,slug),/revision mismatch/);
+ for(const mutate of [s=>s.proof.pages[slug]='a'.repeat(64),s=>s.proof.pages[currentDate+'/item']='b'.repeat(64)]){
+  const {s,currentFiles}=currentSite();mutate(s);
+  await assert.rejects(()=>verifyPublication(source,currentDate,1,s.fetcher,currentFiles),/rendered edition|page hash/);
+ }
+ const c=currentSite(),fetcher=(u,o)=>u.includes('/git/blobs/')?Response.json({sha:c.s.proof.sources['report.json'],encoding:'base64',content:Buffer.from('{}').toString('base64')}):c.s.fetcher(u,o);
+ await assert.rejects(()=>verifyPublication(source,currentDate,1,fetcher,c.currentFiles),/blob hash/);
+});
+test('current source cannot masquerade as an old edition through redirects or ambiguous layouts',async()=>{
+ const {s,currentFiles}=currentSite();
+ const mixed=new Map([...files,...currentFiles]);assert.throws(()=>editionSources(mixed,slug),/Ambiguous/);
+ s.tree.tree.push({path:prefix+'report.json',sha:s.proof.sources['report.json'],type:'blob',mode:'100644'});
+ await assert.rejects(()=>verifyPublication(source,currentDate,1,s.fetcher,currentFiles),/Ambiguous/);
+ const c=currentSite(),fetcher=(u,o)=>u===`${ORIGIN}/${currentDate}/`?new Response(null,{status:302,headers:{location:`${ORIGIN}/${currentDate}/r2/`}}):c.s.fetcher(u,o);
+ await assert.rejects(()=>verifyPublication(source,currentDate,1,fetcher,c.currentFiles),/unavailable/);
+});
+test('post-build stable proof has matching technical alias and no revision page hashes',async()=>{
+ const dir=await mkdtemp(path.join(os.tmpdir(),'publication-stable-build-'));
+ try{
+  const {s,currentFiles}=currentSite();
+  await mkdir(path.join(dir,'generated'));
+  await writeFile(path.join(dir,'generated/manifest.json'),JSON.stringify({pages:[{slug:currentDate,kind:'day',edition:slug},{slug:currentDate+'/item',kind:'article',parent:currentDate,edition:slug,evidence:[]}],publicationSources:{[slug]:editionSources(currentFiles,slug)}}));
+  for(const [p,html]of s.pages){await mkdir(path.join(dir,'dist',p),{recursive:true});await writeFile(path.join(dir,'dist',p,'index.html'),html);}
+  await writeFile(path.join(dir,'dist/publication.json'),JSON.stringify(s.root));
+  const script=fileURLToPath(new URL('../scripts/check-output.mjs',import.meta.url)),r=spawnSync(process.execPath,[script,'dist'],{cwd:dir,encoding:'utf8'});assert.equal(r.status,0,r.stderr);
+  const stable=await readFile(path.join(dir,'dist/reports',currentDate,'publication-proof.json'));
+  assert.deepEqual(stable,await readFile(path.join(dir,'dist/reports',slug,'publication-proof.json')));
+  const proof=JSON.parse(stable);assert.equal(proof.edition,slug);
+  assert.deepEqual(Object.keys(proof.pages).sort(),[currentDate,currentDate+'/item']);
+ }finally{await rm(dir,{recursive:true,force:true});}
+});

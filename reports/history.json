@@ -1,0 +1,1333 @@
+{
+  "schema_version": "1.0",
+  "entries": [
+    {
+      "id": "2026-10-03-arxiv-2610-00687-v1",
+      "event_key": "arxiv-2610-00687-v1",
+      "date": "2026-10-03",
+      "revision": 1,
+      "fingerprint": "d098596884d26ba43a50b77a05676ac80aa94a053882c4abe60e6bd6cdb099a1",
+      "content_sha256": "02e031027250704e2e7a207c68f1fd4d7cbe0be452c936170142d7a257cde378"
+    },
+    {
+      "id": "2026-10-03-arxiv-2610-01265-v1",
+      "event_key": "arxiv-2610-01265-v1",
+      "date": "2026-10-03",
+      "revision": 1,
+      "fingerprint": "3076af74057eec535c804b9d22baab78e622d1cf5db0a062206da83fccf919ae",
+      "content_sha256": "ce1d5a35b4997d631918672f0ba4a6555dff842a8313e501f13c2e99535a4ec8"
+    },
+    {
+      "id": "2026-10-03-arxiv-2610-01380-v1",
+      "event_key": "arxiv-2610-01380-v1",
+      "date": "2026-10-03",
+      "revision": 1,
+      "fingerprint": "98e3bc46975627fc173d4599af06c874bc586315ddd76200e593d230721677be",
+      "content_sha256": "d37181f37cb4c6eefa1a56145da8225a7907a1f72168a5aae6adf5a3089ef97e"
+    },
+    {
+      "id": "2026-10-03-sglang-release-0-5-21",
+      "event_key": "sglang-release-0-5-21",
+      "date": "2026-10-03",
+      "revision": 1,
+      "fingerprint": "f9e848fcc654db331d40b9cab22020cc87548540a714be6717680b9694df3a83",
+      "content_sha256": "05f10ececf9773b39398ab6196de631c88e80f629fb034c5581c09e02ef3eae3"
+    },
+    {
+      "id": "2026-10-04-arxiv-2609-33224-v1",
+      "event_key": "arxiv-2609-33224-v1",
+      "date": "2026-10-04",
+      "revision": 1,
+      "fingerprint": "eb539f51d717fbc41bb1acfda0340902cf7cbf03548c13085757c4de94085b56",
+      "content_sha256": "8539643c2c86cc63f3f1eaa699a952ade970018f417a2d9f101ba480f4b0a0d2"
+    },
+    {
+      "id": "2026-10-04-arxiv-2609-36954-v1",
+      "event_key": "arxiv-2609-36954-v1",
+      "date": "2026-10-04",
+      "revision": 1,
+      "fingerprint": "a9f903b47693be30f9aa895cafe5b0b3b2d9fa3fa45d2ac20eea30084bba0389",
+      "content_sha256": "bc0c10694bff935b3ea1be7ed146787ca1698e80d4e0b1f21d45aa8a4922c20b"
+    },
+    {
+      "id": "2026-10-04-arxiv-2609-40247-v1",
+      "event_key": "arxiv-2609-40247-v1",
+      "date": "2026-10-04",
+      "revision": 1,
+      "fingerprint": "cce6a8213231a67a631f40ffc85c7842f11576dfc703362976447cd3f80a045d",
+      "content_sha256": "78d9f1dbfbb65c2d1c4efb963e53141529b8a05c6137d00dee7f9ed764d229c6"
+    },
+    {
+      "id": "2026-10-04-arxiv-2610-00671-v1",
+      "event_key": "arxiv-2610-00671-v1",
+      "date": "2026-10-04",
+      "revision": 1,
+      "fingerprint": "1c7adcc7661ccb18a3f4405bd4097f730045a8fd2f846a8509f3de055562bd6c",
+      "content_sha256": "10f037600616695aebda4952cb23ad861c8db8d97ceba04c497d9e465a6289a0"
+    },
+    {
+      "id": "2026-10-05-arxiv-2609-38706-v1",
+      "event_key": "arxiv-2609-38706-v1",
+      "date": "2026-10-05",
+      "revision": 1,
+      "fingerprint": "9f9aefc9c0db6bfa456aaeb6c3949eeb080b78137c7384edff5c193d9ea4bca1",
+      "content_sha256": "b54e6a8de95d75da06edfa325a00c30ecd47c20f01d7be1f6d17de60859a3fd1"
+    },
+    {
+      "id": "2026-10-05-arxiv-2610-01160-v1",
+      "event_key": "arxiv-2610-01160-v1",
+      "date": "2026-10-05",
+      "revision": 1,
+      "fingerprint": "81a76861421ed7de29f2adbd520fbaf6d221930e4a1384014ed8aeb283af3d80",
+      "content_sha256": "bc31e3267d95a115f951fa2582d24d42094663740dd8dc4a1aabceccdd4d2789"
+    },
+    {
+      "id": "2026-10-05-deepseek-ascend-stack-20260930",
+      "event_key": "deepseek-ascend-stack-20260930",
+      "date": "2026-10-05",
+      "revision": 1,
+      "fingerprint": "098bfa30951552c9014aadf3364e30d1346c2c86e628ac373b7b621868fd0386",
+      "content_sha256": "297c4b54832444770a81233af3e40c67cf6240068992611ec96a873bbd21d109"
+    },
+    {
+      "id": "2026-10-06-vllm-pr-56758",
+      "event_key": "vllm-pr-56758",
+      "date": "2026-10-06",
+      "revision": 1,
+      "fingerprint": "effab985c14f518cf6203e316cbacbf02122697d46cc6bc8773449f4f309b378",
+      "content_sha256": "00577f2eca08162a74fde4707ac7e83c4c8159818826bae9630a8852117be0ae"
+    },
+    {
+      "id": "2026-10-07-kueue-pr-14191",
+      "event_key": "kueue-pr-14191",
+      "date": "2026-10-07",
+      "revision": 1,
+      "fingerprint": "15f8ee08d97099dbfe9fd10c7cd73898119d5771429df14d1584674096bbfac6",
+      "content_sha256": "219582b61d9394fbcddf33ad92288749c2665b08c913118606604e320e902b0d"
+    },
+    {
+      "id": "2026-10-08-lmcache-pr-5469",
+      "event_key": "lmcache-pr-5469",
+      "date": "2026-10-08",
+      "revision": 1,
+      "fingerprint": "66df209a2de97bd0e076e3892fed0d7e7089c262bb63201afdeb3e7a619ef618",
+      "content_sha256": "3a8780c4f17134a39c830410b63c455226b521d2f3c2444ed5a72f7ee57a8c6e"
+    },
+    {
+      "id": "2026-10-08-vllm-pr-46963",
+      "event_key": "vllm-pr-46963",
+      "date": "2026-10-08",
+      "revision": 1,
+      "fingerprint": "ebcebf380b52d12379626925e32fd52b3a71e53e45b4d0b938cff63af08c9c91",
+      "content_sha256": "0f1ef52ad6be1819148e188bffa44b24ee8fa685209637fd68263a05172aab45"
+    },
+    {
+      "id": "2026-10-08-vllm-pr-60152",
+      "event_key": "vllm-pr-60152",
+      "date": "2026-10-08",
+      "revision": 1,
+      "fingerprint": "acf32f159722b0b865801004917ec72f8f5331f8a54dcb53e2ecce2ff5569095",
+      "content_sha256": "d7cd271670590449c15cf4cc88872eadb96d813297b198cdecf4a9be26b4f5ec"
+    },
+    {
+      "id": "2026-10-09-dynamo-pr-15290",
+      "event_key": "dynamo-pr-15290",
+      "date": "2026-10-09",
+      "revision": 1,
+      "fingerprint": "da1ac9743f81f508cb922a114dd119578dc839c39a6897b355c41041a41cdfc0",
+      "content_sha256": "c77b8a37027531fca8fcd67ff4e024b1fe50dca64e75348a0c4ecdf74ea10a07"
+    },
+    {
+      "id": "2026-10-09-dynamo-release-1-5-1",
+      "event_key": "dynamo-release-1-5-1",
+      "date": "2026-10-09",
+      "revision": 1,
+      "fingerprint": "f11daf47853153fc3950b8354f0c95b7af5bb3d32fa9d7850621453639978a5e",
+      "content_sha256": "f6974ac003275c229efedcdcbaf061a7e74732f77833e6c83c2ef09e2a22607a"
+    },
+    {
+      "id": "2026-10-09-ray-pr-66777",
+      "event_key": "ray-pr-66777",
+      "date": "2026-10-09",
+      "revision": 1,
+      "fingerprint": "708450e3d11955ec37a3b78a0d4182e0e612a8ed7ec0a29df67fba2bb7db5c1b",
+      "content_sha256": "32aeb7637cdb25780a2f864257bcc62cc7a20ba6658ee822c6a29a0348e48ce2"
+    },
+    {
+      "id": "2026-10-10-ai2-impactful-scheduling-202610",
+      "event_key": "ai2-impactful-scheduling-202610",
+      "date": "2026-10-10",
+      "revision": 1,
+      "fingerprint": "56bda9992fdec04899314d5657acc77b7eeb08f68f18dd8d9dbca155cc5bcf4a",
+      "content_sha256": "1fa6b2e189aed6b4197a731061424a8897fe44c8831d427b6cb85361b439b3b8"
+    },
+    {
+      "id": "2026-10-10-vllm-pr-60922",
+      "event_key": "vllm-pr-60922",
+      "date": "2026-10-10",
+      "revision": 1,
+      "fingerprint": "44e3dc5a36f13a65b0f661804081f100f2ddc4889d77bf67b8f776828c5aca76",
+      "content_sha256": "5ba296da5b91cdf7547e35a5f1ea1cbc746fdba6ac479a9bb6da551fe857d8e1"
+    },
+    {
+      "id": "2026-10-11-vllm-pr-60940",
+      "event_key": "vllm-pr-60940",
+      "date": "2026-10-11",
+      "revision": 1,
+      "fingerprint": "8afa4baa707cf6a1a4a52c6c447fa280b35f7d673e60dfef83582ede166dcb13",
+      "content_sha256": "9f8a3efde1ea753e9505b13b5359f045f4b33c594dd9a20d60bc8ee6df819e7b"
+    },
+    {
+      "id": "2026-10-12-sglang-pr-43298",
+      "event_key": "sglang-pr-43298",
+      "date": "2026-10-12",
+      "revision": 1,
+      "fingerprint": "5f1cba58168c86b6c3b5a308a53821d680707f6836aab6169b43332278a8b2cf",
+      "content_sha256": "97c437b17560d21864cf54de47413e095efae29fba7472425f61a21604ca951c"
+    },
+    {
+      "id": "2026-10-12-vllm-pr-57516",
+      "event_key": "vllm-pr-57516",
+      "date": "2026-10-12",
+      "revision": 1,
+      "fingerprint": "7594063012fff8210e8203a239322dd42c27fc7385bc4fe1c60e94a21d70dd85",
+      "content_sha256": "def374e1c11e7197c440ea86c5c0350fd07eea9015210c6ad1d1569173191fe4"
+    },
+    {
+      "id": "2026-10-13-arxiv-2610-07457-v1",
+      "event_key": "arxiv-2610-07457-v1",
+      "date": "2026-10-13",
+      "revision": 1,
+      "fingerprint": "1ba6a9ffa611fdd3847db5b8811329c5a061415dd78fbee6e88b2d78ac5a93fd",
+      "content_sha256": "d43b1d76ce3a0f37cd9a439c0a9163cba0803197715bfba149f3976946e8bdfa"
+    },
+    {
+      "id": "2026-10-13-arxiv-2610-13325-v1",
+      "event_key": "arxiv-2610-13325-v1",
+      "date": "2026-10-13",
+      "revision": 1,
+      "fingerprint": "477807dda4e421edc8e16dbe68b7c1660c5ba7c4c3d17ed745efa60d233aba08",
+      "content_sha256": "fc16583671ca3788a53abdde7b6cf56c47dc3e058747de603b3774abb435d712"
+    },
+    {
+      "id": "2026-10-14-arxiv-2610-12242-v1",
+      "event_key": "arxiv-2610-12242-v1",
+      "date": "2026-10-14",
+      "revision": 1,
+      "fingerprint": "8ccaf0a448d7527d1147b856d478c2a5c2d882f575fe5072eb32e96f7ff78215",
+      "content_sha256": "bc8d3d550687d654c5e3298cb9c5fdd1c7ba4f7937ebb50285c7705694b90eb6"
+    },
+    {
+      "id": "2026-10-14-arxiv-2610-12815-v1",
+      "event_key": "arxiv-2610-12815-v1",
+      "date": "2026-10-14",
+      "revision": 1,
+      "fingerprint": "3a302f1ab84c0f86077c59fc91ec615cab5f76daf0a2290c998148c0777ae546",
+      "content_sha256": "f3ab68b122305b4c1f92a8e6ad0638b2ebeceafad8892487e59966257fc158c7"
+    },
+    {
+      "id": "2026-10-14-arxiv-2610-13767-v1",
+      "event_key": "arxiv-2610-13767-v1",
+      "date": "2026-10-14",
+      "revision": 1,
+      "fingerprint": "7bd669f61625b8207585dc3a82d479fc26cabbdac6a10db8b2a6f0c3f1191bc8",
+      "content_sha256": "66766b80206891e679844ef16cdee24f7cea797c74bca7d140e580a9081bd490"
+    },
+    {
+      "id": "2026-10-15-arxiv-2610-17528-v1",
+      "event_key": "arxiv-2610-17528-v1",
+      "date": "2026-10-15",
+      "revision": 1,
+      "fingerprint": "180c004eb4a1471dffd5bd2cca155ad6c1feea455e06341a0308ef001dbd8863",
+      "content_sha256": "f53d6a96133d0d7ec40e75f5da59a3ba6359ed05e920def64b2f25e0a8d5cdae"
+    },
+    {
+      "id": "2026-10-16-arxiv-2610-19801-v1",
+      "event_key": "arxiv-2610-19801-v1",
+      "date": "2026-10-16",
+      "revision": 1,
+      "fingerprint": "3fab3c679a606605ea8aaaab0e27dee72e0715af057fe4d0533e75f7d58963da",
+      "content_sha256": "2ef6af9aed887605838ddd828b6315da3a124aeb2d3aa411082f78d1a6e06d63"
+    },
+    {
+      "id": "2026-10-16-toktier-release-v0-3-0",
+      "event_key": "toktier-release-v0-3-0",
+      "date": "2026-10-16",
+      "revision": 1,
+      "fingerprint": "1240c58f57eba12230270fd907a1561128bc4140dc6f557f3b8b17e943f5038b",
+      "content_sha256": "9a4eb11c456c4d69d11a42be5ba10ace4187f316f1f7a5a78c9bd84a551066a3"
+    },
+    {
+      "id": "2026-10-17-arxiv-2610-22130-v1",
+      "event_key": "arxiv-2610-22130-v1",
+      "date": "2026-10-17",
+      "revision": 1,
+      "fingerprint": "c1a3d64ddab46c57f01ce9e81f4f3bfb694f54119e60a6fd4708ee7d97a443f2",
+      "content_sha256": "87fb86be54aeff15bdacb858c77c4ba4d1484bc08affea9d8469b9d090677843"
+    },
+    {
+      "id": "2026-10-17-arxiv-2610-22179-v1",
+      "event_key": "arxiv-2610-22179-v1",
+      "date": "2026-10-17",
+      "revision": 1,
+      "fingerprint": "c291e735a901634110ab33e6a0a2be4b91af42e678ed2e32e7d2413e5db37563",
+      "content_sha256": "7cdc502753cb07b5f5b8e898ace19593446614d323c7fb8f5818d0457e7dc167"
+    },
+    {
+      "id": "2026-10-18-arxiv-2610-19423-v1",
+      "event_key": "arxiv-2610-19423-v1",
+      "date": "2026-10-18",
+      "revision": 1,
+      "fingerprint": "ad482ca5e1a24c22157da0f6a063e2cae3ed283aab6638fce22b120829a157b2",
+      "content_sha256": "774f10ff39343a9d3a9f44e3350f682ae9036e7ab519bf59d1e18a4462b0b8cc"
+    },
+    {
+      "id": "2026-10-18-arxiv-2610-21500-v1",
+      "event_key": "arxiv-2610-21500-v1",
+      "date": "2026-10-18",
+      "revision": 1,
+      "fingerprint": "d1b209dc7e35a99a8756f412bf5707d4a81915a3fe90931f6ae5ba1fbac8ef0b",
+      "content_sha256": "504cfc553d405afbbe2d4d631406894865a9a82c7952f21a7ee14b5336b477dd"
+    },
+    {
+      "id": "2026-10-19-arxiv-2610-22230-v1",
+      "event_key": "arxiv-2610-22230-v1",
+      "date": "2026-10-19",
+      "revision": 1,
+      "fingerprint": "3ff26ca5e640b50b443c0119c7448c56c1e11994d01ae4043042a99cf357b44f",
+      "content_sha256": "161f6c9544072ab77b3f3499186faad6de760142247145d53e9650769b54b10c"
+    },
+    {
+      "id": "2026-10-19-nvidia-runai-open-source-20261013",
+      "event_key": "nvidia-runai-open-source-20261013",
+      "date": "2026-10-19",
+      "revision": 1,
+      "fingerprint": "67e209aa21ef2545200c95710d4987714b94a237f6bc40f5f0bca097adce390d",
+      "content_sha256": "b1e9723cdd52040ac0dcfed056d6d51b1eacc77f976e7cc50462cb17a3f38a64"
+    },
+    {
+      "id": "2026-10-20-arxiv-2610-19605-v1",
+      "event_key": "arxiv-2610-19605-v1",
+      "date": "2026-10-20",
+      "revision": 1,
+      "fingerprint": "bb034326a89810293db14180bd6610ae2aae14ed8a0baa9f65540cb37a03162f",
+      "content_sha256": "db6dbe21065b6a1839e65f0f73fb36af3bfd207517135f6bc433fcd0ed8ee5ff"
+    },
+    {
+      "id": "2026-10-20-arxiv-2610-22863-v1",
+      "event_key": "arxiv-2610-22863-v1",
+      "date": "2026-10-20",
+      "revision": 1,
+      "fingerprint": "ea98e69444d63817ce1224fb1b0c224e85b9f59348a31b18cb70f721bdb3bfd3",
+      "content_sha256": "fbbbbdff24f42e8966102d43459ec6f4de07f366e3ae347fa665f596767c6f33"
+    },
+    {
+      "id": "2026-10-20-arxiv-2610-23047-v1",
+      "event_key": "arxiv-2610-23047-v1",
+      "date": "2026-10-20",
+      "revision": 1,
+      "fingerprint": "3ad17c4751e9c94d0d3b7a696e99531801c337043827c8cb28e369092d7fb09d",
+      "content_sha256": "9d1c8894c96f07690d22d4292c3cf28ca4b3bbd672a3a990274fc63eaef88a9f"
+    },
+    {
+      "id": "2026-10-21-arxiv-2610-24328-v1",
+      "event_key": "arxiv-2610-24328-v1",
+      "date": "2026-10-21",
+      "revision": 1,
+      "fingerprint": "411ecea79c11f9cc30798017937b4573c6262d6072aeb0d413d65bf13c149902",
+      "content_sha256": "4cd14b78b63002a4b2d05c929c71410bfb898cba41a6279bec48247ccf8da0f5"
+    },
+    {
+      "id": "2026-10-21-llm-d-release-v1-0-0",
+      "event_key": "llm-d-release-v1-0-0",
+      "date": "2026-10-21",
+      "revision": 1,
+      "fingerprint": "31e4c1643c585547b0fe2f2e26a5832630220021625040d3774946d549e1ea1f",
+      "content_sha256": "aef001114eae8bfca3b354fff351ee1281623229bf9c945d969e3fa1e5da47ab"
+    },
+    {
+      "id": "2026-10-22-arxiv-2610-28500-v1",
+      "event_key": "arxiv-2610-28500-v1",
+      "date": "2026-10-22",
+      "revision": 1,
+      "fingerprint": "32484b2ea66ac0d1e0498b4a3a20924495eb4fc7d6d8575f4ca7c539a4dfc028",
+      "content_sha256": "799cef15e092a20312b64c44a93f848d7abfe965c02a03a18ad11fb11529c097"
+    },
+    {
+      "id": "2026-10-22-google-confidential-g4-ga-2026-10-21",
+      "event_key": "google-confidential-g4-ga-2026-10-21",
+      "date": "2026-10-22",
+      "revision": 1,
+      "fingerprint": "f8d4672bd22c10283bd3276ffc5ea9155abc7c4ef57bd07b56727e72eb325d53",
+      "content_sha256": "2247e639ae642b539ae81d274a62d87f98c16f15fd9208f9d747d60ee7e73c5e"
+    },
+    {
+      "id": "2026-10-23-arxiv-2610-28947-v1",
+      "event_key": "arxiv-2610-28947-v1",
+      "date": "2026-10-23",
+      "revision": 1,
+      "fingerprint": "fdf069adeea15d74653d3a6debab01c434cd6d26df996f72641999db83712574",
+      "content_sha256": "6134486d2cc286f66a166553a5d64453eb6067f260381010898b6c179050df08"
+    },
+    {
+      "id": "2026-10-23-torchtpu-open-source-2026-10-20",
+      "event_key": "torchtpu-open-source-2026-10-20",
+      "date": "2026-10-23",
+      "revision": 1,
+      "fingerprint": "23cbedbfa075afab58b4f1d2513133a82a3fa7184ddc22cb1da46c08277240ad",
+      "content_sha256": "4852866b24d27026ebfb5ae733bd7fc34c065d25c47649e26533b9a5c514e370"
+    },
+    {
+      "id": "2026-10-24-vllm-elastic-ep-near-zero-downtime-2026-10-19",
+      "event_key": "vllm-elastic-ep-near-zero-downtime-2026-10-19",
+      "date": "2026-10-24",
+      "revision": 1,
+      "fingerprint": "c1e7f586966e01824c885b6212cef1f77211e19e87f399a22334203a36062dba",
+      "content_sha256": "e53889bf9fb620d509694aa5c8760a7aa9dae791bfe97f312d97847c957f00f6"
+    },
+    {
+      "id": "2026-10-24-vllm-humming-2026-10-21",
+      "event_key": "vllm-humming-2026-10-21",
+      "date": "2026-10-24",
+      "revision": 1,
+      "fingerprint": "3d798d34f63ec7ec4d78de5fba0a4ba22f459d796b494d2ea67389e3143f5a1e",
+      "content_sha256": "4f83d76be05ac9452eb16d4c2492b91ceb41096300a97553fafa914eddfba74a"
+    },
+    {
+      "id": "2026-10-25-vllm-glm53-pcp-dcp-hisparse-2026-10-23",
+      "event_key": "vllm-glm53-pcp-dcp-hisparse-2026-10-23",
+      "date": "2026-10-25",
+      "revision": 1,
+      "fingerprint": "e8f6bb02e8ca447408a5eb54a317f67f0b39c1259e2e7d66a5316bf89b2f05dd",
+      "content_sha256": "5e199b74bd3080d6c1c1e3d6ae707419e6208340cd40ec01e4c82f1d08ca5668"
+    },
+    {
+      "id": "2026-10-26-arxiv-2610-31309-v1",
+      "event_key": "arxiv-2610-31309-v1",
+      "date": "2026-10-26",
+      "revision": 1,
+      "fingerprint": "622ae7f0cb1eae53dcb0c264bdc875e229337a54a700e0ff333e1b02761fffd3",
+      "content_sha256": "3362b668c974bbcd35d7550c769b866023614e59ebeb083b94194e935900d1ad"
+    },
+    {
+      "id": "2026-10-27-arxiv-2610-29171-v1",
+      "event_key": "arxiv-2610-29171-v1",
+      "date": "2026-10-27",
+      "revision": 1,
+      "fingerprint": "2c9bc117af4d50801f53d2c9bea6a05edbea4088224a2554b87d7c768cd8b2c4",
+      "content_sha256": "73438bf642249fd316c24f1a362e216fa72b1668f4b3f16500f1e21233d633bd"
+    },
+    {
+      "id": "2026-10-27-arxiv-2610-31827-v1",
+      "event_key": "arxiv-2610-31827-v1",
+      "date": "2026-10-27",
+      "revision": 1,
+      "fingerprint": "e44ce9ee5cdfc38216bbd24e72d65711fc4459496e15b6beb9fc4371edf1a846",
+      "content_sha256": "871ee9840f39508dfc5b5f74d24bfb0dcc58df4958cdacfd606e220eae246865"
+    },
+    {
+      "id": "2026-10-28-arxiv-2610-34844-v1",
+      "event_key": "arxiv-2610-34844-v1",
+      "date": "2026-10-28",
+      "revision": 1,
+      "fingerprint": "34096de3153bc15d92aa6dc7978923974ab4a9421e4b8ffcad0a7f5bbfa16fe5",
+      "content_sha256": "bf088fef384a4ec40ef29dd8cb186564144f7df70ba988d6dbfe2de2c458e961"
+    },
+    {
+      "id": "2026-10-29-arxiv-2610-30791-v1",
+      "event_key": "arxiv-2610-30791-v1",
+      "date": "2026-10-29",
+      "revision": 1,
+      "fingerprint": "3ca36f27dd9f21553723d585a80fa8d4c8568eadb66c489328d0e1b2b19e35ea",
+      "content_sha256": "491f7b9de09c7b7f090de141be88584363cb83e1e20e07f1d173e958b22eb983"
+    },
+    {
+      "id": "2026-10-29-arxiv-2610-32057-v2",
+      "event_key": "arxiv-2610-32057-v2",
+      "date": "2026-10-29",
+      "revision": 1,
+      "fingerprint": "c2e6a17377bcbba3bedfc03ab6241c27db00ec6828adb586f21c3818f4909822",
+      "content_sha256": "1fd407bcd73624fa3f37f03315c1c8e76ebb91fb2d1460ce7392b462de91c060"
+    },
+    {
+      "id": "2026-10-29-arxiv-2610-33719-v1",
+      "event_key": "arxiv-2610-33719-v1",
+      "date": "2026-10-29",
+      "revision": 1,
+      "fingerprint": "c38647fc17219ed0a9f7bf10a2fc9580c37424f4466718a12055deed804f0ad6",
+      "content_sha256": "9e1df54fa410eaade62eae7b7062e32f68b27aa93527ca39c2f3bc7324da0efd"
+    },
+    {
+      "id": "2026-10-30-arxiv-2610-37230-v1",
+      "event_key": "arxiv-2610-37230-v1",
+      "date": "2026-10-30",
+      "revision": 1,
+      "fingerprint": "4ff76f1f33dd1975bc1d2cf3ab97166c83dbe5752f892abf645b9cb78df05459",
+      "content_sha256": "d804297e6a62950ba9f52d806cd1050b8c90e1d6a1ed509898c1397efe067f2c"
+    },
+    {
+      "id": "2026-10-30-nebius-positronic-physical-ai-competition-2026-10-26",
+      "event_key": "nebius-positronic-physical-ai-competition-2026-10-26",
+      "date": "2026-10-30",
+      "revision": 1,
+      "fingerprint": "975176d99b5cbff98a0b57b7fdd4a7a55b2a90116906cae25a73267dd8ce8468",
+      "content_sha256": "e54b325c55e06d91d388cb745f25358e8db7ae2188df1f81ec94f76bafa6d5ff"
+    },
+    {
+      "id": "2026-10-31-arxiv-2610-38355-v1",
+      "event_key": "arxiv-2610-38355-v1",
+      "date": "2026-10-31",
+      "revision": 1,
+      "fingerprint": "c0d519e6b281e02362a2dfabf47d5ea134bb8ebf084ef024ee9da2eb467bf7ab",
+      "content_sha256": "1f3fffbaafa4b1322f1f87a70e386d6038270a46f6a1b392512779f8dc21b322"
+    },
+    {
+      "id": "2026-10-31-arxiv-2610-38968-v1",
+      "event_key": "arxiv-2610-38968-v1",
+      "date": "2026-10-31",
+      "revision": 1,
+      "fingerprint": "150e5738c4607f48c7e98a03cbb9a0fa4706f1a3a99b7a3ac1211f8f6bb954c4",
+      "content_sha256": "5f9f8bd91004f28caa1af4ce5e26af8cd801b51a9d07b3e0798997b26d5037d4"
+    },
+    {
+      "id": "2026-10-31-arxiv-2610-39999-v1",
+      "event_key": "arxiv-2610-39999-v1",
+      "date": "2026-10-31",
+      "revision": 1,
+      "fingerprint": "b39c2a32c0778acd5ad25dce61ad70e568dea846d075d288fd343ec48aa460cf",
+      "content_sha256": "af5cdc8c595e6a6b58abf936eee1b9361443181f4c33d9e37b7136cd6563290f"
+    },
+    {
+      "id": "2026-10-31-deepinfer-pr-251",
+      "event_key": "deepinfer-pr-251",
+      "date": "2026-10-31",
+      "revision": 1,
+      "fingerprint": "10c3ac2c106dccc3db20871cefc8902b2a2b40e3f202eff979133c0de8f59195",
+      "content_sha256": "6c8c88f4a8c0ef227c7cd9616c6a24fcca05a7abaebe63431b3caa5d497d52da"
+    },
+    {
+      "id": "2026-10-31-sglang-pr-47521",
+      "event_key": "sglang-pr-47521",
+      "date": "2026-10-31",
+      "revision": 1,
+      "fingerprint": "bd0b3a73796c28922f4179dea2eb8bba05d04735c2f02c38df9bd52a76c4fe57",
+      "content_sha256": "43e055e740c105f1d5e5c838b22de65bda54dc4616fb275d36eecf05bf5df3ce"
+    },
+    {
+      "id": "2026-10-31-vllm-pr-62979",
+      "event_key": "vllm-pr-62979",
+      "date": "2026-10-31",
+      "revision": 1,
+      "fingerprint": "90b3a148bd3d9b85f72baed69603e4829c40f1ef09ca3cf66442a7830fc83827",
+      "content_sha256": "dfce552af98536cb6801d4225f15639027a2558775a243102ee92d1231a34359"
+    },
+    {
+      "id": "2026-10-31-vllm-pr-64630",
+      "event_key": "vllm-pr-64630",
+      "date": "2026-10-31",
+      "revision": 1,
+      "fingerprint": "b2a4ed9bfe4668a7bd67cf3e0df891bd3dee9604a8a3c13f19cca395c63141a0",
+      "content_sha256": "3d1a859cf46ec5714ac159130875c97329d791bee47da2d1ce63c7c927a3d983"
+    },
+    {
+      "id": "2026-11-01-deepinfer-status-2026-11-01",
+      "event_key": "deepinfer-status-2026-11-01",
+      "date": "2026-11-01",
+      "revision": 1,
+      "fingerprint": "8c8c43d60707489905324a8617497adc48fe6c01aa3ab11c4a67cbeb542568b6",
+      "content_sha256": "8104c755a5229493ed10727bb0ad9c9bcd0db9a693e92a101b72c0b39626e603"
+    },
+    {
+      "id": "2026-11-01-sglang-47638",
+      "event_key": "sglang-pr-47638",
+      "date": "2026-11-01",
+      "revision": 1,
+      "fingerprint": "f3558728ddc46d797aca599c9f13d10fdb0d16e210b7d1dd163ba8e1997ac45d",
+      "content_sha256": "1963c3a03b1e54d05e038fc01f4d1281cc872b9589c0acb27261e663a72b7d16"
+    },
+    {
+      "id": "2026-11-01-sglang-47652",
+      "event_key": "sglang-pr-47652",
+      "date": "2026-11-01",
+      "revision": 1,
+      "fingerprint": "decf681438421cea1b6a03ebcc75cc856c8dac159bc2d911e9ca63a3ba76b212",
+      "content_sha256": "2294eaa2f1a0d921f749e8f6a1a7fd2a245f7487203826ddf36167b0eb15be2a"
+    },
+    {
+      "id": "2026-11-01-sglang-pr-47577",
+      "event_key": "sglang-pr-47577",
+      "date": "2026-11-01",
+      "revision": 1,
+      "fingerprint": "78cae701a485e1ea7d33dbea703acca489995916e7f7922291616ce798928d41",
+      "content_sha256": "2c371f949bade9b8ca8a9521b8f836aa6452dcce9d1d3bd38e0926212b0a5689"
+    },
+    {
+      "id": "2026-11-01-vllm-pr-64336",
+      "event_key": "vllm-pr-64336",
+      "date": "2026-11-01",
+      "revision": 1,
+      "fingerprint": "95ba7a0f3c9ddd372945da3eec2c40693142256b1b96f268436ad772388fdac0",
+      "content_sha256": "6303270bac11b1109663d2b1dc85d573015f9c14ba20485856646dbcbf136025"
+    },
+    {
+      "id": "2026-11-01-vllm-pr-64675",
+      "event_key": "vllm-pr-64675",
+      "date": "2026-11-01",
+      "revision": 1,
+      "fingerprint": "40a4b51e4a9bc265d7dc4f0eb5a2118a4e289f9c784984f005b860df685b6245",
+      "content_sha256": "8b40037178420f11d588b854ac893f27d3a529b4f93ec981dcde8aa435b32085"
+    },
+    {
+      "id": "2026-11-01-vllm-pr-64841",
+      "event_key": "vllm-pr-64841",
+      "date": "2026-11-01",
+      "revision": 1,
+      "fingerprint": "b8816254c6dd73500eeaa92e9225175ea9eb2a64a0986d91b077a0b710f0ede7",
+      "content_sha256": "7b497ba7d68d4a7ee035eda5f4ad3d8bd54be2c8dfb696be71e5f4820bc0bf4d"
+    },
+    {
+      "id": "2026-11-01-r2-deepinfer-status-2026-11-01",
+      "event_key": "deepinfer-status-2026-11-01",
+      "date": "2026-11-01",
+      "revision": 2,
+      "fingerprint": "b3fbb263b2f867c7ac6b24e09e2bbc48dae9fd0b0a5864641798d4f69b5925a0",
+      "content_sha256": "cda441f806eed3fe9e1b59118293732ab0ea6daaeaaeb9d3da426518ecec4ba6"
+    },
+    {
+      "id": "2026-11-01-r2-groot-action-padding-c56f541",
+      "event_key": "groot-action-padding-c56f541",
+      "date": "2026-11-01",
+      "revision": 2,
+      "fingerprint": "b19a0dc18a6141075a91f08aad7e6b1f81a960b369bc3d840f94df5f1741084f",
+      "content_sha256": "9961ada503546ce61b73d8e84d4b7d0611102652ff8ed4b808d78d7c5daf6d36"
+    },
+    {
+      "id": "2026-11-01-r2-hami-pr-3339",
+      "event_key": "hami-pr-3339",
+      "date": "2026-11-01",
+      "revision": 2,
+      "fingerprint": "2cc485da7b7a40e1202ba6f0bc3e14e51d3a21e263951208c88c52dce402d7a6",
+      "content_sha256": "78b221841cd48761168005471d156d4f7025d704103ee3a1e9ffe58f96f2833c"
+    },
+    {
+      "id": "2026-11-01-r2-hardware-status-r2",
+      "event_key": "hardware-status-r2",
+      "date": "2026-11-01",
+      "revision": 2,
+      "fingerprint": "61522af5be1683f5b116c023288a27d28a20c8a9c74f3538f2d57048ae8d9b9e",
+      "content_sha256": "492231c3c026b4194e615546d8b04be1355c6a805eb27eee107de507d8877c50"
+    },
+    {
+      "id": "2026-11-01-r2-model-architecture-status-r2",
+      "event_key": "model-architecture-status-r2",
+      "date": "2026-11-01",
+      "revision": 2,
+      "fingerprint": "1ceb17fb65216601af521e9dc1769ec0e03e353497f12a0ec86f310291e0399a",
+      "content_sha256": "cf8f9476c3f07bdcfec0bb2e75b29fce07fc7c8dcbcc00bd696fc12032044ef2"
+    },
+    {
+      "id": "2026-11-01-r2-rynnvla-latent-v1",
+      "event_key": "rynnvla-latent-v1",
+      "date": "2026-11-01",
+      "revision": 2,
+      "fingerprint": "d8112bfa9e0d36694d5d0198e934e576ee8c657faf1bee646d8767879c300eb0",
+      "content_sha256": "50cf5c363cc4dc415530201a6c359db96f7eef0a9206268abaa7ef01178b006b"
+    },
+    {
+      "id": "2026-11-01-r2-sglang-pr-47577",
+      "event_key": "sglang-pr-47577",
+      "date": "2026-11-01",
+      "revision": 2,
+      "fingerprint": "7b852a281e0626e78b8b9ca077320a1baa48416b23139ffa758ff3bfdc3adffe",
+      "content_sha256": "d5db191abb499a34f4e45332af0c46a7a79723d51fb5ba961366dd1d2cf2c8fb"
+    },
+    {
+      "id": "2026-11-01-r2-sglang-pr-47638",
+      "event_key": "sglang-pr-47638",
+      "date": "2026-11-01",
+      "revision": 2,
+      "fingerprint": "5ab7e47d19525c499869830a92f11887e98102afe14f0ac41723d1c711634f36",
+      "content_sha256": "98e2bddcbe9d3ce9fcdc5395d12196a0f6eb46f0b7963d254376c45bc3f185f6"
+    },
+    {
+      "id": "2026-11-01-r2-sglang-pr-47652",
+      "event_key": "sglang-pr-47652",
+      "date": "2026-11-01",
+      "revision": 2,
+      "fingerprint": "55e271e9451e5c2ef9543efdcf75d263e0adcdb1b3a641d4b0a9283254a21c2d",
+      "content_sha256": "aac3e926e74934752395eead58f4bdfbc9d1b2e6cc3dad6078993ae7cfbae05e"
+    },
+    {
+      "id": "2026-11-01-r2-small-model-status-r2",
+      "event_key": "small-model-status-r2",
+      "date": "2026-11-01",
+      "revision": 2,
+      "fingerprint": "8dd251b5dcf9e23526daca69edc2e0237a60efc959eecfdc921080960d4d5273",
+      "content_sha256": "490815353dca7bc18c6df8ecdf587c6cd91562a113a56c0e43669aea0357b571"
+    },
+    {
+      "id": "2026-11-01-r2-vllm-pr-64336",
+      "event_key": "vllm-pr-64336",
+      "date": "2026-11-01",
+      "revision": 2,
+      "fingerprint": "6d71457b6f56a7bf4a20d6be25a234550211b2fb546b8e626ff703ed17bafffc",
+      "content_sha256": "3c2632c1d6078bec8308f84be4ca5f457ea5299628ac15f6c65a311b05ca7cee"
+    },
+    {
+      "id": "2026-11-01-r2-vllm-pr-64675",
+      "event_key": "vllm-pr-64675",
+      "date": "2026-11-01",
+      "revision": 2,
+      "fingerprint": "e33bf6adeb7339b9a3aa6821d59fed1513b07abf6d535dd538c56f17617cd2e3",
+      "content_sha256": "fc7f4896e1f60781f0885abe15717b666352f96667d42a9f1848470283ed6a06"
+    },
+    {
+      "id": "2026-11-01-r2-vllm-pr-64841",
+      "event_key": "vllm-pr-64841",
+      "date": "2026-11-01",
+      "revision": 2,
+      "fingerprint": "b93d6a1ad23f180241671ce091f9cfe48a1952836e1885dd487ab7d8e82b70cf",
+      "content_sha256": "8563854144775951622855fdbec27eafdbaf5734966390c9f4c5869037ecbfaa"
+    },
+    {
+      "id": "2026-11-02-architecture-screening-20261102",
+      "event_key": "architecture-screening-20261102",
+      "date": "2026-11-02",
+      "revision": 1,
+      "fingerprint": "46d3246aa5936b3d0ed25616f7495e5485a39e4096e6d7d398e65a58847cbdc6",
+      "content_sha256": "ec8ab179b8e492a06055dc5e702ae423a2b88a5782a6347666dd548ac486fd4b"
+    },
+    {
+      "id": "2026-11-02-gpu-screening-20261102",
+      "event_key": "gpu-screening-20261102",
+      "date": "2026-11-02",
+      "revision": 1,
+      "fingerprint": "0ef06802c4744468708de65879e5a2f05da4168009bee8f5305ff7c9ab6f3032",
+      "content_sha256": "4f6bc5fc551e47f17909b2717a34e89e6ea1abf77fbcea8a6621d9bce0cef509"
+    },
+    {
+      "id": "2026-11-02-gym-anything-robotics-v1",
+      "event_key": "gym-anything-robotics-v1",
+      "date": "2026-11-02",
+      "revision": 1,
+      "fingerprint": "98feb914ab0d382bd60bf10a804204876019c7625ec60b6e6b5ff7e804223fcf",
+      "content_sha256": "2ac9bbdd7d7d7bee9f521999cc02b18368b3665b22648bcf2911d8b2b9d53593"
+    },
+    {
+      "id": "2026-11-02-hardware-screening-20261102",
+      "event_key": "hardware-screening-20261102",
+      "date": "2026-11-02",
+      "revision": 1,
+      "fingerprint": "f83be58c62d379f5caa0a00329297fab96a92c0403689c17c8c36cc15625f8b7",
+      "content_sha256": "4abded3d5b90918a9d2a80158a5ee48be520581cb653d195f270e1940913e683"
+    },
+    {
+      "id": "2026-11-02-sglang-pr-47029",
+      "event_key": "sglang-pr-47029",
+      "date": "2026-11-02",
+      "revision": 1,
+      "fingerprint": "8016f6699bb6dbfc1984b04ff111fd1db0372e3bbc519f2c5074bdf00825524a",
+      "content_sha256": "f76db9a4555bba763142ca0c1848ab282540561297bec75863c5760208afeb2a"
+    },
+    {
+      "id": "2026-11-02-small-model-screening-20261102",
+      "event_key": "small-model-screening-20261102",
+      "date": "2026-11-02",
+      "revision": 1,
+      "fingerprint": "ecfccb1e166b8d11b70505df6dd8d409cbfdfed0efd3f6dbc6b42ddd8ae7fbd0",
+      "content_sha256": "7e7a6249d5ff7ef7f49c288aaef2b8c23a3c8e91a0692cf7e95244c9e24510d2"
+    },
+    {
+      "id": "2026-11-02-vllm-pr-62967",
+      "event_key": "vllm-pr-62967",
+      "date": "2026-11-02",
+      "revision": 1,
+      "fingerprint": "9372f9e44cb61e9d06ad831744e9d7e0c1a1f5425d6b6f455170e33eab1c24c5",
+      "content_sha256": "1bfdb7e1f8281e0933165d6b582ceb64a84e2bc5b3c3d0ad69e4eb0d2f1eb355"
+    },
+    {
+      "id": "2026-11-03-architecture-screening-20261103",
+      "event_key": "architecture-screening-20261103",
+      "date": "2026-11-03",
+      "revision": 1,
+      "fingerprint": "6e33573752e007c0f84688e84ccfb2786a35fe90541345fc090c437d0a724b0b",
+      "content_sha256": "51f0d8700fa65ce152028f212a26b1d07ebfdb48b8d1379561c648d20731bbf0"
+    },
+    {
+      "id": "2026-11-03-embeddinggemma2-report-v1",
+      "event_key": "embeddinggemma2-report-v1",
+      "date": "2026-11-03",
+      "revision": 1,
+      "fingerprint": "dd6686b0a1ac30506b543d6ea8e592efa7e5b202534233a3a6fe3453399f15f0",
+      "content_sha256": "a0dbb09bac2bb5a60db585af94d403a328fcb44882f414983de91f1405ddde6b"
+    },
+    {
+      "id": "2026-11-03-finetuning-workload-characterization-v1",
+      "event_key": "finetuning-workload-characterization-v1",
+      "date": "2026-11-03",
+      "revision": 1,
+      "fingerprint": "64efb2358af29222190ca134f5a51b04a4b109e068f492aaaa6edaaf4dab34af",
+      "content_sha256": "1805ba5acc56d2164207c747822932f71413187f9f17b2de7e381df0b7f10cb6"
+    },
+    {
+      "id": "2026-11-03-hardware-screening-20261103",
+      "event_key": "hardware-screening-20261103",
+      "date": "2026-11-03",
+      "revision": 1,
+      "fingerprint": "8059bd062dca84c9819b255d9a709a91b172b9f34f38c11db08a893c086ccb1f",
+      "content_sha256": "3b4d14eb9441801a32b3b848ae3cddf621ac77fd85652785237c848c748a6f53"
+    },
+    {
+      "id": "2026-11-03-roboarchitect-v1",
+      "event_key": "roboarchitect-v1",
+      "date": "2026-11-03",
+      "revision": 1,
+      "fingerprint": "5f9632790cb70c960822adadf7256f5fb7c49db5921eb4979501f38905a6c25b",
+      "content_sha256": "adaf82af01c1905e55f18617a76a0d21020bdfa5cc710948587c1e71c9f2d112"
+    },
+    {
+      "id": "2026-11-03-sglang-pr-47670",
+      "event_key": "sglang-pr-47670",
+      "date": "2026-11-03",
+      "revision": 1,
+      "fingerprint": "6771f63b5328f441388746fdf48eafeb514b88a5d5730b25413f189c1ef6debe",
+      "content_sha256": "27bac0a816d92128d84ffb3bd3494361548bed642a7849dea7e144e1a3f3d68f"
+    },
+    {
+      "id": "2026-11-03-vllm-pr-62560",
+      "event_key": "vllm-pr-62560",
+      "date": "2026-11-03",
+      "revision": 1,
+      "fingerprint": "5cff7b8cf4703b0ae21f6fe8e243ce3cfc140911f43f3e67958182383e272bb1",
+      "content_sha256": "e0786e06d37892d04af49a882b43cf1edb9211eacc7f385224133af316c777cd"
+    },
+    {
+      "id": "2026-11-03-vllm-pr-64444",
+      "event_key": "vllm-pr-64444",
+      "date": "2026-11-03",
+      "revision": 1,
+      "fingerprint": "36abed617750b365a16a00dc171bf3beef7ae72f24743a0c42f9e1b4b6114e53",
+      "content_sha256": "16394eacc645edc013a8c2273c9027c1fea0d45c623c86fce9b555b8ef92120a"
+    },
+    {
+      "id": "2026-11-04-architecture-screening-20261104",
+      "event_key": "architecture-screening-20261104",
+      "date": "2026-11-04",
+      "revision": 1,
+      "fingerprint": "a1ff6be8363d8bb2448fc08bcf0b4d31263dd82f5cd73281d62bbf2b68f6083e",
+      "content_sha256": "fa6f7d70036c1701d4d5b41374147c0432267e41065a20e78f2eacd04531869b"
+    },
+    {
+      "id": "2026-11-04-deepinfer-deployment-qa-v02",
+      "event_key": "deepinfer-deployment-qa-v02",
+      "date": "2026-11-04",
+      "revision": 1,
+      "fingerprint": "2981721ad6e90e2b9e8da30fbab6e891dc2183f6f08f6c3fb6d89588cf17a2f5",
+      "content_sha256": "d0defb67804c914c1213fee8f2ede7d3bfd84d47f8f7156845765c02819d8f43"
+    },
+    {
+      "id": "2026-11-04-hardware-screening-20261104",
+      "event_key": "hardware-screening-20261104",
+      "date": "2026-11-04",
+      "revision": 1,
+      "fingerprint": "6ea9ba03211c9a84ad8f5b9a7a5d4962d79067216cd51158addfda1e7e75b502",
+      "content_sha256": "5319bd2dcde12b2d1cf5521c23f191781c8539b845c4f97d1863d193eb97c770"
+    },
+    {
+      "id": "2026-11-04-kniv-v7-engineering",
+      "event_key": "kniv-v7-engineering",
+      "date": "2026-11-04",
+      "revision": 1,
+      "fingerprint": "cf3e83655474034a003fabc6dae9f180c5ad324478b4278f0333022e049a7f0f",
+      "content_sha256": "78086d49c257ba8b4f24c7a7efee08c3efa0c4d295533eab2e6947b799c7031c"
+    },
+    {
+      "id": "2026-11-04-sglang-pr-46930",
+      "event_key": "sglang-pr-46930",
+      "date": "2026-11-04",
+      "revision": 1,
+      "fingerprint": "8898164c7e434849dd0c07ff4759f204b077e5b9f221b586b9a66d10b2589aee",
+      "content_sha256": "5e46c2efcd474ec91c3305995115804de7f59b8f9b18206704f88faa3722e866"
+    },
+    {
+      "id": "2026-11-04-vlalagbench-v1",
+      "event_key": "vlalagbench-v1",
+      "date": "2026-11-04",
+      "revision": 1,
+      "fingerprint": "5b364ba5a47f66d383a748bc570600d11a1cd285adee3abb86014c00eca36c15",
+      "content_sha256": "c34d0f72ca0f44f3933485389e68913013348d557812482ad1eec6b37040b2a9"
+    },
+    {
+      "id": "2026-11-04-vllm-pr-65214",
+      "event_key": "vllm-pr-65214",
+      "date": "2026-11-04",
+      "revision": 1,
+      "fingerprint": "44ed13a10ddd0e4df851c43c1ef3452fc19091d579cfd560c6d4e37121cfb1fb",
+      "content_sha256": "61722f45ec1b57262944aac0ef6b388060c8dc4071cf4511cd6bac43b1ea25a2"
+    },
+    {
+      "id": "2026-11-05-arxiv-2611-04671-v1",
+      "event_key": "arxiv-2611-04671-v1",
+      "date": "2026-11-05",
+      "revision": 1,
+      "fingerprint": "9d048de334c16c2f41547a20b8e1ffdb74bb809a89cb82f0e499f352c2654ccb",
+      "content_sha256": "cb4ec6e47875e7f8879e43e9de0afe7084c6b4d4b6326296504130513eb4d0c5"
+    },
+    {
+      "id": "2026-11-05-arxiv-2611-04794-v1",
+      "event_key": "arxiv-2611-04794-v1",
+      "date": "2026-11-05",
+      "revision": 1,
+      "fingerprint": "a36b441cea97e7adad03ebe371e277ce0e157a0953de2e319ac436f1709c161d",
+      "content_sha256": "24bcb7cc9dc0dcfdd395dfab0f8672c514e68c82e96adfa9625da71a3bfb0d6d"
+    },
+    {
+      "id": "2026-11-05-diffusiongemma-cpu-single-pass",
+      "event_key": "diffusiongemma-cpu-single-pass-engineering-20261029",
+      "date": "2026-11-05",
+      "revision": 1,
+      "fingerprint": "734fa451ba3b24d6dfff75ca7c11d16a8bba1656de2251d8d6494e51ceb4b9dd",
+      "content_sha256": "85083b947e355b736612c99df1a42272f441476af1cc8378c68c8033698f7b84"
+    },
+    {
+      "id": "2026-11-05-groot-padding-tensorrt-f4a9c89",
+      "event_key": "groot-action-padding-c56f541",
+      "date": "2026-11-05",
+      "revision": 1,
+      "fingerprint": "cc71a300d9076909843f05885e47451b2b1464186a95e37136402cda9697c633",
+      "content_sha256": "daa5d1ebfae6be068117524ca53ac7becb5991a80579784638f30986c0ef490a"
+    },
+    {
+      "id": "2026-11-05-model-architecture-scan",
+      "event_key": "model-architecture-scan-20261105",
+      "date": "2026-11-05",
+      "revision": 1,
+      "fingerprint": "9b016758b4af02772e667995af016cf36a70116625f849b374439b3ab667bdec",
+      "content_sha256": "49d25683f025a22d329ab3cf10fd23a66fc2b7e4afc45c84269a33f8534ca2b5"
+    },
+    {
+      "id": "2026-11-05-nvidia-cuda-13-5-20261104",
+      "event_key": "nvidia-cuda-13-5-20261104",
+      "date": "2026-11-05",
+      "revision": 1,
+      "fingerprint": "bdb76ea997c14515d93ee86dd0c2537d96a5cf0e9179dd4e0a2150a388aadb87",
+      "content_sha256": "c8eddf1342fe66da0d4d03aa9a47689e213afcda1b23076169d4e21841c214e8"
+    },
+    {
+      "id": "2026-11-05-sglang-pr-39799",
+      "event_key": "sglang-pr-39799",
+      "date": "2026-11-05",
+      "revision": 1,
+      "fingerprint": "425ae93186530645733b2ef19fa7e8ad276a214405d1a94a7e44fc98bc9a40e5",
+      "content_sha256": "600bb117c6cf7520b1409c3c987a151925a47853b28bc5dbc0c4e223ec248d71"
+    },
+    {
+      "id": "2026-11-05-vllm-pr-54625",
+      "event_key": "vllm-pr-54625",
+      "date": "2026-11-05",
+      "revision": 1,
+      "fingerprint": "f46732cd0b98199ad5b458154a6d8985225c18ad2149650d3f0711be26f7ea48",
+      "content_sha256": "e3f1ed2b6a1d6034497c08a3a7238691ba2ed00eae1ebf4bd2fe6f1b97b03bd3"
+    },
+    {
+      "id": "2026-11-06-arxiv-2611-06138-v1",
+      "event_key": "arxiv-2611-06138-v1",
+      "date": "2026-11-06",
+      "revision": 1,
+      "fingerprint": "1099a005894bfbbf23e5898f5a6fe520c32a2d1a9dc6a6ab7201ef87f954cc8c",
+      "content_sha256": "09506dafdf1058e764f3efedb9f292941adcca33f1400798850810e0bb424041"
+    },
+    {
+      "id": "2026-11-06-arxiv-2611-06841-v1",
+      "event_key": "arxiv-2611-06841-v1",
+      "date": "2026-11-06",
+      "revision": 1,
+      "fingerprint": "f16d7939fa016aab41e5be04c4adecc06ba908b5f4a3cb136f96288b8196cc2d",
+      "content_sha256": "ec6182b15f540fe5e33cd81561fe9124797388d983a129b7619c1aa76661b5b2"
+    },
+    {
+      "id": "2026-11-06-clover-engineering-20261030",
+      "event_key": "clover-engineering-20261030",
+      "date": "2026-11-06",
+      "revision": 1,
+      "fingerprint": "f01d79d57c50a0e92ffea2fa1ae2414b35f08c365293bca654b6783b6e4d3807",
+      "content_sha256": "8db812263bb4f1d68b69c3d037fa3510579ad3aeecb4853dcc86a6871140b333"
+    },
+    {
+      "id": "2026-11-06-hardware-source-check",
+      "event_key": "hardware-source-check-20261106",
+      "date": "2026-11-06",
+      "revision": 1,
+      "fingerprint": "c54d3679b845694278bdef5a9f08a8aa3b19c30b96ff5df29b6e832727e0c4c7",
+      "content_sha256": "261055c026db20aa8c1eef9e2052733f891aab3759af3f77c2670265a9c9cf51"
+    },
+    {
+      "id": "2026-11-06-lerobot-v070-training-systems",
+      "event_key": "lerobot-v070-release",
+      "date": "2026-11-06",
+      "revision": 1,
+      "fingerprint": "9813304daa004cd66e73f8ad3b576ac9a65d3e346b8727a1a7189a394506b6d8",
+      "content_sha256": "db0b5c761c020f2b49609a2fc72e1e19c51c4f491a6275cc11c027799aefcb7a"
+    },
+    {
+      "id": "2026-11-06-sglang-pr-48421",
+      "event_key": "sglang-pr-48421",
+      "date": "2026-11-06",
+      "revision": 1,
+      "fingerprint": "3eca116aee3cbdded33db80789a1f110a04afbd917789d27f8b9e3b1210bec6b",
+      "content_sha256": "2c70295c2cd0f0a4fde9af3ee1cde91e2be5374f3ae04a552319e5725005273f"
+    },
+    {
+      "id": "2026-11-06-specopd-v1",
+      "event_key": "specopd-v1-2611-02846",
+      "date": "2026-11-06",
+      "revision": 1,
+      "fingerprint": "4cb73655243f5be087dcb3c2776d282872cf448c85d6bccd5b12b66192bd68e6",
+      "content_sha256": "9ae2441899a15c2668654c3f5cb146f5e3bdd27a60ace870726d4976a6096077"
+    },
+    {
+      "id": "2026-11-06-twinbridge-v1",
+      "event_key": "arxiv-2611-06442-v1",
+      "date": "2026-11-06",
+      "revision": 1,
+      "fingerprint": "9f48f611aca5d93af386da60785c00a5b792d13ecea3368d198c9bc99abfdd2d",
+      "content_sha256": "85dbf88c350f0ff7f2448bff5b8574cef3ebc47b8a98bdb8ceae13a897e8c11c"
+    },
+    {
+      "id": "2026-11-06-vllm-pr-65124",
+      "event_key": "vllm-pr-65124",
+      "date": "2026-11-06",
+      "revision": 1,
+      "fingerprint": "c9d81d93d86715e5a5704e58ef010774f3da75e5f1b2b74e7af3453c4879374e",
+      "content_sha256": "56a67bb04dbf6156bea4d0dd1584a3a7e73b20c7f67287b564985e682d818202"
+    },
+    {
+      "id": "2026-11-06-vllm-pr-65160",
+      "event_key": "vllm-pr-65160",
+      "date": "2026-11-06",
+      "revision": 1,
+      "fingerprint": "4849c4a1fec413b2109c67bd2f3cd16de7d6651da531f5be370efc9fcf9f8a66",
+      "content_sha256": "2e09e5b80e2aa4b9930bb949ffa21b37f038acd0db16fd489f4e981d705eb058"
+    },
+    {
+      "id": "2026-11-07-arxiv-2611-02543-v1",
+      "event_key": "arxiv-2611-02543-v1",
+      "date": "2026-11-07",
+      "revision": 1,
+      "fingerprint": "35b912afdfe8596ddd2a135f71053b06a3642108fa348e56956e9c313b09f6f4",
+      "content_sha256": "68ac50096dab54fd6601d20d74c60db1f261d745515f70104dd36eb0a427ef2f"
+    },
+    {
+      "id": "2026-11-07-arxiv-2611-08458-v1",
+      "event_key": "arxiv-2611-08458-v1",
+      "date": "2026-11-07",
+      "revision": 1,
+      "fingerprint": "26ba8665bb18aa1d824b9ec7e1ffa96ab21ff9d3e0f06e6731ffd9c251b1a2e3",
+      "content_sha256": "307bec5b077cfc311a3b6c83f44f3acb580de872ac02ab9144d1b5cc1a709221"
+    },
+    {
+      "id": "2026-11-07-deepinfer-coverage-20261107",
+      "event_key": "deepinfer-coverage-20261107",
+      "date": "2026-11-07",
+      "revision": 1,
+      "fingerprint": "51d66841219a229761296b11a66c103f240ef129eb6e42cf227fd32511c9c248",
+      "content_sha256": "fbe87f2399dbd61eca21a19f163222d9b939b378f50ef3c9a10c5b093578da38"
+    },
+    {
+      "id": "2026-11-07-hardware-source-check-20261107",
+      "event_key": "hardware-source-check-20261107",
+      "date": "2026-11-07",
+      "revision": 1,
+      "fingerprint": "be75d7afe7b00892b2480d250326ac8daa8946091e433994c84199de7f322877",
+      "content_sha256": "37b04eee1976e8ccdcd6dd2bf5fb59f8e2a556ac41fc2718002ecfd7748addb8"
+    },
+    {
+      "id": "2026-11-07-lmcache-pr-6358",
+      "event_key": "lmcache-pr-6358",
+      "date": "2026-11-07",
+      "revision": 1,
+      "fingerprint": "cd323b3b0c898bf6799b987e5aee6c31bdfc44a276636b8fa1793620062926e5",
+      "content_sha256": "217ba1364c939bf3a6b3ad3b5187c11b0f699eeaa7ed9f83d43123eb1ed1de70"
+    },
+    {
+      "id": "2026-11-07-model-architecture-coverage-20261107",
+      "event_key": "model-architecture-coverage-20261107",
+      "date": "2026-11-07",
+      "revision": 1,
+      "fingerprint": "a060044729efdeaa088c46b42f5918a7f6f768f14ef5ecb7758a41283530ab79",
+      "content_sha256": "722b560dc2c1d0df336b838175340f21cd184a84fa1234f6782533ffa287ca02"
+    },
+    {
+      "id": "2026-11-07-sglang-pr-48496",
+      "event_key": "sglang-pr-48496",
+      "date": "2026-11-07",
+      "revision": 1,
+      "fingerprint": "fc249b86bee02cd2b14a35bf25cb5aa3d229b686e7b068bbe470aa59d3ddf156",
+      "content_sha256": "cdec6fb3a33e35e0cc81620b155089b6e5e244824ab21c6d33a6f415c83c796a"
+    },
+    {
+      "id": "2026-11-07-small-model-coverage-20261107",
+      "event_key": "small-model-coverage-20261107",
+      "date": "2026-11-07",
+      "revision": 1,
+      "fingerprint": "ee2f6832c56de35f239f38aaa69acf9146b969a358023649cea03984424c5add",
+      "content_sha256": "764778d1774d2b1b9a7d61e238cdceeaaa525e4bf5bc1ec48c8d10eb8c81e685"
+    },
+    {
+      "id": "2026-11-07-vllm-pr-66010",
+      "event_key": "vllm-pr-66010",
+      "date": "2026-11-07",
+      "revision": 1,
+      "fingerprint": "69797788dcb41737dbef583cd457f2a9c579962f57f70ecee282c95105c233c8",
+      "content_sha256": "4bca143b787bef39abd2cc10eb422e5fd59514f01b383277c264b08a6151ce9c"
+    },
+    {
+      "id": "2026-11-07-vllm-zero-mismatch-async-rl-20261106",
+      "event_key": "vllm-zero-mismatch-async-rl-20261106",
+      "date": "2026-11-07",
+      "revision": 1,
+      "fingerprint": "b2158cb9f7645e0bbbe5a70deb5dc080a6de91683c8f7b56632a91ff7bac609c",
+      "content_sha256": "9b7d4b17170546b347ab03ceda84a438dd8e568373a7226779740c158ac98649"
+    },
+    {
+      "id": "2026-11-08-deepinfer-coverage-20261108",
+      "event_key": "deepinfer-coverage-20261108",
+      "date": "2026-11-08",
+      "revision": 1,
+      "fingerprint": "800af2918529262539482a11a17409513c96cdeda4b3300973a48d9e6646afd4",
+      "content_sha256": "84728fb249acd5f098692e1666a62f682a7bca35dcd4bb5d6cfbce3997c35df9"
+    },
+    {
+      "id": "2026-11-08-groot-h100-trt-finite-mask-4d9f888",
+      "event_key": "groot-h100-trt-finite-mask-4d9f888",
+      "date": "2026-11-08",
+      "revision": 1,
+      "fingerprint": "ba27e34c19f3ffab1d6fc3a153936fc1fa26e6d934dc35a5f05fd56abf3cc627",
+      "content_sha256": "14a8773ff44946fd618b9606a915e99c315c7c65bebdf76f8af4b1a1e2b0554e"
+    },
+    {
+      "id": "2026-11-08-hardware-source-check-20261108",
+      "event_key": "hardware-source-check-20261108",
+      "date": "2026-11-08",
+      "revision": 1,
+      "fingerprint": "93b6c55cc58b3e91c3a8fbb7cb7efe7b549e92175d50c365b9e1e14d2cf5671b",
+      "content_sha256": "581f483cd7e37f4abc0112b04f1f749d737cbec3d2ab096d49451ff7ae4d632d"
+    },
+    {
+      "id": "2026-11-08-lmcache-pr-5713",
+      "event_key": "lmcache-pr-5713",
+      "date": "2026-11-08",
+      "revision": 1,
+      "fingerprint": "8afb3b86a10e1fdb24f13e9b251bd08e2f052d3707b4bb132bc66f3dff479d71",
+      "content_sha256": "c44611d1c43951751bb7774cfbea51f9e570112b32675f846c46513abcd5b55b"
+    },
+    {
+      "id": "2026-11-08-model-architecture-coverage-20261108",
+      "event_key": "model-architecture-coverage-20261108",
+      "date": "2026-11-08",
+      "revision": 1,
+      "fingerprint": "eafd818aebb4902cf8da3e846f80125f4bb6732e7b1873034393e756512ce27d",
+      "content_sha256": "c89edd45f24ec371e6f103c62d055675a0848888262b23d8af785c96326cd7f7"
+    },
+    {
+      "id": "2026-11-08-sglang-pr-47984",
+      "event_key": "sglang-pr-47984",
+      "date": "2026-11-08",
+      "revision": 1,
+      "fingerprint": "8f4bf3ca3509763c85add226abfc751ca2ba75a34344471380ffeaa6cdab7399",
+      "content_sha256": "28c79c250941f4ff082b6576340d33621492416467c3e79217d532ca498331b0"
+    },
+    {
+      "id": "2026-11-08-sglang-pr-48375",
+      "event_key": "sglang-pr-48375",
+      "date": "2026-11-08",
+      "revision": 1,
+      "fingerprint": "0a9dcaf779153e80bd094e391e18a8ed8549fffd11163a0e535559a003e22769",
+      "content_sha256": "ddf598cc670970666326a519b05ad07de9e50e73044bcbc262f0d7394e85003b"
+    },
+    {
+      "id": "2026-11-08-small-model-coverage-20261108",
+      "event_key": "small-model-coverage-20261108",
+      "date": "2026-11-08",
+      "revision": 1,
+      "fingerprint": "3e05cc4ddcd137bd149a875e387f9693773017df2ea01a243827da1a4aafa1b0",
+      "content_sha256": "dad5b303ed17fb7b0e2a8813827a353d0f7d31ead2cd51727ca999b1f62cd368"
+    },
+    {
+      "id": "2026-11-08-vllm-pr-60130",
+      "event_key": "vllm-pr-60130",
+      "date": "2026-11-08",
+      "revision": 1,
+      "fingerprint": "6d172c47e707fe38212c8d49888d6da458aa227e3a000ab26bcb2c972af5a24f",
+      "content_sha256": "3e057d74b025dcf2bba3a1e6cd5f55b271edfdf9473c1ef123198d778caf95cf"
+    },
+    {
+      "id": "2026-11-09-architecture-coverage-20261109",
+      "event_key": "architecture-coverage-20261109",
+      "date": "2026-11-09",
+      "revision": 1,
+      "fingerprint": "15a4ca2196b6a602e2ef29d9d5b0d6b70d19bc603fa1e37419114df4a032db20",
+      "content_sha256": "7e73ffdb58b3b9ac0fa072594239576e7e03e43a7dcd2963cec940c81d9d5b03"
+    },
+    {
+      "id": "2026-11-09-arxiv-2611-07542-v1",
+      "event_key": "arxiv-2611-07542-v1",
+      "date": "2026-11-09",
+      "revision": 1,
+      "fingerprint": "271f04a3f4ffe293df39aa5a74c062f3a8cec0887deb23f307603ebe9c802989",
+      "content_sha256": "5e9d70119945ce9ded095b430648c0063070f579ee2e58aebc0d61143f36cf4b"
+    },
+    {
+      "id": "2026-11-09-groot-fast-loader-7aa0bca",
+      "event_key": "groot-fast-loader-7aa0bca",
+      "date": "2026-11-09",
+      "revision": 1,
+      "fingerprint": "11c22e32989a79712545c9c60256b798e278cf8dd515174ee825d2ecf1c6c323",
+      "content_sha256": "90e7299a601779530a8f17c15ce1446783a0019a8e7cf018a2ef55ec58aaebb3"
+    },
+    {
+      "id": "2026-11-09-hardware-coverage-20261109",
+      "event_key": "hardware-coverage-20261109",
+      "date": "2026-11-09",
+      "revision": 1,
+      "fingerprint": "4431a371b5fbcfef90db78b81c17a136aa6dcbdd3ad8edef639b9ca514964c12",
+      "content_sha256": "5a52f2f7d6f96140eaaeebae319d142bac28c8ef5658904584cffca29c5a15a2"
+    },
+    {
+      "id": "2026-11-09-lmcache-pr-5770",
+      "event_key": "lmcache-pr-5770",
+      "date": "2026-11-09",
+      "revision": 1,
+      "fingerprint": "d9b8312c844a75903ea7d16f80448b2afbad769efc4c8b0ae6a06a584de8c870",
+      "content_sha256": "61ddf2e436d95913127bb29ac597537c7d218f28998d2d2b4cf27d48593da2b3"
+    },
+    {
+      "id": "2026-11-09-sglang-pr-48852",
+      "event_key": "sglang-pr-48852",
+      "date": "2026-11-09",
+      "revision": 1,
+      "fingerprint": "1391690bc070afafb3df11adc18c0f8b1f83874cbcfa5a893e1a4c5779c9d62c",
+      "content_sha256": "220ddc9f5cd04b49b57dd3fae022c0e2d2de7fe5845d4713e8e485c648f9ce06"
+    },
+    {
+      "id": "2026-11-09-small-model-coverage-20261109",
+      "event_key": "small-model-coverage-20261109",
+      "date": "2026-11-09",
+      "revision": 1,
+      "fingerprint": "1abfe502dbc8ee73c958ca837457789205e1b7140389a9a179e609cf445851b0",
+      "content_sha256": "599c8d556d975ffd01b8d571f7d760b06937e8d19ccc136d371556dad02121d3"
+    },
+    {
+      "id": "2026-11-09-vllm-pr-57810",
+      "event_key": "vllm-pr-57810",
+      "date": "2026-11-09",
+      "revision": 1,
+      "fingerprint": "fdccef3ac1f65817875c28a3e7ef1f4ac833ba7ee201cc31ebe79d4155d9cde4",
+      "content_sha256": "d6b028f74789ed372bb0c1ee230ce14f18771ffbcf04a343ecb8f5eddb40df8a"
+    },
+    {
+      "id": "2026-11-10-deepinfer-coverage-20261110",
+      "event_key": "deepinfer-coverage-20261110",
+      "date": "2026-11-10",
+      "revision": 1,
+      "fingerprint": "ec5f666f3e9883d8ada534713eda2dbdd7d818bc3dc511188e8b40233574cd46",
+      "content_sha256": "320168c3d51432af05879a3ffac1d8012f62a1c8e7e8b2ce43b5bc37f1e039e7"
+    },
+    {
+      "id": "2026-11-10-nvidia-groot2-corl-20261109",
+      "event_key": "nvidia-groot2-corl-20261109",
+      "date": "2026-11-10",
+      "revision": 1,
+      "fingerprint": "0cd27e2eef8857a3fdc7d73b8a1fe505fb27652cafd7c4e0bb227209e6e48437",
+      "content_sha256": "21f1c9ac348d7f3947672319836b9930bbd293abf105231a3e9ae00be8c0b40f"
+    },
+    {
+      "id": "2026-11-10-sglang-coverage-20261110",
+      "event_key": "sglang-coverage-20261110",
+      "date": "2026-11-10",
+      "revision": 1,
+      "fingerprint": "24e8afc4286783f673238a244d8780e3e71cd139cb6757340738dd1cfcb94db6",
+      "content_sha256": "e8904966e42a5ae79975c1c8ac5e02667fb896185f8d35406ed24e105d0c34fa"
+    },
+    {
+      "id": "2026-11-10-vllm-coverage-20261110",
+      "event_key": "vllm-coverage-20261110",
+      "date": "2026-11-10",
+      "revision": 1,
+      "fingerprint": "e2a88a7f41502831249a2b810a5494d06ddd7f78e48c31493a37894ed97c2829",
+      "content_sha256": "8aaa1be94b38cc96ccbe35576eb804f44874dc15e78f75bab6ee04b1ce525f2f"
+    },
+    {
+      "id": "2026-11-10-deepinfer-coverage-20261110-r2",
+      "event_key": "deepinfer-coverage-20261110",
+      "date": "2026-11-10",
+      "revision": 2,
+      "fingerprint": "830dced1bd88263ca876ce230c60f72d45ecd48677de7c5038de3e3befcc477a",
+      "content_sha256": "0e2b9374ea02e378ea391f0084a4293e102572af332b6df23368711a1b08ad78"
+    },
+    {
+      "id": "2026-11-10-sglang-kimi-k31-memory-20261104",
+      "event_key": "sglang-kimi-k31-memory-20261104",
+      "date": "2026-11-10",
+      "revision": 2,
+      "fingerprint": "0e58875b4c474d7417ec18664d984d8912b9fe97dffffb2c277881cb1a1d15b9",
+      "content_sha256": "e05043629c8ac1135f440ca23f871c7d3a6ebe329fb572e3eccbe28ae1f8a864"
+    },
+    {
+      "id": "2026-11-10-sglang-pr-49386",
+      "event_key": "sglang-pr-48852",
+      "date": "2026-11-10",
+      "revision": 2,
+      "fingerprint": "ff858ba7f8aad46cf82a972662bce5ade46f018122e9445758f4155741f0abca",
+      "content_sha256": "c571144a9f24f90818ae2b817d0d064574b66081ed50ed2ba39950699aceb4be"
+    },
+    {
+      "id": "2026-11-10-sglang-pr-49419",
+      "event_key": "sglang-pr-49419",
+      "date": "2026-11-10",
+      "revision": 2,
+      "fingerprint": "cbed946fc780d4b096f16830448af7b78d8eb252d729916f29c1b011c2dbed88",
+      "content_sha256": "82ea1390be704be8a05dcbe058e266a7b7ae38eee911a2129394231a41713dfc"
+    },
+    {
+      "id": "2026-11-10-sglang-pr-49430",
+      "event_key": "sglang-pr-49430",
+      "date": "2026-11-10",
+      "revision": 2,
+      "fingerprint": "9a0973d133fabe729002263f321b1a423801083dbff5f5a1677f7304f3bd5c66",
+      "content_sha256": "ab8e54ca648c0b4e4fddee51d1f497e3b4689ef13e295f5f20fcff8abd463c7e"
+    },
+    {
+      "id": "2026-11-10-vllm-pr-60390",
+      "event_key": "vllm-pr-60390",
+      "date": "2026-11-10",
+      "revision": 2,
+      "fingerprint": "25a54af4cd727dede54af051a8b7bbac27de1666efcf59f3cd3cc45dbd8f4d4e",
+      "content_sha256": "fa4c33a9c4a6af769b9c74ded6f3cedd931c9985ef4cba6fd880815c2f2fcf86"
+    },
+    {
+      "id": "2026-11-10-vllm-pr-65888",
+      "event_key": "vllm-pr-65888",
+      "date": "2026-11-10",
+      "revision": 2,
+      "fingerprint": "2a1058e9dbac0bbbfcee0af18f3168eb9ebc51af518541deea2c8fcd93d7beba",
+      "content_sha256": "cdbeb7f9a0f7144cec3f2c98a33f572b0ec30140d6f0e1110eb1618d3b9326dd"
+    },
+    {
+      "id": "2026-11-10-vllm-pr-66605",
+      "event_key": "vllm-pr-66605",
+      "date": "2026-11-10",
+      "revision": 2,
+      "fingerprint": "c87d499fcc9cd4efcba381ebe11fc3e7e8562096816793680452498a1b891be5",
+      "content_sha256": "1b036cb0ab7da3d244c153c6ed36a161afb4899b0dce7937d00a47961feefa5c"
+    },
+    {
+      "id": "2026-11-10-xm-sparse-memory-study-20261105",
+      "event_key": "xm-sparse-memory-study-20261105",
+      "date": "2026-11-10",
+      "revision": 2,
+      "fingerprint": "e8a19ef4be253f025caaa5640928177b496a52e894cb594eef806dba571e5572",
+      "content_sha256": "f5a78cff99c1814bf3a37b3abc87f138e68df02972742703fded1420eb9d99c7"
+    }
+  ]
+}

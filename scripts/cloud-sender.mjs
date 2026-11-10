@@ -1,7 +1,7 @@
 // Offline integration layer. No live transport, credentials or scheduler.
 import {DatabaseSync} from 'node:sqlite';
 import {digest,REPOSITORY} from './archive.mjs';
-import {encodeBundle,decodeBundle,acceptMessage,requireThat,REQUEST,SHA,verifyReportPublication} from './report-handoff.mjs';
+import {encodeBundle,decodeBundle,acceptMessage,requireThat,isEditionPublicURL,REQUEST,SHA,verifyReportPublication} from './report-handoff.mjs';
 import {encodeNoticeCommand,verifyNoticeGrant} from './notice-command.mjs';
 import {acceptNoticeCommand} from './notice-outbox.mjs';
 import {createNoticeManifest} from './notice-manifest.mjs';
@@ -143,7 +143,7 @@ export function verifyPublicationReceipt(e,sourceTs,scope,bundle){
  controlRead(e,scope);const m=e.message;publisherMessage(m,sourceTs,scope);const prefix='!ai-report receipt ';
  requireThat(typeof m.text==='string'&&m.text.startsWith(prefix)&&Buffer.byteLength(m.text)<=16384,'Publication receipt text');
  const r=JSON.parse(m.text.slice(prefix.length)),edition=`${bundle.report.date}/r${bundle.report.revision}`;
- requireThat(r.schema_version==='1.0'&&r.status==='published'&&r.publication_status==='verified'&&r.delivery_allowed===false&&r.request_id===bundle.data.request_id&&r.bundle_sha256===bundle.hash&&r.edition===edition&&matches(SHA,r.commit)&&r.url===`https://sfcloud-ai.github.io/ai-infra-reports/${edition}/`&&r.poster_sha256===digest(bundle.files.get(bundle.report.path+bundle.report.poster))&&matches(new RegExp(`^https://github.com/${REPOSITORY}/pull/[1-9][0-9]*$`),r.pr),'Publication receipt binding');
+ requireThat(r.schema_version==='1.0'&&r.status==='published'&&r.publication_status==='verified'&&r.delivery_allowed===false&&r.request_id===bundle.data.request_id&&r.bundle_sha256===bundle.hash&&r.edition===edition&&matches(SHA,r.commit)&&isEditionPublicURL(r.url,edition)&&r.poster_sha256===digest(bundle.files.get(bundle.report.path+bundle.report.poster))&&matches(new RegExp(`^https://github.com/${REPOSITORY}/pull/[1-9][0-9]*$`),r.pr),'Publication receipt binding');
  return {commit:r.commit,source_ts:sourceTs,receipt_ts:m.ts,poster_sha256:r.poster_sha256,url:r.url};
 }
 export function verifyNoticeResponse(e,scope,{bytes,sourceTs}){
@@ -212,7 +212,7 @@ export class CloudSender{
   const scope=this.state.scope,e=await this.io.readNoticeResponse({source_ts:source.source_ts});
   if(!e)throw new ReadPending('Notice grant pending');controlRead(e,scope);
   const grant=verifyNoticeGrant(e.message,{bytes,sourceTs:source.source_ts,readContext:e.read_context,config:scope});
-  const manifest=createNoticeManifest(bundle.files.get(bundle.report.path+'report.json'),job.detail.publication.commit);
+  const manifest=createNoticeManifest(bundle.files.get(bundle.report.path+'report.json'),job.detail.publication.commit,{stableUrls:grant.url===`https://sfcloud-ai.github.io/ai-infra-reports/${bundle.report.date}/`});
   requireThat(grant.report_merge_sha===job.detail.publication.commit&&grant.poster_original_sha256===job.detail.poster_sha256&&grant.text_sha256===digest(Buffer.from(manifest.text))&&grant.url===manifest.index_url,'Grant differs from prepared edition');
   return {grant,manifest};
  }
@@ -254,11 +254,13 @@ export class CloudSender{
   return this.state.get(job.id);
  }
  async reconcile(job,bundle){
-  const id=job.id,scope=this.state.scope,manifest=createNoticeManifest(bundle.files.get(bundle.report.path+'report.json'),job.detail.publication.commit);
+  const id=job.id,scope=this.state.scope;
   const statusBytes=this.command(job,'status'),statusSource=await this.control(id,'status','notice',statusBytes,JSON.parse(statusBytes).command_id);
   const e=await this.io.readNoticeResponse({source_ts:statusSource.source_ts});if(!e)throw new ReadPending('Reservation status pending');
   const status=verifyNoticeResponse(e,scope,{bytes:statusBytes,sourceTs:statusSource.source_ts}),n=status.notice;
-  requireThat(status.send_authorized===false&&n?.report_id===id&&n.attempt_id===job.detail.attempt_id&&n.file_id===job.detail.file_id&&n.detail?.bundle_sha256===bundle.hash&&n.detail.report_merge_sha===job.detail.publication.commit&&n.detail.destination===scope.notification_destination&&n.detail.poster_original_sha256===job.detail.poster_sha256&&n.detail.text_sha256===digest(Buffer.from(manifest.text)),'Reservation binding mismatch; no permission to send');
+  const manifest=createNoticeManifest(bundle.files.get(bundle.report.path+'report.json'),job.detail.publication.commit,{stableUrls:n?.detail?.url===`https://sfcloud-ai.github.io/ai-infra-reports/${bundle.report.date}/`});
+  requireThat(status.send_authorized===false&&n?.report_id===id&&n.attempt_id===job.detail.attempt_id&&n.file_id===job.detail.file_id&&n.detail?.bundle_sha256===bundle.hash&&n.detail.report_merge_sha===job.detail.publication.commit&&n.detail.destination===scope.notification_destination&&n.detail.poster_original_sha256===job.detail.poster_sha256&&n.detail.url===manifest.index_url&&n.detail.text_sha256===digest(Buffer.from(manifest.text)),'Reservation binding mismatch; no permission to send');
+  requireThat(this.state.op(id,'final_complete')?.input_hash===hash({file_id:n.file_id,text_sha256:n.detail.text_sha256}),'Original completion intent differs from reservation');
   const evidence=await this.io.readFinalByFile({channel_id:scope.notification_destination,file_id:job.detail.file_id});
   if(!evidence)throw new ReconciliationRequired('Final send unresolved; never complete or replace the file');
   requireThat(evidence.complete===true&&evidence.read_context?.team_id===scope.team_id&&evidence.read_context.channel_id===scope.notification_destination,'Authenticated complete final read required');

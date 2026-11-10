@@ -1,6 +1,6 @@
 import {validateRasters} from "./rasters.mjs";
 import {pathToFileURL} from "node:url";
-import {readReports,validateArchive,validateChange,json,digest,REPOSITORY} from "./archive.mjs";
+import {readReports,validateArchive,validateChange,json,digest,REPOSITORY,replaceCurrentReport} from "./archive.mjs";
 import {GitHub,PREFIX,snapshot,assertReportOnly,operationError} from "./github.mjs";
 const SHA=/^[a-f0-9]{40}$/;
 const PR_URL=new RegExp("^https://github.com/"+REPOSITORY+"/pull/([1-9][0-9]*)$");
@@ -25,8 +25,11 @@ async function prepare(api,bundle,expectedBase) {
  const plan=incomingFiles(bundle,expectedBase);
  let base;
  try {base=await snapshot(api,expectedBase);}catch(error){throw failure(error,"base_snapshot");}
- const head=new Map(base.files);
- for(const [p,b]of plan.incoming){if(base.files.has(p))throw invalid("Published paths cannot be reused","published_path");head.set(p,b);}
+ let head;
+ try {
+  if(base.files.has("reports/history.json")) head=replaceCurrentReport(base.files,new Map(plan.incoming));
+  else {head=new Map(base.files);for(const [p,b]of plan.incoming){if(base.files.has(p))throw invalid("Published paths cannot be reused","published_path");head.set(p,b);}}
+ } catch(error) {if(error?.diagnostic)throw error;throw invalid("Report validation failed: unexpected path, invalid content or raster");}
  let result;
  try {
   head.set("reports/index.json",Buffer.from(json(validateArchive(head,{checkIndex:false}).index)));
@@ -93,14 +96,16 @@ export async function propose(api,bundle,expectedBase,{ready=false}={}) {
   }
   if(!ref){
    const tree=[];
-   for(const [p,b]of [...incoming,["reports/index.json",head.get("reports/index.json")]]) {
+   for(const p of base.files.keys()) if(!head.has(p)) tree.push({path:p,mode:"100644",type:"blob",sha:null});
+   for(const [p,b]of head) {
+    if(base.files.get(p)?.equals(b))continue;
     stage="create_blob";const blob=await api.request("POST",PREFIX+"/git/blobs",{content:b.toString("base64"),encoding:"base64"});
     if(!SHA.test(blob?.sha||""))throw invalid("Invalid Git blob response","invalid_response");
     tree.push({path:p,mode:"100644",type:"blob",sha:blob.sha});
    }
    stage="create_tree";const newTree=await api.request("POST",PREFIX+"/git/trees",{base_tree:base.commit.tree.sha,tree});
    if(!SHA.test(newTree?.sha||""))throw invalid("Invalid Git tree response","invalid_response");
-   const edition=result.reports.find(r=>incoming.some(([p])=>p===r.path+"report.json"));
+   const edition=result.reports.find(r=>incoming.some(([p,b])=>p.endsWith("/report.json")&&JSON.parse(b).date===r.date));
    stage="create_commit";const created=await api.request("POST",PREFIX+"/git/commits",{message:"docs(report): "+edition.date+" r"+edition.revision,tree:newTree.sha,parents:[expectedBase]});
    if(!SHA.test(created?.sha||""))throw invalid("Invalid Git commit response","invalid_response");
    commit=created.sha;

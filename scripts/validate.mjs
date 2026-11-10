@@ -12,7 +12,6 @@ if(base){
  const old=new Map(paths.map(p=>[p,execFileSync(git,["show",base+":"+p],{maxBuffer:32*1024*1024})]));
  if(!old.size)old.set("reports/index.json",Buffer.from(json({schema_version:"1.0",reports:[],entries:[]})));
  validateArchive(old);
- for(const [p,b]of old)if(p!=="reports/index.json"&&!files.get(p)?.equals(b))throw Error("Published history is immutable: "+p);
- if([...files.keys()].some(p=>!old.has(p)))validateCIReportChange(old,files);
+ if(old.size!==files.size || [...files].some(([p,b])=>!old.get(p)?.equals(b)))validateCIReportChange(old,files);
 }
-console.log("Validated "+result.reports.length+" immutable report revisions and their dedup index");
+console.log("Validated "+result.reports.length+" validated report snapshots and their dedup index");

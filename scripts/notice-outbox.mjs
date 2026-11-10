@@ -2,7 +2,7 @@
 import {createNoticeManifest} from "./notice-manifest.mjs";
 import {digest} from "./archive.mjs";
 import {scopeDigest,handoffScope} from "./handoff-state.mjs";
-import {acceptDataCommand,decodeBundle,requireThat,REQUEST} from "./report-handoff.mjs";
+import {acceptDataCommand,decodeBundle,requireThat,isEditionPublicURL,REQUEST} from "./report-handoff.mjs";
 import {noticeIdentityReserved,noticeRecovery,activateNoticeRecovery,checkRecoveryGrant} from "./notice-recovery.mjs";
 import {checkedNoticeResult} from "./notice-checker.mjs";
 import {JOURNAL_FIELDS,validateJournalCommand,applyJournalCommand,guardJournalOperation,remoteJournal,remoteCatalog} from "./remote-native-journal.mjs";
@@ -91,7 +91,7 @@ export class NoticeOutbox{
     const edition=`${bundle.report.date}/r${bundle.report.revision}`;
     if(notice||this.db.prepare("SELECT 1 FROM notices WHERE edition=?").get(edition)||noticeIdentityReserved(this,c.attempt_id,c.file_id))reason="already_reserved";
     else{
-     const manifest=createNoticeManifest(bundle.files.get(bundle.report.path+"report.json"),job.detail.commit);
+     const manifest=createNoticeManifest(bundle.files.get(bundle.report.path+"report.json"),job.detail.commit,{stableUrls:proof.url===`https://sfcloud-ai.github.io/ai-infra-reports/${bundle.report.date}/`});
      requireThat(manifest.index_url===proof.url&&manifest.poster.sha256===proof.poster_sha256,"Notice manifest differs from publication proof");
      const text=manifest.text;
      const detail={poster_policy:"original_bytes_v1",bundle_sha256:job.hash,report_merge_sha:job.detail.commit,url:proof.url,poster_original_sha256:proof.poster_sha256,text_sha256:digest(Buffer.from(text)),destination:this.destination};
@@ -104,8 +104,8 @@ export class NoticeOutbox{
     requireThat(notice&&notice.attempt_id===c.attempt_id&&notice.file_id===c.file_id&&["native_v1","native_bundle_v1"].includes(notice.detail.delivery_mode),"Native attempt does not own this edition");
     if(notice.phase!=="reserved")reason="completion_already_started";
     else{
-     const manifest=createNoticeManifest(bundle.files.get(bundle.report.path+"report.json"),job.detail.commit);
-     requireThat(notice.detail.bundle_sha256===job.hash&&notice.detail.report_merge_sha===job.detail.commit&&notice.detail.poster_original_sha256===proof.poster_sha256&&notice.detail.text_sha256===digest(Buffer.from(manifest.text))&&notice.detail.destination===this.destination&&notice.detail.url===proof.url&&notice.detail.not_before===bundle.report.date+"T00:00:00.000Z","Prepared notice differs from verified publication");
+     const manifest=createNoticeManifest(bundle.files.get(bundle.report.path+"report.json"),job.detail.commit,{stableUrls:notice.detail.url===`https://sfcloud-ai.github.io/ai-infra-reports/${bundle.report.date}/`});
+     requireThat(notice.detail.bundle_sha256===job.hash&&notice.detail.report_merge_sha===job.detail.commit&&notice.detail.poster_original_sha256===proof.poster_sha256&&notice.detail.text_sha256===digest(Buffer.from(manifest.text))&&notice.detail.destination===this.destination&&notice.detail.url===manifest.index_url&&notice.detail.not_before===bundle.report.date+"T00:00:00.000Z","Prepared notice differs from verified publication");
      const detail={...notice.detail,completion_command_id:id,completion_command_sha256:this.command(id).hash};
      this.db.prepare("UPDATE notices SET phase='completion_intent',detail=? WHERE report_id=? AND phase='reserved'").run(JSON.stringify(detail),job.id);
      authorized=true;reason="new_completion_intent";
@@ -188,10 +188,11 @@ export async function advanceNotice(outbox,id,io){
    if(["claim","prepare","prepare_bundle","begin","recover_begin"].includes(c.action))requireThat(TS.test(job.source_ts)&&BigInt(job.source_ts.replace(".",""))>BigInt(outbox.notBefore.replace(".","")),"Pre-activation reports cannot receive a notification grant");
    bundle=await decodeBundle(job.bytes);proof=await io.verify(job.detail.commit,bundle);
    const edition=`${bundle.report.date}/r${bundle.report.revision}`;
-   requireThat(proof.publication_status==="verified"&&proof.commit===job.detail.commit&&proof.bundle_sha256===job.hash&&proof.request_id===job.id&&proof.edition===edition&&proof.url===`https://sfcloud-ai.github.io/ai-infra-reports/${edition}/`&&proof.poster_sha256===digest(bundle.files.get(bundle.report.path+bundle.report.poster)),"Notice publication proof mismatch");
+   requireThat(proof.publication_status==="verified"&&proof.commit===job.detail.commit&&proof.bundle_sha256===job.hash&&proof.request_id===job.id&&proof.edition===edition&&isEditionPublicURL(proof.url,edition)&&proof.poster_sha256===digest(bundle.files.get(bundle.report.path+bundle.report.poster)),"Notice publication proof mismatch");
    if(c.action==="check"){
-    const notice=outbox.notice(c.report_request_id),manifest=createNoticeManifest(bundle.files.get(bundle.report.path+"report.json"),job.detail.commit);
-    requireThat(notice&&notice.attempt_id===c.attempt_id&&notice.file_id===c.file_id&&notice.edition===edition&&notice.detail.poster_policy==="original_bytes_v1"&&notice.detail.bundle_sha256===job.hash&&notice.detail.report_merge_sha===job.detail.commit&&notice.detail.destination===outbox.destination&&notice.detail.poster_original_sha256===proof.poster_sha256&&notice.detail.text_sha256===digest(Buffer.from(manifest.text))&&notice.detail.url===proof.url,"Checker requires the original reserved notice");
+    // Public routing may change; checking a prior message must retain its reserved URL and text hash.
+    const notice=outbox.notice(c.report_request_id),manifest=createNoticeManifest(bundle.files.get(bundle.report.path+"report.json"),job.detail.commit,{stableUrls:notice?.detail?.url===`https://sfcloud-ai.github.io/ai-infra-reports/${bundle.report.date}/`});
+    requireThat(notice&&notice.attempt_id===c.attempt_id&&notice.file_id===c.file_id&&notice.edition===edition&&notice.detail.poster_policy==="original_bytes_v1"&&notice.detail.bundle_sha256===job.hash&&notice.detail.report_merge_sha===job.detail.commit&&notice.detail.destination===outbox.destination&&notice.detail.poster_original_sha256===proof.poster_sha256&&notice.detail.text_sha256===digest(Buffer.from(manifest.text))&&notice.detail.url===manifest.index_url,"Checker requires the original reserved notice");
     requireThat(c.message_ts>=job.source_ts&&c.message_ts<=operation.source_ts,"Check must follow its report and final message");
     const request={message_ts:c.message_ts,file_id:c.file_id,notice_manifest:manifest};
     if(notice.detail.delivery_mode==="native_bundle_v1")Object.assign(request,{transport:"report_bundle_v1",bundle_sha256:job.hash,bundle_bytes:job.bytes.length});

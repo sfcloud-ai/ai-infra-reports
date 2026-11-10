@@ -91,3 +91,20 @@ test('stale unsent day replies refresh; unknown reply is reconciled without anot
   slack.findControlReceipt=async()=>null;await replyScheduledStatus(s,config,event,slack,query);assert.equal(queries,2);assert.equal(posts,2);
  }finally{s.close();}
 });
+
+test('day discovery keeps an occupied historical legacy bundle byte-for-byte after current-source migration',async()=>{
+ const s=setup();try{
+  const bytes=await encodeBundle(FILES,id,'a'.repeat(40),'b'.repeat(40)),hash=digest(bytes);
+  s.admit({request_id:id,hash,source_ts:'1793491200.000001'},bytes);
+  s.move(id,'received','receipt_unknown',{commit:MERGE,url:`https://sfcloud-ai.github.io/ai-infra-reports/${DAY}/r1/`,original_notice_hash:'e'.repeat(64)});
+  const before=s.db.prepare('SELECT * FROM jobs WHERE id=?').get(id);
+  const currentFiles=new Map([...FILES].map(([p,b])=>[p.replace(`/r1/`,'/'),b]));
+  const rewritten=await encodeBundle(currentFiles,id,'a'.repeat(40),'b'.repeat(40));
+  assert.notEqual(digest(rewritten),hash);
+  const result=await inspect(s);
+  assert.equal(result.state,'occupied');assert.equal(result.publisher_day.length,1);assert.equal(result.publisher_day[0].bundle_sha256,hash);
+  const after=s.db.prepare('SELECT * FROM jobs WHERE id=?').get(id);
+  assert.deepEqual(after,before);assert(Buffer.from(after.bytes).equals(bytes));
+  assert.equal(s.db.prepare('SELECT count(*) n FROM jobs').get().n,1);
+ }finally{s.close();}
+});
