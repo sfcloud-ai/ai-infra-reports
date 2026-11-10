@@ -1133,6 +1133,38 @@
       ],
       "poster": "assets/overview.png",
       "path": "reports/2026-11-10/r1/"
+    },
+    {
+      "schema_version": "1.0",
+      "date": "2026-11-10",
+      "revision": 2,
+      "title": "AI Infra 晨报 · 2026-11-10",
+      "subtitle": "KV与状态管理、引擎内存效率及GR00T2适配；代码早段、硬件专项和独立小模型等覆盖缺口见正文。",
+      "articles": [
+        {
+          "id": "model-serving-gpu",
+          "title": "模型服务与 GPU 超配｜状态、分片与回载带宽",
+          "summary": "从混合状态淘汰、Kimi 缓存分片和外部内存实验看容量、恢复与尾延迟。",
+          "sha256": "3562ecd6ce30a5398ac8746d88e7c56419aca7ebef84e6aeb9bb88350b4012fc",
+          "path": "reports/2026-11-10/r2/articles/model-serving-gpu.md"
+        },
+        {
+          "id": "inference-engines",
+          "title": "推理引擎每日变动｜内存去重与页生命周期",
+          "summary": "vLLM 的主机表与导入页、SGLang 的 PP 屏障，以及三家引擎实际覆盖范围。",
+          "sha256": "9695da0ffbd10f843fa3056d58b90a29694417aba6d135adce1215254d5b567e",
+          "path": "reports/2026-11-10/r2/articles/inference-engines.md"
+        },
+        {
+          "id": "embodied-training",
+          "title": "GR00T 2｜少量示范适配机器人操作",
+          "summary": "联合预测视频与动作，核对跨机体迁移、适配成本和 Turbo 的任务质量取舍。",
+          "sha256": "de2cbcc55eeecbfcf5cc05b4f01a1d8ded6c8510c4619c94e476398ee61be9e3",
+          "path": "reports/2026-11-10/r2/articles/embodied-training.md"
+        }
+      ],
+      "poster": "assets/overview.png",
+      "path": "reports/2026-11-10/r2/"
     }
   ],
   "entries": [
@@ -3577,6 +3609,136 @@
       "fingerprint": "ec5f666f3e9883d8ada534713eda2dbdd7d818bc3dc511188e8b40233574cd46",
       "date": "2026-11-10",
       "revision": 1
+    },
+    {
+      "id": "2026-11-10-sglang-pr-49430",
+      "event_key": "sglang-pr-49430",
+      "title": "混合模型：KV 与 recurrent state 需要共同保留",
+      "summary": "11月10日10:08北京时间提出，复核仍open。GreedyDual-Size按相对保留祖先的重算成本淘汰循环状态，Full KV仍LRU；默认关闭，hybrid不兼容session-radix-cache。CPU模拟64会话的平均未缓存token下降，但中位数略升；H200结果仅dummy八层模型，非完整模型生产收益。",
+      "source_urls": [
+        "https://github.com/sgl-project/sglang/pull/49430"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "9a0973d133fabe729002263f321b1a423801083dbff5f5a1677f7304f3bd5c66",
+      "date": "2026-11-10",
+      "revision": 2
+    },
+    {
+      "id": "2026-11-10-sglang-kimi-k31-memory-20261104",
+      "event_key": "sglang-kimi-k31-memory-20261104",
+      "title": "Kimi K3.1：PCP 的计算切分与 DCP 的缓存分片分开判断",
+      "summary": "11月4日官方文章：PCP下DSA KV仍在CP组复制，DCP按token分片。32×H200 LoRA rollout的DP-attention在256请求时降低每卡KV与decode step，但64请求时step变慢；recipes使用preview image，收益依赖负载。",
+      "source_urls": [
+        "https://www.sglang.io/blog/kimi-k3.1-pro-day0-support"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "0e58875b4c474d7417ec18664d984d8912b9fe97dffffb2c277881cb1a1d15b9",
+      "date": "2026-11-10",
+      "revision": 2
+    },
+    {
+      "id": "2026-11-10-xm-sparse-memory-study-20261105",
+      "event_key": "xm-sparse-memory-study-20261105",
+      "title": "XM-Sparse：外部 KV 容量还需回载带宽",
+      "summary": "页面日期11月5日。4×B300 decode加4×B300 HBM模拟memory banks，synthetic KV、固定miss rate、prefetch关闭；24TB是容量预算，芯片尚未交付。峰值2.09–3.04倍；长上下文的收益兼有容量与带宽因素，不能当实物线上验证。",
+      "source_urls": [
+        "https://www.lmsys.org/blog/2026-11-04-xm-sparse/"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "e8a19ef4be253f025caaa5640928177b496a52e894cb594eef806dba571e5572",
+      "date": "2026-11-10",
+      "revision": 2
+    },
+    {
+      "id": "2026-11-10-vllm-pr-66605",
+      "event_key": "vllm-pr-66605",
+      "title": "外置 KV connector：声明实际内存访问需求",
+      "summary": "11月10日00:22北京时间提出，复核仍open。当前diff使用KVCacheAccess flags及kv_cache_access()，汇总注册与导出需求；EXPORTS_FD导出尚未实现，legacy IPC不能和extensible KV并用。8×H800验证来自下游初始hook，未覆盖当前全部泛化改动。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/66605"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "c87d499fcc9cd4efcba381ebe11fc3e7e8562096816793680452498a1b891be5",
+      "date": "2026-11-10",
+      "revision": 2
+    },
+    {
+      "id": "2026-11-10-vllm-pr-60390",
+      "event_key": "vllm-pr-60390",
+      "title": "vLLM：同一 engine 的 DP 副本共享 CPU PLE 表",
+      "summary": "11月10日00:16北京时间合入main，dp_shared_memory开启且embedding_across_dp关闭时，共享同节点DP组的CPU PLE表；失败整组回退私有表。4×GB300、Qwen3.8-Flash-Next FP8、DP4+EP报告host RAM 307.8→100.1GiB；独立P/D engine不共享，非H100/H200实测。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/60390"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "25a54af4cd727dede54af051a8b7bbac27de1666efcf59f3cd3cc45dbd8f4d4e",
+      "date": "2026-11-10",
+      "revision": 2
+    },
+    {
+      "id": "2026-11-10-vllm-pr-65888",
+      "event_key": "vllm-pr-65888",
+      "title": "vLLM HiSparse：导入页晋升同时改变 ITL 与 TTFT",
+      "summary": "11月10日06:39北京时间合入main。P/D导入仍先到host，再用watermark以上空闲GPU页晋升；abort等拷贝完成再回收源/目标页。两节点TP4 GB300、GLM-5.3-NVFP4、1P1D、64K多轮/C8：ITL p50 11.36→10.40ms，TTFT p50 1469→1954ms。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/65888"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "2a1058e9dbac0bbbfcee0af18f3168eb9ebc51af518541deea2c8fcd93d7beba",
+      "date": "2026-11-10",
+      "revision": 2
+    },
+    {
+      "id": "2026-11-10-sglang-pr-49386",
+      "event_key": "sglang-pr-48852",
+      "title": "SGLang：PP 完成事件显式覆盖本 rank forward",
+      "summary": "昨日延迟释放机制的后续增量：#49386于11月10日09:07北京时间合入main，接收与跳过输出两条路径先等待本地microbatch forward_done，再记录统一完成事件；skip-output用侧流。指定H100/H20定向测试不代表所有组合验收，合入不等于发布。",
+      "source_urls": [
+        "https://github.com/sgl-project/sglang/pull/49386"
+      ],
+      "update_of": "2026-11-09-sglang-pr-48852",
+      "article_id": "inference-engines",
+      "fingerprint": "ff858ba7f8aad46cf82a972662bce5ade46f018122e9445758f4155741f0abca",
+      "date": "2026-11-10",
+      "revision": 2
+    },
+    {
+      "id": "2026-11-10-sglang-pr-49419",
+      "event_key": "sglang-pr-49419",
+      "title": "SGLang：streaming session 借还页保留 namespace",
+      "summary": "11月10日08:50北京时间提出，复核仍open。session slot绑定namespace并拒绝异身份借页；借出后身份变化的abort只释放未保护tail，避免以新key重复插入原前缀。证据是补丁与CPU回归测试，未有GPU/生产端到端复现。",
+      "source_urls": [
+        "https://github.com/sgl-project/sglang/pull/49419"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "cbed946fc780d4b096f16830448af7b78d8eb252d729916f29c1b011c2dbed88",
+      "date": "2026-11-10",
+      "revision": 2
+    },
+    {
+      "id": "2026-11-10-deepinfer-coverage-20261110-r2",
+      "event_key": "deepinfer-coverage-20261110",
+      "title": "DeepInfer：保留已查入口与部署边界",
+      "summary": "本期已查发布、PR、提交、README与官方Q&A；窗口内发布与提交列表为空，所见PR无新增高相关部署事项，旧Q&A不重复计新闻。该范围不能证明全部开发活动无变化，也不证明完整在线服务或Hopper兼容性。",
+      "source_urls": [
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/commits?per_page=100&since=2026-11-09T02%3A19%3A21Z&until=2026-11-10T02%3A19%3A21Z",
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/contents/doc/inference_deployment_qa.md",
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/pulls?direction=desc&per_page=100&sort=updated&state=all",
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/readme",
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/releases?per_page=10"
+      ],
+      "update_of": "2026-11-10-deepinfer-coverage-20261110",
+      "article_id": "inference-engines",
+      "fingerprint": "830dced1bd88263ca876ce230c60f72d45ecd48677de7c5038de3e3befcc477a",
+      "date": "2026-11-10",
+      "revision": 2
     }
   ]
 }
