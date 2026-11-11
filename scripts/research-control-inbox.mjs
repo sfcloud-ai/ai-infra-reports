@@ -51,7 +51,7 @@ export async function advanceResearchControl(state,config,slack,now=Date.now()){
   // A cooldown or delayed response cannot resurrect an expired dispatch grant.
   if(result.dispatch_granted){
    const run=db.prepare('SELECT owner_id,epoch,lease_until,permit,started_at,plan FROM research_control_runs WHERE request_id=?').get(result.request_id);
-   const live=run&&run.owner_id===result.run.owner_id&&run.epoch===result.run.epoch&&run.lease_until>now&&result.operations.every(op=>{
+   const live=run&&run.owner_id===result.run.owner_id&&run.epoch===result.run.epoch&&run.lease_until>now&&result.run.lease_until>now&&result.operations.every(op=>{
     const original=db.prepare('SELECT phase,owner_id,epoch,kind FROM research_control_ops WHERE operation_id=?').get(op.operation_id);
     return original?.phase==='intent'&&(original.kind==='native'||run.permit===null&&now<run.started_at+JSON.parse(Buffer.from(run.plan)).limits.total_budget_seconds*1000);
    });

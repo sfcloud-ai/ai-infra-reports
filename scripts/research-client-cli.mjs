@@ -16,7 +16,7 @@ export async function researchClientMain(args){
   requireThat(isAbsolute(configFile??'')&&isAbsolute(file??'')&&['--control','--stage','--archive','--submit'].includes(mode)&&extra.length===0,'Usage: absolute client config, original command or artifact, --control|--stage|--archive|--submit');
   const c=JSON.parse(await readFile(configFile,'utf8'));researchClientScope(c.scope);process.umask(0o077);
   requireThat(Object.keys(c).sort().join()===(mode==='--control'?'scope':mode==='--submit'?'scope,stage,upload':'scope,upload'),'Exact disposable client configuration required');
-  if(mode!=='--control')producerCurlEnvironment('managed_proxy');
+  if(mode==='--stage'||mode==='--archive')producerCurlEnvironment('managed_proxy');
   lines=createInterface({input:process.stdin,crlfDelay:Infinity});const iterator=lines[Symbol.asyncIterator]();
   const read=async()=>{const line=await iterator.next();requireThat(!line.done&&Buffer.byteLength(line.value)<=256*1024,'Bounded original tool result required');return JSON.parse(line.value);};
   const control=async bytes=>{

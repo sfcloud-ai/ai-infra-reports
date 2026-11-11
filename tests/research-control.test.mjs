@@ -219,6 +219,39 @@ test('a withheld grant can resume once after takeover without resetting attempts
   }finally{s.close();}
  }
 });
+test('renewal cannot send a withheld grant whose embedded lease has expired',async()=>{
+ const s=setup();try{
+  const run=start(s),op=source(),c=command('reserve',{operations:[op]},run);queue(s,c);
+  await advanceResearchControl(s,config,{assertReady:()=>{throw Error('synthetic local cooldown');}},now);
+  const original=execute(s,command('status',{offset:0})).run;
+  const renewed=execute(s,command('renew',{},original),now+14*60000).run,clock=now+16*60000;
+  assert.ok(original.lease_until<clock&&renewed.lease_until>clock);
+  let expired;await advanceResearchControl(s,config,{controlReceipt:async(_ts,text)=>{expired=JSON.parse(text.slice('!ai-research control-receipt '.length));return '1793492171.000001';}},clock);
+  assert.equal(expired.dispatch_granted,false);assert.equal(expired.grant_expired,true);
+  queue(s,command('resume',{operation_id:op.operation_id},renewed),'1793492172.000001');
+  let resumed;await advanceResearchControl(s,config,{controlReceipt:async(_ts,text)=>{resumed=JSON.parse(text.slice('!ai-research control-receipt '.length));return '1793492173.000001';}},clock);
+  assert.equal(resumed.dispatch_granted,true);assert.equal(resumed.operations[0].operation_id,op.operation_id);assert.ok(resumed.run.lease_until>clock);
+  assert.equal(resumed.run.charged_seconds,180);assert.equal(s.db.prepare('SELECT count(*) n FROM research_control_ops').get().n,1);
+ }finally{s.close();}
+});
+test('submission-only CLI reaches native authorization without an upload proxy',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'research-submit-')),file=join(dir,'bundle.json'),configFile=join(dir,'client.json');
+ const scope={channel_id:SCOPE.channel_id,team_id:SCOPE.team_id,sender_user_id:SCOPE.sender_user_id,sender_attribution_text:SCOPE.sender_attribution_text,publisher_user_id:'UPUBLISHER',publisher_bot_id:'BPUBLISHER'};
+ const bytes=Buffer.from('original staged bytes'),upload={request_id:id,owner_id:ownerA,permit_id:randomUUID(),archive_sha256:digest(bytes)},env={...process.env};
+ for(const key of Object.keys(env))if(key.toLowerCase()==='https_proxy')delete env[key];
+ try{
+  await writeFile(file,bytes);
+  for(const mode of ['--submit','--stage','--archive']){
+   await writeFile(configFile,JSON.stringify({scope,upload,...(mode==='--submit'?{stage:{file_id:'FORIGINAL',source_ts:'1793491202.000001'}}:{})}));
+   // EOF deliberately stops before a native result. No provider call is made.
+   const child=spawnSync(process.execPath,['scripts/research-client-cli.mjs',configFile,file,mode],{env,input:'',encoding:'utf8',timeout:5000});
+   assert.equal(child.error,undefined);assert.equal(child.status,1,child.stderr);
+   const output=child.stdout.trim().split('\n').map(line=>JSON.parse(line));
+   assert.equal(output[0].type,mode==='--submit'?'control':'research_client_unconfirmed');
+   if(mode==='--submit')assert.equal(JSON.parse(Buffer.from(output[0].message.slice('!ai-research control v2 '.length),'base64')).action,'upload_status');
+  }
+ }finally{await rm(dir,{recursive:true,force:true});}
+});
 test('real elapsed overruns remain recorded and consume the additional time',()=>{
  const s=setup();try{
   let run=start(s);const op=source();run=execute(s,command('reserve',{operations:[op]},run)).run;
