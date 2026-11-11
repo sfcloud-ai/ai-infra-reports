@@ -5,6 +5,7 @@ import {acceptDataCommand,acceptReadCommand,canonicalRequestDate,reportDate,requ
 import {handoffScope,scopeDigest} from './handoff-state.mjs';
 import {assertSubmission} from './slack-submission.mjs';
 import {safeDiagnostic,recoveryDelay,isSlackWriteUnexecuted} from './handoff-recovery.mjs';
+import {settleResearchArchiveUpload} from './research-control-publication.mjs';
 
 const HASH=/^[a-f0-9]{64}$/, UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const TS=/^\d{10}\.\d{6}$/;
@@ -105,6 +106,7 @@ export function storeResearchArchive(db,event,bytes){
  const manifest=JSON.stringify(files.map(({data,...f})=>f));
  db.prepare('INSERT INTO research_archives VALUES(?,?,?,?,?,?,?,?,?)').run(value.command_id,value.report_date,value.request_id,hash,value.previous_sha256,manifest,bytes,event.source_ts,event.file_id);
  db.prepare('INSERT INTO research_archive_heads VALUES(?,?) ON CONFLICT(report_date) DO UPDATE SET hash=excluded.hash').run(value.report_date,hash);
+ try{settleResearchArchiveUpload(db,event,bytes.length);}catch(e){if(e.researchPublicationRejection)rejectArchive(e.researchPublicationRejection);throw e;}
  return {hash,command_id:value.command_id,already_stored:false};
 }
 export function readResearchArchive(db,id,q){

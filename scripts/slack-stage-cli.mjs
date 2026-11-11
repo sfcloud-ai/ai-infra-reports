@@ -11,9 +11,10 @@ import {producerTicket,PRODUCER_TOOLS} from './producer-upload.mjs';
 import {producerCurlEnvironment,uploadProducerBytes,uploadResearchArchiveBytes} from './producer-upload-adapters.mjs';
 import {decodeResearchArchive} from './research-archive.mjs';
 
-export async function stageFile(bytes,channel,callTool,{upload,probe=false,research=false,observe=()=>{}}={}){
+export async function stageFile(bytes,channel,callTool,{upload,probe=false,research=false,authority=null,observe=()=>{}}={}){
  requireThat(/^C[A-Z0-9]+$/.test(channel),'Pinned private channel required');
  requireThat(!(probe&&research),'Single staging format required');
+ requireThat(!authority||!probe&&typeof authority.before==='function'&&typeof authority.after==='function','Explicit research authority bridge required');
  upload??=research?uploadResearchArchiveBytes:uploadProducerBytes;
  let id,name,comment;
  if(probe){
@@ -24,15 +25,31 @@ export async function stageFile(bytes,channel,callTool,{upload,probe=false,resea
   const archive=decodeResearchArchive(bytes);id=archive.value.request_id;name='ai-brief-research-archive.json';comment=`!ai-research save ${id} ${archive.hash}`;
  }else{
   const bundle=await decodeBundle(bytes);requireThat(bundle.data.request_id===`morning-${bundle.report.date.replaceAll('-','')}-r1`,'Daily revision-one staging required');
-  id=bundle.data.request_id;name='ai-brief-bundle.json';comment=`!ai-report stage ${id} ${bundle.hash}`;
+  id=bundle.data.request_id;name='ai-brief-bundle.json';comment=authority?`!ai-report stage-v2 ${id} ${bundle.hash} ${authority.permit_id}`:`!ai-report stage ${id} ${bundle.hash}`;
  }
- const ticket=producerTicket(await callTool(PRODUCER_TOOLS.ticket,{filename:name,content_length:bytes.length}));
+ const recovered=await authority?.recover?.(bytes);
+ if(recovered?.complete)return {type:'staging_attempt_finished',request_id:id,bundle_sha256:digest(bytes),file_id:recovered.file_id,source_ts:recovered.source_ts,publication_allowed:false,next_action:'read_original_stage_and_publisher_status'};
+ let ticket;
+ if(recovered)ticket={file_id:recovered.file_id};
+ else{
+ const ticketOperation=await authority?.before('ticket',null,bytes);
+ ticket=producerTicket(await callTool(PRODUCER_TOOLS.ticket,{filename:name,content_length:bytes.length},ticketOperation));
+ await authority?.after('ticket',ticket.file_id,bytes);
  observe({type:'staging_ticket_observed',request_id:id,bundle_sha256:digest(bytes),file_id:ticket.file_id,publication_allowed:false});
  // Exactly one POST, with existing managed proxy and normal TLS verification.
  // Unknown/error stops this attempt; no ticket refresh, repeat or auto-submit.
- const result=await upload({bytes,ticket},{transport:'managed_proxy'}),m=result.metrics;
+ await authority?.before('post',ticket.file_id,bytes);
+ let result;
+ try{result=await upload({bytes,ticket},{transport:'managed_proxy'});}catch(error){observe({type:'staging_post_observed',request_id:id,file_id:ticket.file_id,bundle_sha256:digest(bytes),metrics:null,outcome:'unknown'});throw error;}
+ const m=result.metrics;
+ const numeric=['curl_exit','http_status','num_connects','num_redirects','upload_bytes','response_bytes','header_bytes','time_namelookup','time_connect','time_appconnect','time_starttransfer','ssl_verify_result'];
+ const metrics=Object.fromEntries(numeric.map(k=>[k,typeof m?.[k]==='number'&&Number.isFinite(m[k])&&m[k]>=0?m[k]:null]));
+ observe({type:'staging_post_observed',request_id:id,file_id:ticket.file_id,bundle_sha256:digest(bytes),metrics,outcome:'observed'});
  requireThat(result.file_id===ticket.file_id&&result.bundle_sha256===digest(bytes)&&result.url_sha256===ticket.url_sha256&&result.adapter==='producer_curl_managed_proxy_v1'&&m.curl_exit===0&&m.http_status===200&&m.upload_bytes===bytes.length&&m.num_redirects===0&&m.ssl_verify_result===0,'Staging POST unconfirmed; reconcile original file');
- await callTool(PRODUCER_TOOLS.complete,{file_id:ticket.file_id,channel_id:channel,initial_comment:comment});
+ await authority?.after('post',ticket.file_id,bytes);
+ }
+ const completeOperation=await authority?.before('complete',ticket.file_id,bytes);
+ await callTool(PRODUCER_TOOLS.complete,{file_id:ticket.file_id,channel_id:channel,initial_comment:comment},completeOperation);
  return {type:'staging_attempt_finished',request_id:id,bundle_sha256:digest(bytes),file_id:ticket.file_id,publication_allowed:false,next_action:'read_original_stage_and_publisher_status'};
 }
 export async function stagingMain(args){

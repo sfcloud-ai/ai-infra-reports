@@ -20,6 +20,12 @@ test('unknown POST stops before completion without refreshing ticket or replayin
   assert.equal(tools,1);assert.equal(posts,1);
  }
 });
+test('failed POST keeps safe measurements available without exposing response text or signed URLs',async()=>{
+ const observations=[],failed={...confirmed,metrics:{...confirmed.metrics,http_status:503,response_body:'private response',upload_url:ticket.upload_url}};
+ await assert.rejects(stageFile(bytes,'C123',async()=>ticket,{upload:async()=>failed,observe:value=>observations.push(value)}));
+ const post=observations.find(value=>value.type==='staging_post_observed');assert.equal(post.metrics.http_status,503);assert.equal(post.metrics.upload_bytes,bytes.length);
+ assert.equal(JSON.stringify(observations).includes('private response'),false);assert.equal(JSON.stringify(observations).includes(ticket.upload_url),false);
+});
 test('inert probe cannot emit stage or submit commands and requires an exact tiny payload',async()=>{
  const probe=Buffer.from(JSON.stringify({schema_version:'slack_staging_probe_v1',nonce:'11111111-1111-4111-8111-111111111111',payload:'transport validation; no report publication'}));let comment;
  await stageFile(probe,'C123',async(tool,args)=>{if(tool===PRODUCER_TOOLS.ticket){assert.equal(args.filename,'ai-brief-transport-probe.json');return ticket;}comment=args.initial_comment;return {};},{probe:true,upload:async()=>({...confirmed,bundle_sha256:digest(probe),metrics:{...confirmed.metrics,upload_bytes:probe.length}})});

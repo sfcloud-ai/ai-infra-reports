@@ -51,6 +51,15 @@ RESEARCH_ARCHIVE_SCHEMA = {
     'research_archive_heads': 'CREATE TABLE research_archive_heads(report_date TEXT PRIMARY KEY,hash TEXT NOT NULL)'
 }
 TABLES.update(RESEARCH_ARCHIVE_SCHEMA)
+RESEARCH_CONTROL_SCHEMA = {
+    'research_control_policy': 'CREATE TABLE research_control_policy(id INTEGER PRIMARY KEY CHECK(id=1),binding TEXT NOT NULL,evidence_reference TEXT NOT NULL)',
+    'research_control_runs': 'CREATE TABLE research_control_runs(request_id TEXT PRIMARY KEY,report_date TEXT UNIQUE NOT NULL,plan BLOB NOT NULL,plan_hash TEXT NOT NULL,owner_id TEXT NOT NULL,epoch INTEGER NOT NULL,revision INTEGER NOT NULL,lease_until INTEGER NOT NULL,started_at INTEGER NOT NULL,charged_seconds REAL NOT NULL,inputs_hash TEXT,checkpoint_hash TEXT,permit TEXT)',
+    'research_control_ops': 'CREATE TABLE research_control_ops(operation_id TEXT PRIMARY KEY,request_id TEXT NOT NULL,kind TEXT NOT NULL,operation_key TEXT NOT NULL,input_hash TEXT NOT NULL,input TEXT NOT NULL,owner_id TEXT NOT NULL,epoch INTEGER NOT NULL,reserved_seconds INTEGER NOT NULL,phase TEXT NOT NULL,elapsed_seconds REAL,result_archive TEXT,result_file TEXT,native_result TEXT)',
+    'research_control_commands': 'CREATE TABLE research_control_commands(command_id TEXT PRIMARY KEY,request_id TEXT NOT NULL,hash TEXT NOT NULL,bytes BLOB NOT NULL,result TEXT NOT NULL)',
+    'research_control_submissions': 'CREATE TABLE research_control_submissions(source_ts TEXT PRIMARY KEY,permit_id TEXT NOT NULL)',
+    'research_control_events': "CREATE TABLE research_control_events(source_ts TEXT PRIMARY KEY,command_id TEXT NOT NULL,hash TEXT NOT NULL,bytes BLOB NOT NULL,phase TEXT NOT NULL DEFAULT 'pending',attempts INTEGER NOT NULL DEFAULT 0,next_at INTEGER NOT NULL DEFAULT 0,reply_text TEXT,reply_ts TEXT,diagnostic TEXT)",
+}
+TABLES.update(RESEARCH_CONTROL_SCHEMA)
 
 
 # Authorized pre-publication corrections retain the complete original payload.
@@ -340,6 +349,28 @@ def snapshot(path, settled=True):
                     or archive_policy['submission_generation'] != policy['generation']
                     or archive_policy['publisher_scope_sha256'] != policy['publisher_scope_sha256']):
                 raise ValueError('invalid_research_archive_policy')
+        authority = database.execute("SELECT type,name,sql FROM sqlite_master WHERE tbl_name LIKE 'research_control_%' ORDER BY name").fetchall()
+        if authority:
+            expected = {('table', name, sql) for name, sql in RESEARCH_CONTROL_SCHEMA.items()} | {
+                ('index', 'sqlite_autoindex_' + name + '_' + str(n), None)
+                for name, count in [('research_control_runs', 2), ('research_control_ops', 1),
+                                    ('research_control_commands', 1), ('research_control_submissions', 1),
+                                    ('research_control_events', 1)] for n in range(1, count + 1)}
+            if set(authority) != expected or not research:
+                raise ValueError('unsupported_research_control_schema')
+            records = database.execute('SELECT id,binding,evidence_reference FROM research_control_policy').fetchall()
+            if len(records) != 1 or records[0][0] != 1 or not records[0][2]:
+                raise ValueError('incomplete_research_control_policy')
+            control_policy = json.loads(records[0][1])
+            if (set(control_policy) != {'generation', 'activation_ts', 'first_report_date', 'archive_generation', 'publisher_scope_sha256'}
+                    or not re.fullmatch(r'[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}', control_policy['generation'])
+                    or not re.fullmatch(r'\d{10}\.\d{6}', control_policy['activation_ts'])
+                    or control_policy['activation_ts'] < archive_policy['activation_ts']
+                    or datetime.date.fromisoformat(control_policy['first_report_date']).isoformat() != control_policy['first_report_date']
+                    or control_policy['first_report_date'] < archive_policy['first_report_date']
+                    or control_policy['archive_generation'] != archive_policy['generation']
+                    or control_policy['publisher_scope_sha256'] != archive_policy['publisher_scope_sha256']):
+                raise ValueError('invalid_research_control_policy')
         replacement = database.execute("SELECT type,name,sql FROM sqlite_master WHERE tbl_name='job_replacement_audit'").fetchall()
         if replacement and set(replacement) != {
                 ("table", "job_replacement_audit", JOB_REPLACEMENT_SCHEMA),
@@ -376,7 +407,7 @@ def snapshot(path, settled=True):
             result.append([name, sql, [[{"base64": base64.b64encode(value).decode()} if isinstance(value, bytes) else value
                                       for value in row] for row in rows]])
         if settled:
-            if submissions and (database.execute("SELECT 1 FROM slack_submission_events WHERE phase!='done'").fetchone()
+            if submissions and (database.execute("SELECT 1 FROM slack_submission_events WHERE phase!='done' AND NOT coalesce(phase='fenced' AND json_extract(diagnostic,'$.stage')='research_publication' AND json_extract(diagnostic,'$.outcome')='rejected',0)").fetchone()
                                 or database.execute("SELECT 1 FROM slack_staged_bundles WHERE phase!='admitted'").fetchone()):
                 raise Deferred('unfinished_slack_submission')
             if intake:

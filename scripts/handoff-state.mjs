@@ -12,7 +12,7 @@ export async function withLockedHandoffState(config,run){
  });
 }
 export function handoffScope(config){
- const {slack_token_file,producer_key_file,state_dir,notification_destination,notification_not_before,notification_checker,scheduled_delivery,durable_intake,producer_fence,slack_submission,research_archive,...scope}=config;
+ const {slack_token_file,producer_key_file,state_dir,notification_destination,notification_not_before,notification_checker,scheduled_delivery,durable_intake,producer_fence,slack_submission,research_archive,research_control,...scope}=config;
  return scope;
 }
 export function scopeDigest(scope){
