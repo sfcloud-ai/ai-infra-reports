@@ -5,7 +5,7 @@ const {current}=Astro.props;
 const groups=localizedGroups(current);
 ---
 <nav class="archive-navigation" aria-label="报告索引">
- <div class="nav-group"><p>AI INFRA / ARCHIVE</p><ul><li><a href={href()} aria-current={!current?"page":undefined}>全部报告</a></li></ul></div>
+ <div class="nav-group"><p>AI INFRA / RECENT</p><ul><li><a href={href()} aria-current={!current?"page":undefined}>近期报告</a></li></ul></div>
  <div class="nav-group archive-groups">
   <ul class="archive-tree">
    {groups.map(year => <li>
