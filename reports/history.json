@@ -1328,6 +1328,166 @@
       "revision": 2,
       "fingerprint": "e8a19ef4be253f025caaa5640928177b496a52e894cb594eef806dba571e5572",
       "content_sha256": "f5a78cff99c1814bf3a37b3abc87f138e68df02972742703fded1420eb9d99c7"
+    },
+    {
+      "id": "2026-11-10-architecture-coverage-20261110",
+      "event_key": "architecture-coverage-20261110",
+      "date": "2026-11-10",
+      "revision": 3,
+      "fingerprint": "ee72f66b66ca662db2aef7644064c4edeea109e6c45856b911fcf4c171e911db",
+      "content_sha256": "4441c7eb5c89d55441278f4f34537b7084f26756ff88b7ecf986e2fd7da0eff3"
+    },
+    {
+      "id": "2026-11-10-aws-sagemaker-mig-20261106",
+      "event_key": "aws-sagemaker-mig-20261106",
+      "date": "2026-11-10",
+      "revision": 3,
+      "fingerprint": "88f5c712276d91f15bc4e735bb509c1239036ab3428f1df91cb5085ec3159617",
+      "content_sha256": "39cafa48a2fcc6668edde20a31b801dd1218cb60c30886053c4d9bd24a749a91"
+    },
+    {
+      "id": "2026-11-10-bevy-weight-offload-20261103",
+      "event_key": "bevy-weight-offload-2611-04794",
+      "date": "2026-11-10",
+      "revision": 3,
+      "fingerprint": "4574b2fd764e4ab9586b2daa9ddf9e5df0b0cbc084fdb00d14b96b5f94aa4aff",
+      "content_sha256": "0bf4fc19de162837e2d2888d3205d4655c1765b328849b460d32ad724d3e2dc1"
+    },
+    {
+      "id": "2026-11-10-deepinfer-coverage-20261110-r2-r3",
+      "event_key": "deepinfer-coverage-20261110",
+      "date": "2026-11-10",
+      "revision": 3,
+      "fingerprint": "7216c643446327a9b67e8a5b4c48f9f7f1978bfeefb21fb6a7991e2ce326ced1",
+      "content_sha256": "e67f1d412ab111bb2ac8ee616550d9a6cb055e5fe65cfa2b1d02622973ddd1ed"
+    },
+    {
+      "id": "2026-11-10-dharma-field-extractor-20261104",
+      "event_key": "dharma-field-extractor-20261104",
+      "date": "2026-11-10",
+      "revision": 3,
+      "fingerprint": "84114a73ff71bc3f5e0dc33fc42d00e856610b3e3b60cbf94f7bb4469115caad",
+      "content_sha256": "603b3921c5610db743a83731f58ed7343e6469b34f7f48563ab95397e73b35b6"
+    },
+    {
+      "id": "2026-11-10-kinference-control-plane-20261104",
+      "event_key": "kinference-control-plane-20261104",
+      "date": "2026-11-10",
+      "revision": 3,
+      "fingerprint": "9f74a5cdb87565a27dade2cede7ae344b48ed67ae7d9220b8636a71dd68891db",
+      "content_sha256": "92a7a837c9c6513f3589c70c4f6812a868967135c81a4c9b31d5d463ce43cc73"
+    },
+    {
+      "id": "2026-11-10-lerobot-pr-5293",
+      "event_key": "lerobot-pr-5293",
+      "date": "2026-11-10",
+      "revision": 3,
+      "fingerprint": "508295bc12809a42a891d4f185d121a79c5fbf8cb307d2d747c06db9ddbd56db",
+      "content_sha256": "a5260336a0511c46d2e5ac302fc61df8d19cc8473c465681c61e838c9fb0086d"
+    },
+    {
+      "id": "2026-11-10-lerobot-v070",
+      "event_key": "lerobot-v070",
+      "date": "2026-11-10",
+      "revision": 3,
+      "fingerprint": "8889059193a2c49997b88843d30c182c8ac8e7499baee187ef6cf4df05daaea1",
+      "content_sha256": "9618fc0f7546f283279227789689fe76161595322b50cf17f95eb4f555b65a74"
+    },
+    {
+      "id": "2026-11-10-meta-muse-ember-20261109",
+      "event_key": "meta-muse-ember-20261109",
+      "date": "2026-11-10",
+      "revision": 3,
+      "fingerprint": "a421cd3fbb844f1fb1713d18bdbbdbd9cc840de24551c81e9f8e847214340d2c",
+      "content_sha256": "7a0b1ba49cf25c2740c583154152eb0e9e37ac2e5a5d5d4efceb227362494b8d"
+    },
+    {
+      "id": "2026-11-10-nvidia-groot2-corl-20261109-r3",
+      "event_key": "nvidia-groot2-corl-20261109",
+      "date": "2026-11-10",
+      "revision": 3,
+      "fingerprint": "6e7b6fb1899ec93c46a7dd6748aa955e88e349ff33c10b4fee6d23ebe05708ec",
+      "content_sha256": "90d7dfe4d657548d12fb3a801d2fde1298a484fb94f7ae36440e3c32352d5d3e"
+    },
+    {
+      "id": "2026-11-10-nvidia-r620-20261104",
+      "event_key": "nvidia-r620-20261104",
+      "date": "2026-11-10",
+      "revision": 3,
+      "fingerprint": "cd08ba6003305de099fcc6b9cd27ce1be4bb78325ac9cf3ceb949666dcec84b4",
+      "content_sha256": "64bf1898db56c437a78a7bf251707b56616c928d8c2877dceb3834b82fdcdb91"
+    },
+    {
+      "id": "2026-11-10-sglang-kimi-k31-memory-20261104-r3",
+      "event_key": "sglang-kimi-k31-memory-20261104",
+      "date": "2026-11-10",
+      "revision": 3,
+      "fingerprint": "a3a272098e228db982d7e883b8c488f8c03d2ad9bb05ead81f221f8f13633374",
+      "content_sha256": "14f52e4633b529602ce95444189caf10c0fdccc2e97535f560484876fc6520d0"
+    },
+    {
+      "id": "2026-11-10-sglang-pr-49386-r3",
+      "event_key": "sglang-pr-48852",
+      "date": "2026-11-10",
+      "revision": 3,
+      "fingerprint": "892585d7c3f150b2865f57ddeffa138a479e60eef5e97eb33a803326ba543a6b",
+      "content_sha256": "08a8454c8b0ab1936276cf005d8c7a917559232556ac2818ed86f94c1dd69f57"
+    },
+    {
+      "id": "2026-11-10-sglang-pr-49419-r3",
+      "event_key": "sglang-pr-49419",
+      "date": "2026-11-10",
+      "revision": 3,
+      "fingerprint": "4ca82dc3a57bfaa00b1445cae58a32c2db0ace7a0432f2f1403e07cbaa676de1",
+      "content_sha256": "40bf74999f1aae42c2f761f63803f427b0ee338a9c9c59c7b01b6fc693d72c91"
+    },
+    {
+      "id": "2026-11-10-sglang-pr-49430-r3",
+      "event_key": "sglang-pr-49430",
+      "date": "2026-11-10",
+      "revision": 3,
+      "fingerprint": "66bce6b2322c69f46f1445f0af6e36227b80707114d6242a1723fa0597d1f56d",
+      "content_sha256": "8235135021b1c7df0ff3e18993ac9ad477ef80574465b27d9f463c6d22d2fa25"
+    },
+    {
+      "id": "2026-11-10-vllm-pr-60390-r3",
+      "event_key": "vllm-pr-60390",
+      "date": "2026-11-10",
+      "revision": 3,
+      "fingerprint": "71065718c1dfaf8c27996806e254a5ae1ea5f9de5ce0dff2ec53bb64c75c6e0a",
+      "content_sha256": "023868ad680fac2c23b27732810eb3a3f922388b1ef7c936331d11e60462eb0f"
+    },
+    {
+      "id": "2026-11-10-vllm-pr-65888-r3",
+      "event_key": "vllm-pr-65888",
+      "date": "2026-11-10",
+      "revision": 3,
+      "fingerprint": "6b2aa796b7e60ffbc4144aa8b246211b28ecc2854382a3e16c37fbec91c11780",
+      "content_sha256": "29193f9bd609cc2e09ce6ff4fe8a7b3b7764de663c93cf8f0a7632f1f6f97d79"
+    },
+    {
+      "id": "2026-11-10-vllm-pr-66605-r3",
+      "event_key": "vllm-pr-66605",
+      "date": "2026-11-10",
+      "revision": 3,
+      "fingerprint": "486a52d3d435a82cef57b4ffaed10a5fd7403902a63b3d773cc2b2f3cb65a7f3",
+      "content_sha256": "75ab647b461692fa1818995f2204562f6f8a1a3e020b1e354874068b7e1a66c9"
+    },
+    {
+      "id": "2026-11-10-vllm-stable-abi-20261106",
+      "event_key": "vllm-stable-abi-20261106",
+      "date": "2026-11-10",
+      "revision": 3,
+      "fingerprint": "136420b45deaafe0962a3f864ded01837f82a1a9748533cb98ff13ff1c7c911c",
+      "content_sha256": "a502205e6ec350a9c90e36f15ce5ebc5f2f4d87837a526b0be811d3ebd34b6f6"
+    },
+    {
+      "id": "2026-11-10-xm-sparse-memory-study-20261105-r3",
+      "event_key": "xm-sparse-memory-study-20261105",
+      "date": "2026-11-10",
+      "revision": 3,
+      "fingerprint": "0e23d16296c7537a83318f98f8221ff06938760b6fc97683af100020af3eaaa3",
+      "content_sha256": "3cb4fd761a553eb31ca65a82edf5034fbc4d801f6d4a6d8ba0678e042c6c404d"
     }
   ]
 }
