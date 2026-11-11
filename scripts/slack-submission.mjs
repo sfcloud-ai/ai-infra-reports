@@ -8,6 +8,7 @@ import {handoffScope,scopeDigest} from './handoff-state.mjs';
 import {producerInspection} from './producer-inspect.mjs';
 import {queryScheduled} from './scheduled-delivery-bridge.mjs';
 import {safeDiagnostic,recoveryDelay} from './handoff-recovery.mjs';
+import {controlledDate,acceptPermitSubmission,queuePermitSubmission,permitSubmission,settlePermitSubmission} from './research-control-publication.mjs';
 
 const TS=/^\d{10}\.\d{6}$/,UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 export const SUBMISSION_SCHEMA={
@@ -47,8 +48,8 @@ export function installSubmission(db,config,reference){
 }
 export function acceptSubmission(message,config,now,window){
  if(!config.slack_submission)return null;
- const stage=acceptDataCommand(message,config,'!ai-report stage ',/^!ai-report stage (morning-\d{8}-r1) ([a-f0-9]{64})$/,now,window);
- let event=stage?{...stage,kind:'stage',target_ts:null}:null;
+ let event=acceptPermitSubmission(message,config,now,window);
+ if(!event){const stage=acceptDataCommand(message,config,'!ai-report stage ',/^!ai-report stage (morning-\d{8}-r1) ([a-f0-9]{64})$/,now,window);event=stage?{...stage,kind:'stage',target_ts:null}:null;}
  if(!event){
   const read=acceptReadCommand(message,config,'!ai-report submit ',/^!ai-report submit (morning-\d{8}-r1) ([a-f0-9]{64}) (\d{10}\.\d{6})$/,now,window);
   if(!read)return null;
@@ -56,15 +57,18 @@ export function acceptSubmission(message,config,now,window){
   requireThat(event.target_ts<event.source_ts,'Submission must follow original staging');
  }
  const date=canonicalRequestDate(event.request_id);
+ requireThat(!controlledDate(config,event.request_id)||event.permit_id,'Activated research dates require their original publication permit');
+ if(event.permit_id)requireThat(controlledDate(config,event.request_id)&&event.source_ts>=config.research_control.activation_ts&&(event.kind==='stage'||event.target_ts<event.source_ts),'Permit submission outside authority activation');
  requireThat(date>=config.slack_submission.first_report_date&&event.source_ts>=config.slack_submission.activation_ts,'Staging outside activation boundary');return event;
 }
 // Called in the same transaction as the fixed history-page checkpoint.
 export function queueSubmission(db,event){
  const values={source_ts:event.source_ts,kind:event.kind,request_id:event.request_id,hash:event.hash,file_id:event.file_id??null,target_ts:event.target_ts};
  const prior=db.prepare('SELECT * FROM slack_submission_events WHERE source_ts=?').get(event.source_ts);
- if(prior){requireThat(Object.entries(values).every(([k,v])=>prior[k]===v),'Original staging command changed');return;}
+ if(prior){requireThat(Object.entries(values).every(([k,v])=>prior[k]===v),'Original staging command changed');queuePermitSubmission(db,event);return;}
  requireThat(db.prepare('SELECT count(*) AS n FROM slack_submission_events').get().n<10000,'Staging capacity reached');
  db.prepare('INSERT INTO slack_submission_events(source_ts,kind,request_id,hash,file_id,target_ts) VALUES(?,?,?,?,?,?)').run(...Object.values(values));
+ queuePermitSubmission(db,event);
 }
 export function submissionStatus(db,id){
  if(!db.prepare("SELECT 1 FROM sqlite_master WHERE name='slack_submission_policy'").get())return null;
@@ -84,10 +88,12 @@ export async function advanceSubmission(state,config,slack,query=queryScheduled,
  try{
   const date=canonicalRequestDate(row.request_id);
   requireThat(!db.prepare('SELECT 1 FROM producer_quarantined_dates WHERE report_date=?').get(date),'Original unresolved date is quarantined');
-  requireThat(!db.prepare("SELECT 1 FROM slack_submission_events WHERE request_id=? AND hash!=?").get(row.request_id,row.hash),'Conflicting original staging evidence requires reconciliation');
+  let stored=db.prepare('SELECT * FROM slack_staged_bundles WHERE request_id=?').get(row.request_id);
+  permitSubmission(db,config,row,stored);
+  requireThat(!db.prepare("SELECT 1 FROM slack_submission_events WHERE request_id=? AND hash!=? AND phase!='fenced'").get(row.request_id,row.hash),'Conflicting original staging evidence requires reconciliation');
   const message=await slack.exactPublish(row.source_ts),original=acceptSubmission(message,config,now,{from:config.slack_submission.activation_ts,to:row.source_ts});
   requireThat(original&&['kind','request_id','hash','file_id','target_ts'].every(k=>(original[k]??null)===row[k]),'Original staging command changed');
-  let stored=db.prepare('SELECT * FROM slack_staged_bundles WHERE request_id=?').get(row.request_id);
+  if(controlledDate(config,row.request_id))requireThat(original.permit_id===db.prepare('SELECT permit_id FROM research_control_submissions WHERE source_ts=?').get(row.source_ts)?.permit_id,'Original publication permit changed');
   if(row.kind==='stage'){
    const bytes=await slack.download(row),bundle=await decodeBundle(bytes);
    requireThat(bundle.data.request_id===row.request_id&&bundle.hash===row.hash&&bundle.report.date===date,'Staged bundle binding differs');
@@ -97,7 +103,9 @@ export async function advanceSubmission(state,config,slack,query=queryScheduled,
     await emptyDay(state,config,row,date,query,clock);
    }
    db.exec('BEGIN IMMEDIATE');try{
+    const authority=permitSubmission(db,config,row,stored);
     if(!stored)db.prepare('INSERT INTO slack_staged_bundles(request_id,report_date,hash,source_ts,file_id,bytes) VALUES(?,?,?,?,?,?)').run(row.request_id,date,row.hash,row.source_ts,row.file_id,bytes);
+    settlePermitSubmission(db,authority,row,bytes.length);
     db.prepare("UPDATE slack_submission_events SET phase='done',diagnostic=NULL,next_at=0 WHERE source_ts=?").run(row.source_ts);db.exec('COMMIT');
    }catch(e){db.exec('ROLLBACK');throw e;}
   }else{
@@ -108,15 +116,21 @@ export async function advanceSubmission(state,config,slack,query=queryScheduled,
    if(prior)requireThat(stored.phase==='admitted'&&prior.hash===stored.hash&&prior.source_ts===stored.source_ts&&prior.detail.intake_file_id===stored.file_id,'Original publication conflicts with staging');
    else{requireThat(stored.phase==='staged','Original staged admission missing');await emptyDay(state,config,row,date,query,clock);}
    db.exec('BEGIN IMMEDIATE');try{
+    const authority=permitSubmission(db,config,row,stored);
     if(!prior){
      const job=state.admit({request_id:row.request_id,hash:stored.hash,source_ts:stored.source_ts,file_id:stored.file_id},bytes);
      state.move(job.id,'received','received',{...job.detail,intake_transport:'slack_staged_file_v1',submission_source_ts:row.source_ts});
      db.prepare("UPDATE slack_staged_bundles SET phase='admitted',submit_ts=? WHERE request_id=?").run(row.source_ts,row.request_id);
     }
+    settlePermitSubmission(db,authority,row,bytes.length);
     db.prepare("UPDATE slack_submission_events SET phase='done',diagnostic=NULL,next_at=0 WHERE source_ts=?").run(row.source_ts);db.exec('COMMIT');
    }catch(e){db.exec('ROLLBACK');throw e;}
   }
  }catch(error){
+  if(error.researchPublicationRejection){
+   const diagnostic={stage:'research_publication',code:error.researchPublicationRejection,outcome:'rejected'};
+   db.prepare("UPDATE slack_submission_events SET phase='fenced',next_at=0,diagnostic=? WHERE source_ts=?").run(JSON.stringify(diagnostic),row.source_ts);return;
+  }
   const diagnostic=safeDiagnostic(error,'slack_submission','not_started'),attempts=Math.min(row.attempts+1,1000000);
   db.prepare('UPDATE slack_submission_events SET attempts=?,next_at=?,diagnostic=? WHERE source_ts=?').run(attempts,Math.max(now+recoveryDelay(attempts),diagnostic.retry_at??0),JSON.stringify(diagnostic),row.source_ts);
   return {request_id:row.request_id,source_ts:row.source_ts,...diagnostic};
