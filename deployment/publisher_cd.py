@@ -44,6 +44,13 @@ SUBMISSION_SCHEMA = {
     'slack_staged_bundles': "CREATE TABLE slack_staged_bundles(request_id TEXT PRIMARY KEY,report_date TEXT UNIQUE NOT NULL,hash TEXT NOT NULL,source_ts TEXT UNIQUE NOT NULL,file_id TEXT NOT NULL,bytes BLOB NOT NULL,phase TEXT NOT NULL DEFAULT 'staged',submit_ts TEXT)"
 }
 TABLES.update(SUBMISSION_SCHEMA)
+RESEARCH_ARCHIVE_SCHEMA = {
+    'research_archive_policy': 'CREATE TABLE research_archive_policy(id INTEGER PRIMARY KEY CHECK(id=1),binding TEXT NOT NULL,evidence_reference TEXT NOT NULL)',
+    'research_archive_events': "CREATE TABLE research_archive_events(source_ts TEXT PRIMARY KEY,kind TEXT NOT NULL,request_id TEXT NOT NULL,hash TEXT NOT NULL,file_id TEXT,query TEXT,phase TEXT NOT NULL DEFAULT 'pending',attempts INTEGER NOT NULL DEFAULT 0,next_at INTEGER NOT NULL DEFAULT 0,last_attempt INTEGER NOT NULL DEFAULT 0,diagnostic TEXT,reply_text TEXT,reply_ts TEXT)",
+    'research_archives': 'CREATE TABLE research_archives(command_id TEXT PRIMARY KEY,report_date TEXT NOT NULL,request_id TEXT NOT NULL,hash TEXT UNIQUE NOT NULL,previous_hash TEXT,manifest TEXT NOT NULL,bytes BLOB NOT NULL,source_ts TEXT UNIQUE NOT NULL,file_id TEXT NOT NULL)',
+    'research_archive_heads': 'CREATE TABLE research_archive_heads(report_date TEXT PRIMARY KEY,hash TEXT NOT NULL)'
+}
+TABLES.update(RESEARCH_ARCHIVE_SCHEMA)
 
 
 # Authorized pre-publication corrections retain the complete original payload.
@@ -312,6 +319,27 @@ def snapshot(path, settled=True):
                     or policy['publisher_scope_sha256'] != database.execute('SELECT value FROM scope WHERE id=1').fetchone()[0]
                     or database.execute('SELECT 1 FROM producer_admission_grants').fetchone()):
                 raise ValueError('invalid_slack_submission_policy')
+        research = database.execute("SELECT type,name,sql FROM sqlite_master WHERE tbl_name LIKE 'research_archive%' ORDER BY name").fetchall()
+        if research:
+            expected = {('table', name, sql) for name, sql in RESEARCH_ARCHIVE_SCHEMA.items()} | {
+                ('index', 'sqlite_autoindex_research_archive_events_1', None),
+                ('index', 'sqlite_autoindex_research_archive_heads_1', None),
+                *{('index', 'sqlite_autoindex_research_archives_' + str(n), None) for n in range(1, 4)}}
+            if set(research) != expected or not submissions:
+                raise ValueError('unsupported_research_archive_schema')
+            records = database.execute('SELECT id,binding,evidence_reference FROM research_archive_policy').fetchall()
+            if len(records) != 1 or records[0][0] != 1 or not records[0][2]:
+                raise ValueError('incomplete_research_archive_policy')
+            archive_policy = json.loads(records[0][1])
+            if (set(archive_policy) != {'generation', 'activation_ts', 'first_report_date', 'publisher_scope_sha256', 'submission_generation'}
+                    or not re.fullmatch(r'[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}', archive_policy['generation'])
+                    or not re.fullmatch(r'\d{10}\.\d{6}', archive_policy['activation_ts'])
+                    or archive_policy['activation_ts'] < policy['activation_ts']
+                    or datetime.date.fromisoformat(archive_policy['first_report_date']).isoformat() != archive_policy['first_report_date']
+                    or archive_policy['first_report_date'] < policy['first_report_date']
+                    or archive_policy['submission_generation'] != policy['generation']
+                    or archive_policy['publisher_scope_sha256'] != policy['publisher_scope_sha256']):
+                raise ValueError('invalid_research_archive_policy')
         replacement = database.execute("SELECT type,name,sql FROM sqlite_master WHERE tbl_name='job_replacement_audit'").fetchall()
         if replacement and set(replacement) != {
                 ("table", "job_replacement_audit", JOB_REPLACEMENT_SCHEMA),

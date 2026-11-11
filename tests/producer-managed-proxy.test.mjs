@@ -2,7 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {PassThrough} from 'node:stream';
-import {producerCurlEnvironment,curlUploadPlan,uploadProducerBytes} from '../scripts/producer-upload-adapters.mjs';
+import {producerCurlEnvironment,curlUploadPlan,uploadProducerBytes,uploadResearchArchiveBytes} from '../scripts/producer-upload-adapters.mjs';
+import {readFile} from 'node:fs/promises';
+import {stageFile} from '../scripts/slack-stage-cli.mjs';
+import {digest} from '../scripts/archive.mjs';
+import {PRODUCER_TOOLS} from '../scripts/producer-upload.mjs';
 import {producerTicket} from '../scripts/producer-upload.mjs';
 const proxy='http://managed.invalid:3128',url='https://files.slack.com/upload/v1/SYNTHETIC-token';
 test('managed transport restricts environment and fails closed',()=>{
@@ -28,4 +32,19 @@ test('proxy failure retains distinct provenance and no secret result',async()=>{
 });
 test('missing proxy never falls back to direct',async()=>{
  let called=false;await assert.rejects(uploadProducerBytes({bytes:Buffer.from('x'),ticket:producerTicket({file_id:'FSYNTHETIC',upload_url:url})},{spawnCurl:()=>{called=true;},transport:'managed_proxy',environment:{}}),/proxy unavailable/);assert.equal(called,false);
+});
+test('research archives above report cap traverse the actual adapter while reports retain their original cap',async()=>{
+ const data=Buffer.alloc(7*1024*1024,120),bytes=Buffer.from(JSON.stringify({schema_version:'research_archive_v1',command_id:'11111111-1111-4111-8111-111111111111',request_id:'morning-20261101-r1',report_date:'2026-11-01',previous_sha256:null,files:[{path:'source.txt',sha256:digest(data),content_base64:data.toString('base64')}]}));
+ const ticket=producerTicket({file_id:'FSYNTHETIC',upload_url:url});let posts=0,writes=0;
+ const spawnCurl=(_exe,args)=>{
+  posts++;const child=new EventEmitter();child.stdin=new PassThrough();child.stdout=new PassThrough();child.kill=()=>{};
+  child.stdin.on('finish',async()=>{try{
+   const input=args[args.indexOf('--data-binary')+1].slice(1);assert.deepEqual(await readFile(input),bytes);
+   child.stdout.write(`200\t1\t0\t${bytes.length}\t0\t0\t0\t0\t0\t0\t0`);child.emit('close',0);
+  }catch(e){child.emit('error',e);}});return child;
+ };
+ await stageFile(bytes,'C123',async(tool)=>{writes++;return tool===PRODUCER_TOOLS.ticket?{file_id:ticket.file_id,upload_url:ticket.upload_url}:{};},{research:true,upload:request=>uploadResearchArchiveBytes(request,{spawnCurl,transport:'managed_proxy',environment:{PATH:'/bin',https_proxy:proxy}})});
+ assert.equal(posts,1);assert.equal(writes,2);
+ await assert.rejects(uploadProducerBytes({bytes,ticket},{spawnCurl}),/Bounded/);assert.equal(posts,1);
+ await assert.rejects(stageFile(Buffer.alloc(16*1024*1024+1),'C123',()=>assert.fail('oversize fails before ticket'),{research:true}),/Bounded/);
 });

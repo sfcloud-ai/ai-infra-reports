@@ -70,7 +70,7 @@ export class SlackHandoff{
   // Bound that envelope separately; the original file retains its own limit.
   const {data:{file:f}}=await this.call("files.info",{file:event.file_id},false,2*limit+1024*1024);
   const userApp=this.config.sender_user_app_id!==undefined;
-  requireThat(f?.id===event.file_id&&f.user===this.config.sender_user_id&&f.name===name&&(f.mode==="hosted"||(userApp&&f.mode==="snippet"))&&(!userApp||f.user_team===this.config.team_id)&&!f.is_external&&Number.isSafeInteger(f.size)&&f.size>0&&f.size<=limit,"Unexpected Slack file metadata");
+  if(!(f?.id===event.file_id&&f.user===this.config.sender_user_id&&f.name===name&&(f.mode==="hosted"||(userApp&&f.mode==="snippet"))&&(!userApp||f.user_team===this.config.team_id)&&!f.is_external&&Number.isSafeInteger(f.size)&&f.size>0&&f.size<=limit))throw Object.assign(Error('Unexpected Slack file metadata'),{slackFileRejection:'invalid_metadata'});
   requireThat(f.shares?.private?.[this.config.channel_id]?.some(s=>s.ts===event.source_ts),"File is not shared in the command message");
   const url=new URL(f.url_private_download);
   requireThat(url.protocol==="https:"&&url.hostname==="files.slack.com"&&!url.port&&!url.username&&!url.password&&!url.search&&!url.hash&&url.pathname.startsWith(`/files-pri/${this.config.team_id}-${event.file_id}/`),"Unexpected Slack download origin/path");

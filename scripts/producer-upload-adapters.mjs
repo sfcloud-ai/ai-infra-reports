@@ -33,7 +33,16 @@ export function curlUploadPlan({url,input,output,size,transport='direct'}){
  return {args:['-q','--config','-','--silent','--request','POST','--proto','=https','--proto-redir','=https','--max-redirs','0','--retry','0',...(transport==='direct'?['--noproxy','*']:[]),'--connect-timeout','15','--max-time','60','--max-filesize','65536','--header','Content-Type: application/json','--header','Content-Length: '+size,'--data-binary','@'+input,'--output',output,'--write-out',curlNames.map(n=>`%{${n}}`).join('\t')],stdin:`url = "${url}"\n`};
 }
 export async function uploadProducerBytes({bytes,ticket},{spawnCurl=spawn,transport='direct',environment=process.env}={}){
- requireThat(Buffer.isBuffer(bytes)&&bytes.length>0&&bytes.length<=8*1024*1024,'Bounded original upload bytes required');
+ return uploadBytes({bytes,ticket},{spawnCurl,transport,environment},8*1024*1024);
+}
+// Research checkpoints use a separate explicit cap; original report uploads
+// retain their 8 MiB contract. The caller validates the archive before tickets.
+export async function uploadResearchArchiveBytes(request,options={}){
+ requireThat(options.transport==='managed_proxy','Research upload requires original managed proxy');
+ return uploadBytes(request,options,16*1024*1024);
+}
+async function uploadBytes({bytes,ticket},{spawnCurl=spawn,transport='direct',environment=process.env}={},limit){
+ requireThat(Buffer.isBuffer(bytes)&&bytes.length>0&&bytes.length<=limit,'Bounded original upload bytes required');
  const t=producerTicket({file_id:ticket.file_id,upload_url:ticket.upload_url});
  requireThat(t.url_sha256===ticket.url_sha256,'Original ticket changed');
  const curlEnvironment=producerCurlEnvironment(transport,environment);

@@ -1,5 +1,6 @@
 import {validateFenceConfig,assertFence} from './producer-admission-fence.mjs';
 import {validateSubmissionConfig,assertSubmission,advanceSubmission,pendingSubmissions} from './slack-submission.mjs';
+import {validateArchiveConfig,assertResearchArchive,advanceResearchArchive} from './research-archive.mjs';
 import {validateScheduledConfig,advanceScheduledDelivery,advanceScheduledStatus} from "./scheduled-delivery-bridge.mjs";
 // Single bounded tick, suitable for a separately approved 120-second service timer.
 // No default config, environment token, daemon, scheduler or deployment is installed.
@@ -45,6 +46,7 @@ export function validateConfig(c){
  if(c&&Object.hasOwn(c,"durable_intake")){keys.push("durable_intake");validateIntakeConfig(c.durable_intake);}
  if(c&&Object.hasOwn(c,'producer_fence')){keys.push('producer_fence');validateFenceConfig(c.producer_fence);requireThat(c.durable_intake&&c.scheduled_delivery,'Producer fence requires durable scheduled intake');}
  if(c&&Object.hasOwn(c,'slack_submission')){keys.push('slack_submission');validateSubmissionConfig(c.slack_submission);requireThat(c.producer_fence&&c.durable_intake&&c.scheduled_delivery&&c.sender_user_app_id,'Slack staging requires fenced durable native intake');}
+ if(c&&Object.hasOwn(c,'research_archive')){keys.push('research_archive');validateArchiveConfig(c.research_archive);requireThat(c.slack_submission,'Research archive requires durable staging');}
  requireThat(c&&Object.keys(c).sort().join()===keys.sort().join(),"Unexpected publisher config");
  for(const [key,prefix]of [["team_id","T"],["channel_id","[CG]"],["sender_user_id","U"],["bot_user_id","U"],["bot_id","B"]])requireThat(new RegExp("^"+prefix+"[A-Z0-9]+$").test(c[key]),"Publisher identity config");
  requireThat(c.sender_user_id!==c.bot_user_id&&typeof c.ready_for_review==="boolean"&&Number.isSafeInteger(c.producer_app_id)&&c.producer_app_id>0&&Number.isSafeInteger(c.merger_app_id)&&c.merger_app_id>0&&c.producer_app_id!==c.merger_app_id,"Independent publisher identities required");
@@ -67,6 +69,7 @@ export async function handoffTick(state,config,slack,io){
   const now=io.now??Date.now,errors=[];
   assertFence(state.db,config.producer_fence);
   assertSubmission(state.db,config);
+  assertResearchArchive(state.db,config);
   requireThat(config.durable_intake||!state.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='publisher_intake_scan'").get(),'Durable intake configuration cannot be removed silently');
   const capture=(stage,error,extra={})=>{if(errors.length<16)errors.push({...safeDiagnostic(error,stage),...extra});};
   const notices=config.notification_destination?new NoticeOutbox(state,notificationScope(config)):null;
@@ -181,12 +184,20 @@ export async function handoffTick(state,config,slack,io){
   if(config.slack_submission){
    try{const error=await advanceSubmission(state,config,slack,io.scheduleQuery,now());if(error&&errors.length<16)errors.push(error);}catch(error){capture('slack_submission',error);}
   }
+  if(config.research_archive){
+   try{const error=await advanceResearchArchive(state,config,slack,now());if(error&&errors.length<16)errors.push(error);}catch(error){capture('research_archive',error);}
+  }
   const blocked_intake=[...(inbox?.pending()??[]),...(config.slack_submission?pendingSubmissions(state.db):[])];
   const pending=state.pendingMetadata();
   // A quiet/backoff tick must not erase a durable failure from service health.
   // Keep the report degraded until the original request finishes or is reconciled.
   const blocked_reports=pending.filter(job=>['proposal_failed','proposing','proposal_unknown','sending','receipt_unknown'].includes(job.phase)||job.detail.recovery?.last_error).slice(0,16).map(job=>({request_id:job.id,phase:job.phase,...(job.detail.recovery?.last_error?{error:safeDiagnostic({diagnostic:job.detail.recovery.last_error},job.phase)}:{})}));
+  const blocked_research=config.research_archive?state.db.prepare("SELECT source_ts,request_id,kind,phase,next_at,diagnostic FROM research_archive_events WHERE phase='pending' AND diagnostic IS NOT NULL ORDER BY source_ts LIMIT 16").all().map(({diagnostic,...row})=>({...row,error:JSON.parse(diagnostic)})):[];
   const due=pending.filter(job=>job.phase!=='proposal_failed').map(job=>job.detail.recovery?.next_at).filter(t=>Number.isFinite(t)&&t>0);
+  if(config.research_archive){
+   const queued=state.db.prepare("SELECT next_at FROM research_archive_events WHERE phase IN ('pending','ready') LIMIT 1000").all();
+   due.push(...queued.map(row=>row.next_at||now()+1000));
+  }
   if(inbox){
    due.push(...blocked_intake.map(row=>row.next_at||now()+1000));
    if(pending.some(job=>job.phase==='received'&&!job.detail.recovery?.next_at))due.push(now()+1000);
@@ -201,7 +212,7 @@ export async function handoffTick(state,config,slack,io){
    }
   }
   const next_delay_ms=due.length?Math.max(1000,Math.min(120000,Math.min(...due)-now())):120000;
-  return {...(id?{request_id:id,phase:state.metadata(id).phase}:noticeResult??{phase:'idle'}),...(noticeResult?{notice:noticeResult}:{}),...(scheduled?{scheduled}:{}),...(inbox?{blocked_intake}:{}),errors,blocked_reports,healthy:errors.length===0&&blocked_reports.length===0&&blocked_intake.length===0,next_delay_ms};
+  return {...(id?{request_id:id,phase:state.metadata(id).phase}:noticeResult??{phase:'idle'}),...(noticeResult?{notice:noticeResult}:{}),...(scheduled?{scheduled}:{}),...(inbox?{blocked_intake}:{}),errors,blocked_reports,blocked_research,healthy:errors.length===0&&blocked_reports.length===0&&blocked_intake.length===0&&blocked_research.length===0,next_delay_ms};
 }
 export async function runHandoff(configFile){
  requireThat(process.platform==="linux","Live publisher requires the reviewed Linux service layout");
