@@ -1,0 +1,166 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-11-11",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-11-11",
+  "subtitle": "部分晨报｜覆盖缺口：vLLM 代码、SGLang 代码、DeepInfer 代码、DeepSeek 文章、DeepInfer 文章。另缺Z.ai、Qwen博客完整覆盖。",
+  "articles": [
+    {
+      "id": "model-serving-gpu",
+      "title": "模型副本快速恢复与 Agent 缓存调度：两条降低 GPU 等待成本的路径",
+      "summary": "Snapshot初始化状态快照与Evolving Infra动态角色/KV规划，分别核对恢复成本和调优基线。",
+      "sha256": "0358ba28b7374c3c558d492397a570733cdc82103ff019367d058d877edee822"
+    },
+    {
+      "id": "hardware-status",
+      "title": "H100、H200 与 RTX PRO 5500：本期硬件适用边界复核",
+      "summary": "复核H100、H200与RTX PRO 5500原厂规格；静态信息不作为新闻。",
+      "sha256": "bfd657b00c4dd5d5d0d6b9b99ea18597d9083d63ae6b43be862d4343c5a85ba9"
+    },
+    {
+      "id": "model-architecture-status",
+      "title": "LongCat 2.5：专家分发前量化，复用 INT4 通信与计算",
+      "summary": "LongCat 2.5在专家分发前共享量化表示，保留NPU与部署依赖边界。",
+      "sha256": "832eedc40fcddd5331c9702b8cab693ffbc56ec74b5a50c24c6f7fed29d546d6"
+    },
+    {
+      "id": "embodied-training",
+      "title": "MR0：把失败动作与人工纠正配对，改善桌面插线",
+      "summary": "MR0用同场景失败动作与人工纠正训练，区分桌面试验和产线可靠性。",
+      "sha256": "391970f0c8bbaad59e002ae28c838b599be1d17624b74535eff08e6e79160a8e"
+    },
+    {
+      "id": "small-model-status",
+      "title": "前沿小模型：所查官方源未选出合格新条目",
+      "summary": "仅说明实际已查官方来源、候选取舍与覆盖限制。",
+      "sha256": "755faca136a68bc092e40544a96d1f45ed28654d7e7ea12cc24c0c54e2310de2"
+    },
+    {
+      "id": "inference-engines",
+      "title": "推理引擎每日变动｜博客已查，代码覆盖有缺口",
+      "summary": "vLLM、SGLang博客已查；代码及DeepSeek/DeepInfer文章保留覆盖缺口。",
+      "sha256": "47d5859a8271d20639ff9e681c1135505feaa9a9ecc2fe5edd7204502dfe770d"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-11-11-arxiv-2611-08577-v1",
+      "event_key": "arxiv-2611-08577-v1",
+      "title": "MR0：把机器人失败动作与人工纠正配对，改善桌面插线任务",
+      "summary": "扩展至一周窗口：MR0论文于11月5日发布，使用Rollback采集同一场景锚点下失败动作与人工纠正，再以CFG-DAgger学习正负条件动作，不额外学习价值函数或标注优势。在相同数据和中训练检查点下，Ethernet插线30次试验中成功率70%，RECAP为60%；这是特定实验室任务结果。",
+      "source_urls": [
+        "https://arxiv.org/abs/2611.08577",
+        "https://arxiv.org/html/2611.08577v1",
+        "https://huggingface.co/MeituanRobotics/Meituan-Robotics-0/raw/main/README.md",
+        "https://huggingface.co/api/models/MeituanRobotics/Meituan-Robotics-0/commits/main"
+      ],
+      "update_of": null,
+      "article_id": "embodied-training"
+    },
+    {
+      "id": "2026-11-11-nvidia-snapshot-20261110",
+      "event_key": "nvidia-snapshot-20261110",
+      "title": "NVIDIA Snapshot：通过初始化状态快照加速副本恢复",
+      "summary": "11月10日官方文章公布单节点B200推理副本检查点与恢复矩阵，跳过权重加载、运行库初始化与预热。",
+      "source_urls": [
+        "https://developer.nvidia.com/blog/start-and-restore-gpu-workloads-in-seconds-with-nvidia-snapshot/",
+        "https://raw.githubusercontent.com/ai-dynamo/snapshot/main/README.md",
+        "https://raw.githubusercontent.com/ai-dynamo/snapshot/main/docs/development/benchmarks-guide.md",
+        "https://raw.githubusercontent.com/ai-dynamo/snapshot/main/docs/reference/workload-contract.md"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-11-11-arxiv-2611-12304-v1",
+      "event_key": "arxiv-2611-12304-v1",
+      "title": "Evolving Infra：让推理角色与KV缓存跟随Agent生命周期变化",
+      "summary": "论文将无需重启的预填充/解码角色切换、共享主机KV池和Agent分支引用计数联合规划。",
+      "source_urls": [
+        "https://arxiv.org/html/2611.12304v1",
+        "https://export.arxiv.org/api/query?id_list=2611.12304,2611.11402,2611.08720&max_results=3"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-11-11-longcat-25-model-card-20261105",
+      "event_key": "longcat-25-model-card-20261105",
+      "title": "LongCat 2.5：在专家分发前量化，复用 INT4 通信与计算表示",
+      "summary": "扩展一周窗口：11月5日07:07:30Z的官方提交首次将仅MIT头的README扩展为完整模型卡，实质公开LongCat2.5架构、量化及部署说明；与前版本正文逐字diff核验。专家输入共享变换在token复制和分发之前完成W4A4量化，使INT4表示复用于通信与计算。",
+      "source_urls": [
+        "https://huggingface.co/meituan-longcat/LongCat-2.5/raw/f3ae0ad97209ef50b1a8941e285debbdfbca7155/README.md",
+        "https://huggingface.co/meituan-longcat/LongCat-2.5/raw/ce55920fc00e3469968eeaf9f6829d1390f16260/README.md",
+        "https://huggingface.co/api/models/meituan-longcat/LongCat-2.5/commits/main",
+        "https://huggingface.co/meituan-longcat/LongCat-2.5/raw/main/config.json",
+        "https://tech.meituan.com/2026/11/10/Meituan-LongCat-2.5-Open-Source.html",
+        "https://raw.githubusercontent.com/meituan-longcat/SGLang-FluentLLM/longcat-2.5-npu/npu_test/ReadMe.md"
+      ],
+      "update_of": null,
+      "article_id": "model-architecture-status"
+    },
+    {
+      "id": "2026-11-11-hardware-status",
+      "event_key": "hardware-status-20261111",
+      "title": "H100、H200 与 RTX PRO 5500：本期硬件适用边界复核",
+      "summary": "复核H100、H200与RTX PRO 5500原厂规格；静态信息不作为新闻。",
+      "source_urls": [
+        "https://www.nvidia.com/en-in/products/workstations/professional-desktop-gpus/rtx-pro-5500/",
+        "https://www.nvidia.com/en-us/data-center/h100/",
+        "https://www.nvidia.com/en-us/data-center/h200/"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status"
+    },
+    {
+      "id": "2026-11-11-small-model-status",
+      "event_key": "small-model-status-20261111",
+      "title": "前沿小模型：所查官方源未选出合格新条目",
+      "summary": "仅说明实际已查官方来源、候选取舍与覆盖限制。",
+      "source_urls": [
+        "https://huggingface.co/api/models?author=HuggingFaceTB&sort=lastModified&direction=-1&limit=50",
+        "https://huggingface.co/api/models?author=microsoft&sort=lastModified&direction=-1&limit=50",
+        "https://huggingface.co/api/models?author=google&sort=lastModified&direction=-1&limit=50",
+        "https://thinkingmachines.ai/model-card/inkling-2-small/"
+      ],
+      "update_of": null,
+      "article_id": "small-model-status"
+    },
+    {
+      "id": "2026-11-11-inference-engines",
+      "event_key": "inference-engines-20261111",
+      "title": "推理引擎每日变动｜博客已查，代码覆盖有缺口",
+      "summary": "vLLM、SGLang博客已查；代码及DeepSeek/DeepInfer文章保留覆盖缺口。",
+      "source_urls": [
+        "https://vllm.ai/blog/archive",
+        "https://www.sglang.io/blog",
+        "https://www.lmsys.org/blog/"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    }
+  ],
+  "images": [
+    {
+      "path": "assets/overview.png",
+      "sha256": "a08de5e9cdf41ee719099c768cf980ba4a1488e7280f4979db641ff63ad7034a",
+      "alt": "六板块晨报海报，含四项新闻与明确覆盖缺口"
+    },
+    {
+      "path": "assets/model-serving-flow.png",
+      "sha256": "2e91005c7e11df1f719f9ca4ffeca5a80187a98b65afabd78f6e28fa1e933b93",
+      "alt": "Snapshot副本恢复与Evolving Infra缓存角色调度示意"
+    },
+    {
+      "path": "assets/mr0-flow.png",
+      "sha256": "3a663f73aca09e33ef2d310fc678c1bab7c464fd1ca8fe524119f89e4a8ed3e6",
+      "alt": "MR0失败回滚、人类纠正与条件动作学习流程"
+    },
+    {
+      "path": "assets/longcat-flow.png",
+      "sha256": "974ca576ae676d2049864d7d2fa96c1f06bb8a2f69caeebe438efa78b8ebe031",
+      "alt": "LongCat专家分发前INT4量化及通信计算复用示意"
+    }
+  ],
+  "poster": "assets/overview.png"
+}
