@@ -98,14 +98,14 @@ async function queryDayBindings(filename,config,date){
   requireThat(db.prepare('SELECT value FROM scope WHERE id=1').get()?.value===scopeDigest(handoffScope(config)),'Publisher scope differs');
   // Reject excessive matches using IDs alone, then decode one bundle at a time.
   // Keep both reads in one snapshot so a concurrent writer cannot change them.
-  const rows=db.prepare("SELECT id FROM jobs WHERE json_extract(CAST(bytes AS TEXT),'$.files[0].path') LIKE ? ORDER BY source_ts LIMIT 11").all('reports/'+date+'/%');
-  requireThat(rows.length<=10,'Ambiguous daily report count');
+  const rows=db.prepare("SELECT id FROM jobs WHERE json_extract(CAST(bytes AS TEXT),'$.files[0].path') LIKE ? ORDER BY source_ts LIMIT 102").all('reports/'+date+'/%');
+  requireThat(rows.length<=101,'Ambiguous daily report count');
   const bindings=[],read=db.prepare('SELECT id,hash,bytes,detail FROM jobs WHERE id=?');
   for(const {id} of rows){
    const row=read.get(id);
    const bundle=await decodeBundle(Buffer.from(row.bytes)),detail=JSON.parse(row.detail);
    requireThat(bundle.hash===row.hash&&bundle.data.request_id===row.id&&bundle.report.date===date,'Publisher report binding differs');
-   bindings.push({request_id:row.id,report_date:date,bundle_sha256:row.hash,report_commit:detail.commit??null,published:detail.proof?.publication_status==='verified'&&detail.proof?.commit===detail.commit&&detail.proof?.bundle_sha256===row.hash});
+   bindings.push({request_id:row.id,report_date:date,bundle_sha256:row.hash,report_commit:detail.commit??null,published:detail.proof?.publication_status==='verified'&&detail.proof?.commit===detail.commit&&detail.proof?.bundle_sha256===row.hash,...(bundle.report.revision_notice?{report_revision:bundle.report.revision,revision_kind:bundle.report.revision_notice.kind}:{})});
   }
   return bindings;
  }finally{db.close();}
@@ -127,6 +127,7 @@ export function schedulerStatus(config,requestId){
 }
 export async function checkDailyDelivery(bindings,query){
  if(!bindings.length)return {issues:['daily_report_missing']};
+ if(bindings.some(b=>b.report_revision!==undefined))return checkRevisionDeliveries(bindings,query);
  if(bindings.length!==1)return {issues:['daily_report_ambiguous']};
  const binding=bindings[0],base={request_id:binding.request_id};
  if(!binding.published||!SHA.test(binding.report_commit??''))return {...base,issues:['daily_report_unpublished']};
@@ -137,6 +138,55 @@ export async function checkDailyDelivery(bindings,query){
  const poster=Array.isArray(result.images)&&result.images.length===1&&result.images[0].file_id==='scheduled-poster'&&result.images[0].status==='sent'&&result.images[0].error==null;
  const complete=counts&&poster&&result.status==='sent'&&result.phase==='complete'&&result.parts_sent===result.parts_total;
  return {...base,...(counts?{parts_sent:result.parts_sent,parts_total:result.parts_total}:{}),issues:complete?[]:['daily_delivery_incomplete']};
+}
+
+async function checkRevisionDeliveries(bindings,query){
+ const day=bindings[0].report_date,ids=new Set(),versions=new Set();let legacy=0;
+ for(const b of bindings){
+  if(ids.has(b.request_id)||b.report_date!==day)return {issues:['daily_report_ambiguous']};ids.add(b.request_id);
+  if(b.report_revision===undefined){legacy++;continue;}
+  if(!Number.isSafeInteger(b.report_revision)||b.report_revision<=1||versions.has(b.report_revision)||b.request_id!==`morning-${day.replaceAll('-','')}-r${b.report_revision}`)return {issues:['daily_report_ambiguous']};
+  versions.add(b.report_revision);
+ }
+ if(legacy>1||bindings.length>101)return {issues:['daily_report_ambiguous']};
+ // 已发首版不会因为下一版仍在 PR 中变成“日报未发布”；发布健康仍由 Publisher 独立监控。
+ const published=bindings.filter(b=>b.published&&SHA.test(b.report_commit??''));
+ if(!published.length)return {issues:['daily_report_unpublished']};
+ const records=new Map(),pending=[...published],deadline=performance.now()+45000;let unavailable=false;
+ await Promise.all(Array.from({length:Math.min(4,pending.length)},async()=>{
+  while(pending.length){
+   const binding=pending.shift();let timer;
+   try{
+    if(unavailable||performance.now()>=deadline)throw Error('Status read deadline');
+    const result=await Promise.race([query(binding.request_id),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Status read deadline')),Math.max(1,deadline-performance.now()));})]);
+    records.set(binding.request_id,{binding,result});
+   }catch{unavailable=true;records.set(binding.request_id,{binding,error:'scheduler_status_unavailable'});}
+   finally{clearTimeout(timer);}
+  }
+ }));
+ const issues=new Set();
+ const settled=(id,seen=new Set())=>{
+  const record=records.get(id);if(!record){issues.add('daily_delivery_binding_mismatch');return false;}
+  if(record.error){issues.add(record.error);return false;}
+  const {binding:b,result:r}=record,revision=b.report_revision!==undefined;
+  if(r?.status==='not_found'){issues.add('daily_delivery_not_admitted');return false;}
+  if(!r||['request_id','report_date','report_commit','bundle_sha256'].some(k=>r[k]!==b[k])||revision&&(r.report_revision!==b.report_revision||!['initial','revision_update','web_only'].includes(r.delivery_kind))){issues.add('daily_delivery_binding_mismatch');return false;}
+  const counts=Number.isSafeInteger(r.parts_total)&&r.parts_total>=0&&Number.isSafeInteger(r.parts_sent)&&r.parts_sent>=0&&r.parts_sent<=r.parts_total;
+  if(r.phase==='superseded'){
+   const next=records.get(r.superseded_by)?.binding;
+   if(counts&&r.parts_sent<r.parts_total&&['queued','failed','partial'].includes(r.status)&&next?.report_revision>(b.report_revision??1)&&!seen.has(id)&&seen.size<=100){seen.add(id);return settled(r.superseded_by,seen);}
+  }else{
+   const images=r.images??[],poster=Array.isArray(images)&&images.length===1&&images[0].file_id==='scheduled-poster'&&images[0].status==='sent'&&images[0].error==null;
+   const skipped=revision&&r.delivery_kind==='web_only'&&r.phase==='skipped'&&r.status==='skipped'&&r.parts_total===0&&r.parts_sent===0&&Array.isArray(images)&&images.length===0;
+   const complete=r.status==='sent'&&r.phase==='complete'&&r.parts_sent===r.parts_total&&(revision&&r.delivery_kind==='revision_update'?r.parts_total===1&&Array.isArray(images)&&images.length===0:(!revision||r.delivery_kind==='initial')&&r.parts_total>=2&&poster);
+   if(counts&&(skipped||complete))return true;
+  }
+  issues.add(revision?'revision_delivery_incomplete':'daily_delivery_incomplete');return false;
+ };
+ for(const {binding} of records.values())settled(binding.request_id);
+ if(![...records.values()].some(({binding,result})=>binding.report_revision===undefined||result?.delivery_kind==='initial'))issues.add('daily_original_binding_missing');
+ const latest=published.at(-1),result=records.get(latest.request_id)?.result;
+ return {request_id:latest.request_id,...(result?{parts_sent:result.parts_sent,parts_total:result.parts_total}:{}),issues:[...issues]};
 }
 export async function inspectWatchdog(c,publisher,{now=Date.now(),readService=readPublisherService,readHealth=async()=>JSON.parse((await privateFile(path.join(publisher.state_dir,'health.json'),65536)).toString('utf8')),readBindings=readDayBindings,query=id=>schedulerStatus(publisher.scheduled_delivery,id)}={}){
  const [service,health]=await Promise.all([readService(c.unit).catch(()=>null),readHealth().catch(()=>null)]);

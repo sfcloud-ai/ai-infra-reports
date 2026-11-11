@@ -84,8 +84,11 @@ export class NoticeOutbox{
    const current=this.state.get(c.report_request_id);
    requireThat(current?.hash===job.hash&&current.phase===job.phase&&JSON.stringify(current.detail)===JSON.stringify(job.detail),"Report changed during notice validation");
    let notice=this.notice(c.report_request_id),authorized=false,reason,journal;
-   guardJournalOperation(this,c);
-   if(Object.hasOwn(JOURNAL_FIELDS,c.action)){
+   if(!check?.revision_policy_rejected)guardJournalOperation(this,c);
+   if(check?.revision_policy_rejected){
+    requireThat(bundle?.report.revision_notice&&['claim','prepare','prepare_bundle','begin','recover_begin'].includes(c.action),'Explicit revision policy rejection required');
+    reason='revision_uses_scheduled_delivery';
+   }else if(Object.hasOwn(JOURNAL_FIELDS,c.action)){
     journal=applyJournalCommand(this,c,job,{bundle});reason=journal.reason;
    }else if(["claim","prepare","prepare_bundle"].includes(c.action)){
     const edition=`${bundle.report.date}/r${bundle.report.revision}`;
@@ -186,7 +189,10 @@ export async function advanceNotice(outbox,id,io){
   if(!fencedRecovery&&["claim","prepare","prepare_bundle","begin","recover_begin","check","asset","record_bundle"].includes(c.action)){
    requireThat(job.phase==="receipt_sent","Publication receipt must finish before notification claim");
    if(["claim","prepare","prepare_bundle","begin","recover_begin"].includes(c.action))requireThat(TS.test(job.source_ts)&&BigInt(job.source_ts.replace(".",""))>BigInt(outbox.notBefore.replace(".","")),"Pre-activation reports cannot receive a notification grant");
-   bundle=await decodeBundle(job.bytes);proof=await io.verify(job.detail.commit,bundle);
+   bundle=await decodeBundle(job.bytes);
+   if(bundle.report.revision_notice&&['claim','prepare','prepare_bundle','begin','recover_begin'].includes(c.action))check={revision_policy_rejected:true};
+   else{
+   proof=await io.verify(job.detail.commit,bundle);
    const edition=`${bundle.report.date}/r${bundle.report.revision}`;
    requireThat(proof.publication_status==="verified"&&proof.commit===job.detail.commit&&proof.bundle_sha256===job.hash&&proof.request_id===job.id&&proof.edition===edition&&isEditionPublicURL(proof.url,edition)&&proof.poster_sha256===digest(bundle.files.get(bundle.report.path+bundle.report.poster)),"Notice publication proof mismatch");
    if(c.action==="check"){
@@ -206,6 +212,7 @@ export async function advanceNotice(outbox,id,io){
     let observed;try{observed=await io.verifyAsset?.(expected);}catch{}
     const ok=observed&&Object.keys(observed).sort().join()===["status","channel_id","message_ts","file_id","sha256","bytes","messages_sent"].sort().join()&&observed.status==="verified"&&observed.channel_id===outbox.controlChannel&&observed.message_ts===expected.message_ts&&observed.file_id===expected.file_id&&observed.sha256===expected.sha256&&observed.bytes===expected.bytes&&observed.messages_sent===0;
     check={asset:ok?observed:{status:"not_verified",messages_sent:0}};
+   }
    }
   }
   outbox.prepare(id,c,job,bundle,proof,check);

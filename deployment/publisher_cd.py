@@ -414,12 +414,56 @@ def snapshot(path, settled=True):
                 pending = database.execute("SELECT request_id,hash,file_id,source_ts,phase FROM publisher_inbox WHERE phase!='admitted'").fetchall()
                 if any(row[4] != 'fenced' or not fence or not fenced_intake_is_ineligible(database, fence, row[:4]) for row in pending):
                     raise Deferred('in_flight_or_unknown_operation')
-            for name, phase in (("publisher_inbox", "admitted"), ("jobs", "receipt_sent"), ("notices", "sender_reported"), ("notice_commands", "response_sent"), ("notice_recovery_authorizations", "consumed"), ("remote_native_runs", "complete"), ("remote_native_ops", "acknowledged"), ("scheduled_handoffs", "complete"), ("scheduled_status_replies", "sent")):
+            if 'scheduled_handoffs' in {row[0] for row in tables}:
+                require_settled_scheduled(database)
+            for name, phase in (("publisher_inbox", "admitted"), ("jobs", "receipt_sent"), ("notices", "sender_reported"), ("notice_commands", "response_sent"), ("notice_recovery_authorizations", "consumed"), ("remote_native_runs", "complete"), ("remote_native_ops", "acknowledged"), ("scheduled_status_replies", "sent")):
                 if name == 'publisher_inbox':
                     continue
                 if name in {row[0] for row in tables} and database.execute("SELECT count(*) FROM " + name + " WHERE phase!=?", (phase,)).fetchone()[0]:
                     raise Deferred("in_flight_or_unknown_operation")
         return hashlib.sha256(json.dumps(result, separators=(",", ":")).encode()).hexdigest()
+
+
+def require_settled_scheduled(database):
+    """网页修订无发送；被接续的原任务须跟到已完成的真实 successor。"""
+    rows = {row[0]: row[1:] for row in database.execute('SELECT request_id,binding,phase,result FROM scheduled_handoffs')}
+    def bound(request_id):
+        binding, phase, encoded = rows[request_id]
+        try:
+            identity, result = json.loads(binding), json.loads(encoded)
+            if (set(identity) != {'request_id', 'report_date', 'report_commit', 'bundle_sha256'}
+                    or identity['request_id'] != request_id or any(result.get(k) != v for k, v in identity.items())):
+                raise ValueError('scheduled_binding_differs')
+            return identity, result
+        except (TypeError, ValueError, AttributeError):
+            raise Deferred('in_flight_or_unknown_operation') from None
+    for request_id, (_, phase, _) in rows.items():
+        if phase == 'complete':
+            continue
+        seen = set()
+        while phase == 'superseded' and len(seen) <= 100:
+            if request_id in seen:
+                raise Deferred('in_flight_or_unknown_operation')
+            seen.add(request_id)
+            identity, result = bound(request_id)
+            successor = result.get('superseded_by')
+            if (result.get('phase') != 'superseded' or result.get('status') == 'sent' or successor not in rows
+                    or not isinstance(successor, str) or not re.fullmatch('morning-' + identity['report_date'].replace('-', '') + r'-r(?:[2-9]|[1-9][0-9]+)', successor)):
+                raise Deferred('in_flight_or_unknown_operation')
+            next_identity, _ = bound(successor)
+            if next_identity['report_date'] != identity['report_date']:
+                raise Deferred('in_flight_or_unknown_operation')
+            request_id, phase = successor, rows[successor][1]
+        identity, result = bound(request_id)
+        if phase == 'complete':
+            if (result.get('phase') != 'complete' or result.get('status') != 'sent'
+                    or type(result.get('parts_sent')) is not int or result['parts_sent'] <= 0 or result['parts_sent'] != result.get('parts_total')):
+                raise Deferred('in_flight_or_unknown_operation')
+        elif phase != 'skipped' or not (result.get('phase') == result.get('status') == 'skipped'
+                and result.get('delivery_kind') == 'web_only' and type(result.get('parts_total')) is int
+                and type(result.get('parts_sent')) is int and result.get('parts_total') == result.get('parts_sent') == 0
+                and result.get('images', []) == [] and type(result.get('report_revision')) is int and result['report_revision'] > 1):
+            raise Deferred('in_flight_or_unknown_operation')
 
 
 def run(arguments, timeout=30, cwd=None):
@@ -628,6 +672,20 @@ def legacy_dependency_mount(config, release):
     return result
 
 
+def revision_runtime_required(database):
+    """检查隔离副本，早于候选运行时打开账本。"""
+    tables = {row[0] for row in database.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    if 'slack_submission_events' in tables and database.execute("SELECT 1 FROM slack_submission_events WHERE kind='revision' LIMIT 1").fetchone():
+        return True
+    if 'scheduled_handoffs' in tables and database.execute("SELECT 1 FROM scheduled_handoffs WHERE phase IN ('skipped','superseded') LIMIT 1").fetchone():
+        return True
+    for (raw,) in database.execute('SELECT bytes FROM jobs'):
+        for item in json.loads(raw).get('files', []):
+            if item['path'].endswith('/report.json') and json.loads(base64.b64decode(item['base64'], validate=True)).get('schema_version') == '1.1':
+                return True
+    return False
+
+
 def compatibility(config, release, operation, expected):
     """仅打开隔离的账本副本，不提供生产凭据或网络。"""
     probe = operation / ("probe-" + uuid.uuid4().hex)
@@ -641,13 +699,18 @@ def compatibility(config, release, operation, expected):
                 raise ValueError("isolated_copy_journal_not_reset")
     if snapshot(database) != expected:
         raise ValueError("state_changed_during_backup")
+    with closing(sqlite3.connect(database)) as isolated:
+        needs_revision = revision_runtime_required(isolated)
     copied = json.loads(Path(config["publisher_config"]).read_text())
     copied["state_dir"] = "/probe"
     (probe / "publisher.json").write_text(json.dumps(copied))
     for path in (probe, database, probe / "publisher.json"):
         os.chown(path, config["uid"], config["gid"])
         path.chmod(0o700 if path.is_dir() else 0o600)
-    script = "import{readFileSync}from'node:fs';import{HandoffState,handoffScope}from'./scripts/handoff-state.mjs';import{NoticeOutbox,notificationScope}from'./scripts/notice-outbox.mjs';import{validateConfig}from'./scripts/run-handoff.mjs';const c=validateConfig(JSON.parse(readFileSync('/probe/publisher.json')));const s=new HandoffState('/probe/handoff.sqlite',handoffScope(c));try{if(c.notification_destination)new NoticeOutbox(s,notificationScope(c));}finally{s.close();}"
+    script = "import{readFileSync}from'node:fs';import{HandoffState,handoffScope}from'./scripts/handoff-state.mjs';import{NoticeOutbox,notificationScope}from'./scripts/notice-outbox.mjs';import * as runtime from'./scripts/run-handoff.mjs';"
+    if needs_revision:
+        script += "if(runtime.REVISION_NOTICES_VERSION!==1)throw Error('revision_ledger_requires_compatible_release');"
+    script += "const c=runtime.validateConfig(JSON.parse(readFileSync('/probe/publisher.json')));const s=new HandoffState('/probe/handoff.sqlite',handoffScope(c));try{if(c.notification_destination)new NoticeOutbox(s,notificationScope(c));}finally{s.close();}"
     container(config, release, ["/node/bin/node", "--input-type=module", "-e", script], uid=config["uid"], readonly=True,
               extra=["--mount", "type=bind,src=" + str(probe) + ",dst=/probe"] + legacy_dependency_mount(config, release))
     if snapshot(database) != expected:

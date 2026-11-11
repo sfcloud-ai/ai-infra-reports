@@ -1,6 +1,7 @@
 """公开来源、账本防重和排空回滚边界的无副作用回归。"""
 
 import hashlib
+import base64
 import datetime
 import errno
 import os
@@ -9,6 +10,8 @@ import io
 import json
 from pathlib import Path
 import sqlite3
+import shutil
+import subprocess
 import tarfile
 import tempfile
 import unittest
@@ -23,6 +26,47 @@ def connection(path):
     with closing(sqlite3.connect(path)) as database:
         with database:
             yield database
+
+
+class RevisionSettlementTests(unittest.TestCase):
+    def test_revision_capability_detects_original_bundle_and_submission(self):
+        with closing(sqlite3.connect(':memory:')) as database:
+            database.execute('CREATE TABLE jobs(bytes BLOB)')
+            database.execute('INSERT INTO jobs VALUES (?)', (b'{"files":[]}',))
+            self.assertFalse(cd.revision_runtime_required(database))
+            raw=json.dumps({'files':[{'path':'reports/2026-11-01/report.json','base64':base64.b64encode(b'{"schema_version":"1.1"}').decode()}]}).encode()
+            database.execute('UPDATE jobs SET bytes=?', (raw,))
+            self.assertTrue(cd.revision_runtime_required(database))
+            database.execute('DELETE FROM jobs')
+            database.execute('CREATE TABLE slack_submission_events(kind TEXT)')
+            database.execute("INSERT INTO slack_submission_events VALUES ('revision')")
+            self.assertTrue(cd.revision_runtime_required(database))
+
+    def test_skipped_and_superseded_require_bound_terminal_evidence(self):
+        with closing(sqlite3.connect(':memory:')) as database:
+            database.execute(cd.SCHEDULED_SCHEMA['scheduled_handoffs'])
+            def insert(revision, phase, status, **extra):
+                identity = {'request_id': f'morning-20261101-r{revision}', 'report_date': '2026-11-01', 'report_commit': 'a'*40, 'bundle_sha256': str(revision)*64}
+                result = {**identity, 'phase': phase, 'status': status, **extra}
+                database.execute('INSERT INTO scheduled_handoffs VALUES (?,?,?,?,0)', (identity['request_id'], json.dumps(identity), phase, json.dumps(result)))
+            insert(2, 'skipped', 'skipped', delivery_kind='web_only', report_revision=2, parts_total=0, parts_sent=0, images=[])
+            cd.require_settled_scheduled(database)
+            insert(1, 'superseded', 'queued', superseded_by='morning-20261101-r3', parts_total=2, parts_sent=0)
+            with self.assertRaises(cd.Deferred):
+                cd.require_settled_scheduled(database)
+            insert(3, 'complete', 'sent', delivery_kind='initial', report_revision=3, parts_total=2, parts_sent=2,
+                   images=[{'file_id': 'scheduled-poster', 'status': 'sent', 'error': None}])
+            cd.require_settled_scheduled(database)
+            original = database.execute("SELECT result FROM scheduled_handoffs WHERE request_id='morning-20261101-r2'").fetchone()[0]
+            for field, value in [('status', 'sent'), ('parts_total', 1), ('bundle_sha256', 'x'*64)]:
+                changed = json.loads(original); changed[field] = value
+                database.execute("UPDATE scheduled_handoffs SET result=? WHERE request_id='morning-20261101-r2'", (json.dumps(changed),))
+                with self.assertRaises(cd.Deferred):
+                    cd.require_settled_scheduled(database)
+            database.execute("UPDATE scheduled_handoffs SET result=? WHERE request_id='morning-20261101-r2'", (original,))
+            database.execute("UPDATE scheduled_handoffs SET phase='observed' WHERE request_id='morning-20261101-r3'")
+            with self.assertRaises(cd.Deferred):
+                cd.require_settled_scheduled(database)
 
 
 class SourceTests(unittest.TestCase):
@@ -105,7 +149,7 @@ class LedgerTests(unittest.TestCase):
         self.database = self.root / "handoff.sqlite"
         with connection(self.database) as database:
             database.executescript("CREATE TABLE scope(id INTEGER PRIMARY KEY,value TEXT);INSERT INTO scope VALUES(1,'pinned');"
-                "CREATE TABLE jobs(id TEXT PRIMARY KEY,phase TEXT,bytes BLOB);INSERT INTO jobs VALUES('report','receipt_sent',X'0102');"
+                "CREATE TABLE jobs(id TEXT PRIMARY KEY,phase TEXT,bytes BLOB);INSERT INTO jobs VALUES('report','receipt_sent','{}');"
                 "CREATE TABLE notices(id TEXT PRIMARY KEY,phase TEXT);"
                 "CREATE TABLE notice_commands(id TEXT PRIMARY KEY,phase TEXT);")
 
@@ -114,6 +158,33 @@ class LedgerTests(unittest.TestCase):
             for sql in cd.INTAKE_SCHEMA.values():
                 database.execute(sql)
             database.execute("INSERT INTO publisher_intake_scan VALUES(1,?,?,NULL,NULL)", ("a" * 64, "1793448000.000001"))
+
+    def test_old_revision_reader_is_rejected_before_candidate_state_open(self):
+        node=shutil.which('node')
+        if node is None:
+            self.skipTest('Node is required for candidate rejection check')
+        raw=json.dumps({'files':[{'path':'reports/2026-11-01/report.json','base64':base64.b64encode(b'{"schema_version":"1.1"}').decode()}]}).encode()
+        with connection(self.database) as database:
+            database.execute('UPDATE jobs SET bytes=?', (raw,))
+        scripts=self.root/'scripts'; scripts.mkdir()
+        (scripts/'handoff-state.mjs').write_text("export class HandoffState{constructor(){throw Error('state_opened')}};export const handoffScope=x=>x;")
+        (scripts/'notice-outbox.mjs').write_text("export class NoticeOutbox{};export const notificationScope=x=>x;")
+        (scripts/'run-handoff.mjs').write_text("export function validateConfig(){throw Error('config_opened')}")
+        config_file=self.root/'publisher.json';config_file.write_text('{}')
+        operation=self.root/'operation';operation.mkdir()
+        config={'state':str(self.root),'publisher_config':str(config_file),'uid':996,'gid':996}
+        before=cd.snapshot(self.database)
+        def probe(config,release,arguments,**kwargs):
+            result=subprocess.run([node,'--input-type=module','-e',arguments[-1]],cwd=release,capture_output=True,text=True)
+            self.assertNotEqual(result.returncode,0)
+            self.assertIn('revision_ledger_requires_compatible_release',result.stderr)
+            self.assertNotIn('state_opened',result.stderr)
+            self.assertNotIn('config_opened',result.stderr)
+            raise ValueError('expected_old_reader_rejection')
+        with patch.object(cd,'container',side_effect=probe),patch.object(cd,'legacy_dependency_mount',return_value=[]),patch.object(os,'chown',create=True):
+            with self.assertRaisesRegex(ValueError,'expected_old_reader_rejection'):
+                cd.compatibility(config,self.root,operation,before)
+        self.assertEqual(cd.snapshot(self.database),before)
 
     def test_intake_empty_completed_scan_and_every_column_is_fingerprinted(self):
         self.intake()

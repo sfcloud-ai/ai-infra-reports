@@ -17,11 +17,13 @@ function deliveryPlan(bundle,commit,stableUrls=bundle.report.path===`reports/${b
  const poster=bundle.files.get(bundle.report.path+bundle.report.poster);
  return {report_request_id:bundle.data.request_id,report_date:bundle.report.date,report_commit:commit,bundle_sha256:bundle.hash,
   notice_key:manifest.index_url,text:manifest.text,poster_base64:poster.toString('base64'),
-  poster_sha256:manifest.poster.sha256,mime:bundle.report.poster.endsWith('.png')?'image/png':'image/jpeg'};
+  poster_sha256:manifest.poster.sha256,mime:bundle.report.poster.endsWith('.png')?'image/png':'image/jpeg',
+  ...(bundle.report.revision_notice?{revision_notice:{revision:bundle.report.revision,...bundle.report.revision_notice}}:{})};
 }
 export async function verifyScheduledDelivery(input,fetcher=fetch,cache){
  const bundle=await decodeInput(input);
  const proof=await verifyReportPublication(input.report_commit,bundle,fetcher,cache);
+ requireThat(!bundle.report.revision_notice||proof.url===`https://sfcloud-ai.github.io/ai-infra-reports/${bundle.report.date}/`,'Revision notices require verified stable public links');
  return deliveryPlan(bundle,input.report_commit,proof.url===`https://sfcloud-ai.github.io/ai-infra-reports/${bundle.report.date}/`);
 }
 export async function verifyHistoricalDelivery(input,fetcher=fetch){

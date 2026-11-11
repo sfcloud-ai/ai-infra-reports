@@ -79,6 +79,18 @@ test('other request occupying the date and crossed bindings fail closed without 
  }finally{s.close();}
 });
 
+test('original inspection retains its binding alongside an explicitly declared revision',async()=>{
+ const s=state();try{
+  admit(s);
+  const revised=new Map([...FILES].map(([p,b])=>[p.replace('/r1/','/r2/'),p.endsWith('/report.json')?Buffer.from(JSON.stringify({...JSON.parse(b),schema_version:'1.1',revision:2,revision_notice:{kind:'maintenance',summary:'修复排版。'}})):b]));
+  const rid='morning-20261101-r2',raw=await encodeBundle(revised,rid,'a'.repeat(40),'b'.repeat(40));
+  s.admit({request_id:rid,hash:digest(raw),source_ts:'1793491200.000002'},raw);
+  const snapshot=await inspectPublisherDay(s,config,command,source);
+  assert.equal(snapshot.publisher.request_id,id);assert.equal(snapshot.publisher.bundle_sha256,hash);
+  assert.deepEqual(snapshot.publisher_day.map(row=>row.request_id),[id,rid]);
+ }finally{s.close();}
+});
+
 test('late remote snapshot, impossible counts and wrong original commit cannot authorize recovery',async()=>{
  const s=state();try{
   admit(s);const claim={request_id:id,report_date:DAY,bundle_sha256:hash,report_commit:MERGE};

@@ -1,4 +1,5 @@
 import {evidenceAssets,evidenceAssetReferences} from "./evidence-assets.mjs";
+import {validateReportFields} from './revision-notice.mjs';
 // Report-only, data-only contract shared by the publisher, CI and trusted merge gate.
 import {createHash} from "node:crypto";
 import {readdir, readFile, lstat} from "node:fs/promises";
@@ -77,8 +78,8 @@ export function validateArchive(files, {checkIndex=true}={}) {
   for(const metaPath of records) {
     const bytes=files.get(metaPath); assert(bytes.length<128*1024,"metadata too large");
     const r=JSON.parse(bytes.toString("utf8")); const dir=metaPath.slice(0,-11);
-    object(r,["schema_version","date","revision","title","subtitle","articles","entries","images","poster"],"report");
-    assert(r.schema_version==="1.0" && /^\d{4}-\d\d-\d\d$/.test(r.date) && new Date(r.date+"T00:00:00Z").toISOString().slice(0,10)===r.date,"report date");
+    validateReportFields(r);
+    assert(/^\d{4}-\d\d-\d\d$/.test(r.date) && new Date(r.date+"T00:00:00Z").toISOString().slice(0,10)===r.date,"report date");
     assert(Number.isSafeInteger(r.revision) && (current ? r.revision>=1 && !revisions.has(r.date) : r.revision===(revisions.get(r.date)||0)+1),"revisions must be consecutive");
     assert(dir==="reports/"+r.date+(current ? "/" : "/r"+r.revision+"/"),"report path mismatch");
     revisions.set(r.date,r.revision); used.add(metaPath);
@@ -144,6 +145,8 @@ export function validateChange(base, head) {
   assert(added.length>0,"no new report");
   const dirs=new Set(added.map(p=>p.split("/").slice(0,3).join("/")));
   assert(dirs.size===1 && added.some(p=>p.endsWith("/report.json")),"one report revision per PR");
+  const next=result.reports.find(r=>r.path===[...dirs][0]+'/');
+  assert(next.revision===1||next.schema_version==='1.1','New revisions require an explicit notification policy');
   return result;
 }
 
@@ -214,5 +217,6 @@ function validateCurrentChange(base,head) {
   assert(changed.size===1,"one report revision per PR");
   const date=[...changed][0],old=previous.reports.find(r=>r.date===date),next=result.reports.find(r=>r.date===date);
   assert(next&&next.revision===(old?.revision||0)+1,"revisions must be consecutive");
+  assert(next.revision===1||next.schema_version==='1.1','New revisions require an explicit notification policy');
   return result;
 }

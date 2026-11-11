@@ -93,7 +93,7 @@ test('watchdog rejects an excessive daily backlog before fetching any bundle pay
  const prepare=DatabaseSync.prototype.prepare;let state,payloads=0;
  try{
   await writeFile(filename,'',{mode:0o600});state=new HandoffState(filename,{});
-  for(let i=0;i<12;i++){
+  for(let i=0;i<102;i++){
    const id='watchdog-backlog-'+i,bytes=await encodeBundle(FILES,id,BASE,'b'.repeat(40));
    state.admit({request_id:id,hash:digest(bytes),source_ts:'1793491200.'+String(i).padStart(6,'0')},bytes);
   }

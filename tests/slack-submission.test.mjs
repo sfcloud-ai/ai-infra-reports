@@ -15,6 +15,8 @@ import {digest} from '../scripts/archive.mjs';
 import {handoffTick,validateConfig} from '../scripts/run-handoff.mjs';
 import {replyScheduledStatus} from '../scripts/scheduled-delivery-bridge.mjs';
 import {FILES,SCOPE,DAY} from './helpers/cloud-sender-fixture.mjs';
+import {stageFile} from '../scripts/slack-stage-cli.mjs';
+import {PRODUCER_TOOLS,producerTicket} from '../scripts/producer-upload.mjs';
 
 const id='morning-20261101-r1',bytes=await encodeBundle(FILES,id,'a'.repeat(40),'b'.repeat(40)),hash=digest(bytes);
 const now=1793491210000,ts='1793491201.000001',submitTs='1793491202.000001';
@@ -30,6 +32,36 @@ function setup(filename=':memory:',blocked=[]){
 const slackFor=(messages=[stage,submit],download=async()=>bytes)=>({history:async()=>[],historyPage:async({from,to})=>({messages:messages.filter(m=>m.ts>=from&&m.ts<=to),next_cursor:null}),exactPublish:async source=>messages.find(m=>m.ts===source),download});
 async function scan(state,messages=[stage,submit]){const inbox=new PublisherInbox(state,config);await inbox.scan(slackFor(messages),Math.ceil(Math.max(...messages.map(m=>Number(m.ts)))*1000));return inbox;}
 async function stageOnly(state){await scan(state,[stage]);assert.equal(await advanceSubmission(state,config,slackFor([stage]),remote,now),undefined);}
+
+test('native revision upload enters durable submission and existing report flow without replacing daily staging',async()=>{
+ const files=new Map(FILES),meta=[...files.keys()].find(p=>p.endsWith('/report.json'));
+ const report=JSON.parse(files.get(meta));Object.assign(report,{schema_version:'1.1',revision:2,revision_notice:{kind:'correction',summary:'更正实验条件。'}});
+ const revised=new Map([...files].map(([p,b])=>[p.replace('/r1/','/r2/'),p===meta?Buffer.from(JSON.stringify(report)):b]));
+ const rid='morning-20261101-r2',raw=await encodeBundle(revised,rid,'a'.repeat(40),'b'.repeat(40)),hash=digest(raw);
+ const ticket={file_id:'FREVISION',upload_url:'https://files.slack.com/upload/v1/synthetic-revision'};let native;
+ const result=await stageFile(raw,'C123',async(tool,args)=>{
+  if(tool===PRODUCER_TOOLS.ticket)return ticket;
+  native=message(args.initial_comment,submitTs,ticket.file_id);return {};
+ },{revision:true,upload:async({bytes:actual})=>{assert.deepEqual(actual,raw);return {adapter:'producer_curl_managed_proxy_v1',file_id:ticket.file_id,url_sha256:producerTicket(ticket).url_sha256,bundle_sha256:hash,metrics:{curl_exit:0,http_status:200,upload_bytes:raw.length,num_redirects:0,ssl_verify_result:0}};}});
+ assert.equal(result.publication_requested,true);assert.equal(native.text.startsWith(`!ai-report revise ${rid} ${hash}`),true);
+ const state=setup();try{
+  await stageOnly(state);const original=state.db.prepare('SELECT * FROM slack_staged_bundles').get();
+  const slack=slackFor([native],async()=>raw);await new PublisherInbox(state,config).scan(slack,now);
+  state.admit({request_id:id,hash:digest(bytes),source_ts:ts,file_id:'FFIRST'},bytes);
+  for(const [index,phase] of ['merged','verified'].entries()){
+   state.db.prepare('UPDATE jobs SET phase=? WHERE id=?').run(phase,id);
+   assert((await advanceSubmission(state,config,slack,remote,now+index*100000)).code);
+   assert.equal(state.get(rid),null);assert.equal(submissionStatus(state.db,rid).pending.length,1);
+  }
+  state.db.prepare("UPDATE jobs SET phase='receipt_sent' WHERE id=?").run(id);
+  await advanceSubmission(state,config,slack,()=>assert.fail('revisions do not require an empty date'),now+200000);
+  assert.equal(state.get(rid).phase,'received');assert.equal(state.get(rid).detail.intake_transport,'slack_revision_file_v1');
+  assert.deepEqual(state.db.prepare('SELECT * FROM slack_staged_bundles').get(),original);
+  await advanceSubmission(state,config,slack,remote,now);assert.equal(state.db.prepare('SELECT count(*) AS n FROM jobs WHERE id=?').get(rid).n,1);
+  const allowed=acceptSubmission(native,{...config,research_control:{first_report_date:DAY}},now,{from:fence.activation_ts,to:submitTs});assert.equal(allowed.kind,'revision');
+  assert.throws(()=>acceptSubmission(message(`!ai-report revise ${id} ${hash}`,submitTs,'FREVISION'),config,now,{from:fence.activation_ts,to:submitTs}));
+ }finally{state.close();}
+});
 
 test('staging is opt-in, bound to original scope/fence, and disables local completion without erasing it',()=>{
  const state=setup();try{

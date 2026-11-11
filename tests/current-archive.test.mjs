@@ -62,7 +62,7 @@ test('metadata-only current revisions retain legacy absolute image references an
  source.set(article,body);report.articles[0].sha256=digest(body);report.images.push({path:image,sha256:digest(bytes),alt:'Retained figure'});
  source.set(legacy+image,bytes);source.set(legacy+'report.json',Buffer.from(json(report)));reindexArchive(source);
  const migrated=migrateArchive(source),incoming=new Map([...migrated].filter(([p])=>p.startsWith(dir)));
- const updated=JSON.parse(incoming.get(dir+'report.json'));updated.revision=2;updated.subtitle+=' metadata correction';incoming.set(dir+'report.json',Buffer.from(json(updated)));
+ const updated=JSON.parse(incoming.get(dir+'report.json'));Object.assign(updated,{schema_version:'1.1',revision:2,revision_notice:{kind:'maintenance',summary:'修复排版。'}});updated.subtitle+=' metadata correction';incoming.set(dir+'report.json',Buffer.from(json(updated)));
  const next=replaceCurrentReport(migrated,incoming),validated=validateChange(migrated,next);
  assert(next.get(dir+'articles/'+report.articles[0].id+'.md').equals(body));assert(next.get(dir+image).equals(bytes));
  assert.deepEqual(evidenceAssets(body.toString(),dir,next),[digest(bytes)]);
@@ -78,7 +78,7 @@ test('metadata-only current revisions retain legacy absolute image references an
 function correction({changed=false,newId=false}={}) {
  const dir='reports/2026-10-31/',target=dir+'r2/';
  const bundle=new Map([...current].filter(([p])=>p.startsWith(dir)).map(([p,b])=>[target+p.slice(dir.length),b]));
- const p=target+'report.json',r=JSON.parse(bundle.get(p));r.revision=2;
+ const p=target+'report.json',r=JSON.parse(bundle.get(p));Object.assign(r,{schema_version:'1.1',revision:2,revision_notice:{kind:'correction',summary:'更正实验条件。'}});
  if(changed){const file=target+'articles/kv-cache.md',b=Buffer.concat([bundle.get(file),Buffer.from('\nNew evidence.\n')]);bundle.set(file,b);r.articles[0].sha256=digest(b);r.entries[0].summary+=' New evidence.';}
  if(newId){r.entries[0].update_of=r.entries[0].id;r.entries[0].id+='-update';}
  bundle.set(p,Buffer.from(json(r)));return bundle;

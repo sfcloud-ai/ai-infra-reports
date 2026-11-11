@@ -70,7 +70,7 @@ export class PublisherInbox{
     catch(error){rejected.push({source_ts:message.ts,...safeDiagnostic(error,'research_command','not_started')});}
     continue;
    }
-   if(this.config.slack_submission&&/^!ai-report (?:stage|submit)(?:-v2)? /.test(message?.text??'')){
+   if(this.config.slack_submission&&/^!ai-report (?:(?:stage|submit)(?:-v2)?|revise) /.test(message?.text??'')){
     try{const event=acceptSubmission(message,this.config,now,{from:this.config.slack_submission.activation_ts,to:scan.upper_bound});if(event)submissions.push(event);}
     catch(error){rejected.push({source_ts:message.ts,...safeDiagnostic(error,'staging_command','not_started')});}
     continue;

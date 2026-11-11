@@ -52,7 +52,7 @@ export async function advanceScheduledDelivery(state,config,query=queryScheduled
   requireThat(job.detail.proof?.publication_status==='verified'&&job.detail.proof.bundle_sha256===job.hash&&job.detail.proof.commit===job.detail.commit,'Actual published source required before scheduling');
   const binding=JSON.stringify({request_id:id,report_date:bundle.report.date,report_commit:job.detail.commit,bundle_sha256:job.hash});
   let local=db.prepare('SELECT * FROM scheduled_handoffs WHERE request_id=?').get(id);
-  if(local){requireThat(local.binding===binding,'Scheduled original binding differs');if(local.phase==='complete')continue;}
+  if(local){requireThat(local.binding===binding,'Scheduled original binding differs');if(['complete','skipped','superseded'].includes(local.phase))continue;}
   else{db.prepare("INSERT INTO scheduled_handoffs VALUES (?,?,'new',NULL,0)").run(id,binding);local={phase:'new'};}
   // New reports first, then persistent round-robin. An old unknown job may
   // remain unresolved forever without starving later dates or disappearing.
@@ -66,12 +66,19 @@ export async function advanceScheduledDelivery(state,config,query=queryScheduled
     result=await query(c,{action:'admit',request_id:id,report_commit:job.detail.commit,bundle_base64:job.bytes.toString('base64')});
    }
    const expected=JSON.parse(binding);
-   requireThat(result&&Object.entries(expected).every(([k,v])=>result[k]===v)&&['queued','sending','sent','failed','unknown','partial'].includes(result.status)&&Number.isSafeInteger(result.parts_total)&&result.parts_total>0&&Number.isSafeInteger(result.parts_sent)&&result.parts_sent>=0&&result.parts_sent<=result.parts_total,'Relay status binding/counts differ');
+   const revised=!!bundle.report.revision_notice;
+   requireThat(result&&Object.entries(expected).every(([k,v])=>result[k]===v)&&['queued','sending','sent','failed','unknown','partial',...(revised?['skipped']:[])].includes(result.status)&&Number.isSafeInteger(result.parts_total)&&result.parts_total>=(revised?0:1)&&Number.isSafeInteger(result.parts_sent)&&result.parts_sent>=0&&result.parts_sent<=result.parts_total,'Relay status binding/counts differ');
+   if(revised)requireThat(result.report_revision===bundle.report.revision&&['initial','revision_update','web_only'].includes(result.delivery_kind),'Revision delivery policy binding differs');
    const images=statusImages(result.images);
-   const complete=result.status==='sent'&&result.phase==='complete'&&result.parts_sent===result.parts_total&&images.length===1&&images[0].file_id==='scheduled-poster'&&images[0].status==='sent'&&images[0].error===null;
+   const full=images.length===1&&images[0].file_id==='scheduled-poster'&&images[0].status==='sent'&&images[0].error===null;
+   const complete=result.status==='sent'&&result.phase==='complete'&&result.parts_sent===result.parts_total&&(revised&&result.delivery_kind==='revision_update'?result.parts_total===1&&images.length===0:(!revised||result.delivery_kind==='initial')&&full);
+   const skipped=revised&&result.delivery_kind==='web_only'&&result.phase==='skipped'&&result.status==='skipped'&&result.parts_total===0&&images.length===0;
+   requireThat(result.status!=='skipped'||skipped,'Website-only update is not a sent message');
    requireThat(result.status!=='sent'||complete,'Incomplete delivery cannot be sent');
-   db.prepare('UPDATE scheduled_handoffs SET phase=?,result=? WHERE request_id=?').run(complete?'complete':'observed',JSON.stringify(result),id);
-   return {request_id:id,phase:complete?'complete':'observed',wecom_status:complete?'sent':result.status,parts_sent:result.parts_sent,parts_total:result.parts_total};
+   if(result.phase==='superseded')requireThat(result.status!=='sent'&&result.parts_sent<result.parts_total&&/^morning-\d{8}-r(?:[2-9]|[1-9]\d+)$/.test(result.superseded_by??'')&&result.superseded_by.startsWith(`morning-${bundle.report.date.replaceAll('-','')}-r`),'Supersession requires a bound same-day successor');
+   const phase=complete?'complete':skipped?'skipped':result.phase==='superseded'?'superseded':'observed';
+   db.prepare('UPDATE scheduled_handoffs SET phase=?,result=? WHERE request_id=?').run(phase,JSON.stringify(result),id);
+   return {request_id:id,phase,wecom_status:complete?'sent':result.status,parts_sent:result.parts_sent,parts_total:result.parts_total};
   }catch(error){
    // Do not stop publication or reissue a send. Next tick queries original ID.
    const diagnostic=safeDiagnostic(error,'scheduled_delivery');
@@ -125,19 +132,23 @@ export async function replyScheduledStatus(state,config,event,slack,query=queryS
  if(['inspect','day'].includes(command.kind)){
   const result=command.kind==='day'?await inspectDay(state,config,command,event.source_ts,query):await producerInspection(state,config,command,event.source_ts,query);
   const text=(command.kind==='day'?DAY_PREFIX:INSPECT_PREFIX)+JSON.stringify(result);
-  requireThat(Buffer.byteLength(text)<=16384,'Bounded inspect receipt required');
+  requireThat(Buffer.byteLength(text)<=32768,'Bounded inspect receipt required');
   db.prepare("UPDATE scheduled_status_replies SET phase='ready',text=? WHERE source_ts=? AND phase='queued'").run(text,event.source_ts);
  }else{
 
  requireThat(command&&Object.keys(command).join()==='request_id'&&REQUEST.test(command.request_id??''),'Stored status command changed');
  const requestId=command.request_id;
  const remote=await query(config.scheduled_delivery,{action:'status',request_id:requestId});
- requireThat(remote&&['not_found','queued','sending','sent','failed','unknown','partial'].includes(remote.status),'Status unavailable');
+ requireThat(remote&&['not_found','queued','sending','sent','failed','unknown','partial','skipped'].includes(remote.status),'Status unavailable');
  if(remote.status!=='not_found')requireThat(remote.request_id===requestId,'Status request differs');
  const job=state.metadata(requestId);
  if(job?.detail.commit&&remote.status!=='not_found')requireThat(remote.report_commit===job.detail.commit&&remote.bundle_sha256===job.hash,'Status original binding differs');
- const fields=['status','phase','report_date','report_commit','bundle_sha256','parts_sent','parts_total','next_attempt_at','attempts'];
+ const fields=['status','phase','report_date','report_commit','bundle_sha256','parts_sent','parts_total','next_attempt_at','attempts','delivery_kind','report_revision'];
  const result=Object.fromEntries(fields.filter(k=>Object.hasOwn(remote,k)).map(k=>[k,remote[k]]));
+ if(remote.phase==='superseded'){
+  requireThat(typeof remote.report_date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(remote.report_date)&&new RegExp('^morning-'+remote.report_date.replaceAll('-','')+'-r(?:[2-9]|[1-9][0-9]+)$').test(remote.superseded_by??''),'Status successor binding differs');
+  result.superseded_by=remote.superseded_by;
+ }
  if(remote.last_error!=null)result.last_error=typeof remote.last_error==='string'&&/^[A-Za-z0-9_.:-]{1,80}$/.test(remote.last_error)?remote.last_error:'unspecified';
  if(remote.images!==undefined)result.images=statusImages(remote.images);
    const intake=intakeStatus(db,requestId);

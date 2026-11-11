@@ -48,6 +48,11 @@ export function installSubmission(db,config,reference){
 }
 export function acceptSubmission(message,config,now,window){
  if(!config.slack_submission)return null;
+ const revision=acceptDataCommand(message,config,'!ai-report revise ',/^!ai-report revise (morning-\d{8}-r(?:[2-9]|[1-9]\d+)) ([a-f0-9]{64})$/,now,window);
+ if(revision){
+  requireThat(canonicalRequestDate(revision.request_id)>=config.slack_submission.first_report_date&&revision.source_ts>=config.slack_submission.activation_ts,'Revision outside activation boundary');
+  return {...revision,kind:'revision',target_ts:null};
+ }
  let event=acceptPermitSubmission(message,config,now,window);
  if(!event){const stage=acceptDataCommand(message,config,'!ai-report stage ',/^!ai-report stage (morning-\d{8}-r1) ([a-f0-9]{64})$/,now,window);event=stage?{...stage,kind:'stage',target_ts:null}:null;}
  if(!event){
@@ -88,6 +93,33 @@ export async function advanceSubmission(state,config,slack,query=queryScheduled,
  try{
   const date=canonicalRequestDate(row.request_id);
   requireThat(!db.prepare('SELECT 1 FROM producer_quarantined_dates WHERE report_date=?').get(date),'Original unresolved date is quarantined');
+  if(row.kind==='revision'){
+   requireThat(!db.prepare("SELECT 1 FROM slack_submission_events WHERE request_id=? AND hash!=? AND phase!='fenced'").get(row.request_id,row.hash),'Conflicting original revision evidence requires reconciliation');
+   const message=await slack.exactPublish(row.source_ts),original=acceptSubmission(message,config,now,{from:config.slack_submission.activation_ts,to:row.source_ts});
+   requireThat(original&&['kind','request_id','hash','file_id','target_ts'].every(k=>(original[k]??null)===row[k]),'Original revision command changed');
+   const bytes=await slack.download(row),bundle=await decodeBundle(bytes);
+   requireThat(bundle.report.schema_version==='1.1'&&bundle.report.revision>1&&bundle.data.request_id===row.request_id&&bundle.hash===row.hash&&bundle.report.date===date,'Explicit revision bundle binding required');
+   db.exec('BEGIN IMMEDIATE');try{
+    assertSubmission(db,config);
+    const prior=state.metadata(row.request_id);
+    if(prior)requireThat(prior.hash===row.hash&&prior.source_ts===row.source_ts&&prior.detail.intake_file_id===row.file_id,'Original revision publication conflict');
+    else{
+     const pending=db.prepare("SELECT id,length(bytes) AS size FROM jobs WHERE phase!='receipt_sent' LIMIT 1001").all();
+     requireThat(pending.length<=1000,'Publisher pending capacity exceeded');
+     const read=db.prepare('SELECT bytes FROM jobs WHERE id=?');
+     for(const metadata of pending){
+      requireThat(Number.isSafeInteger(metadata.size)&&metadata.size>0&&metadata.size<=8*1024*1024,'Publisher original bundle too large');
+      const previous=read.get(metadata.id);
+      const originalBundle=await decodeBundle(Buffer.from(previous.bytes));
+      requireThat(originalBundle.report.date!==date,'Previous publication receipt must settle before revising this date');
+     }
+     const job=state.admit({request_id:row.request_id,hash:row.hash,source_ts:row.source_ts,file_id:row.file_id},bytes);
+     state.move(job.id,'received','received',{...job.detail,intake_transport:'slack_revision_file_v1'});
+    }
+    db.prepare("UPDATE slack_submission_events SET phase='done',diagnostic=NULL,next_at=0 WHERE source_ts=?").run(row.source_ts);db.exec('COMMIT');
+   }catch(error){db.exec('ROLLBACK');throw error;}
+   return;
+  }
   let stored=db.prepare('SELECT * FROM slack_staged_bundles WHERE request_id=?').get(row.request_id);
   permitSubmission(db,config,row,stored);
   requireThat(!db.prepare("SELECT 1 FROM slack_submission_events WHERE request_id=? AND hash!=? AND phase!='fenced'").get(row.request_id,row.hash),'Conflicting original staging evidence requires reconciliation');
