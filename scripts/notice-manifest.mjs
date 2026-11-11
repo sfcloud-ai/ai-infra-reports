@@ -1,4 +1,5 @@
 import {createHash} from "node:crypto";
+import {validateReportFields} from './revision-notice.mjs';
 
 export const NOTICE_ORIGIN = "https://sfcloud-ai.github.io/ai-infra-reports";
 export const NOTICE_TEXT_LIMIT = 1900;
@@ -38,8 +39,8 @@ export function createNoticeManifest(reportBytes, commit, {stableUrls=false}={})
  requireThat(typeof commit === "string" && (SHA.test(commit) || commit === "local-preview"),
   "Notification build commit");
  const r = JSON.parse(new TextDecoder("utf-8", {fatal:true}).decode(reportBytes));
- exact(r, ["schema_version","date","revision","title","subtitle","articles","entries","images","poster"], "Report");
- requireThat(r.schema_version === "1.0" && typeof r.date === "string" && /^\d{4}-\d\d-\d\d$/.test(r.date)
+ validateReportFields(r);
+ requireThat(typeof r.date === "string" && /^\d{4}-\d\d-\d\d$/.test(r.date)
   && !Number.isNaN(Date.parse(r.date + "T00:00:00Z"))
   && new Date(r.date + "T00:00:00Z").toISOString().slice(0,10) === r.date
   && Number.isSafeInteger(r.revision) && r.revision > 0, "Notification edition");

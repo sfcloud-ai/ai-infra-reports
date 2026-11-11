@@ -3,6 +3,7 @@ import {pathToFileURL} from "node:url";
 import {readReports,digest,REPOSITORY} from "./archive.mjs";
 import {validateRasters} from "./rasters.mjs";
 import {verifyPublication,verifyPublicationUnchanged} from "./verify-publication.mjs";
+import {validateReportFields} from './revision-notice.mjs';
 export const MAX_BUNDLE=8*1024*1024;
 export const SHA=/^[a-f0-9]{40}$/;
 const HASH=/^[a-f0-9]{64}$/;
@@ -42,11 +43,12 @@ export async function decodeBundle(bytes){
  const dir=[...dirs][0],meta=files.get(dir+"report.json");
  requireThat(meta&&meta.length<128*1024,"Report metadata missing/large");
  const report=JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(meta));
- exact(report,["schema_version","date","revision","title","subtitle","articles","entries","images","poster"]);
+ validateReportFields(report);
  const requestDate=canonicalRequestDate(data.request_id);
+ requireThat(!report.revision_notice||requestDate===report.date,'Canonical revision request required');
  requireThat(!requestDate||requestDate===report.date&&data.request_id.endsWith('-r'+report.revision),'Canonical request edition differs from bundle');
  requireThat(reportDate(report.date),'Report date invalid');
- requireThat(report.schema_version==="1.0"&&Number.isSafeInteger(report.revision)&&report.revision>0&&(dir===`reports/${report.date}/r${report.revision}/`||dir===`reports/${report.date}/`),"Edition identity");
+ requireThat(Number.isSafeInteger(report.revision)&&report.revision>0&&(dir===`reports/${report.date}/r${report.revision}/`||dir===`reports/${report.date}/`),"Edition identity");
  requireThat(Array.isArray(report.articles)&&report.articles.length>0&&report.articles.length<=30&&Array.isArray(report.images)&&report.images.length<=20,"Edition collections");
  const used=new Set([dir+"report.json"]);
  for(const a of report.articles){

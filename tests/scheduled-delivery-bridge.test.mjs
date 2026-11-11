@@ -13,6 +13,16 @@ const config={team_id:'T123',channel_id:'C123',sender_user_id:'U123',bot_user_id
 const state=()=>{const s=new HandoffState(':memory:',handoffScope(config));s.admit({request_id:id,hash,source_ts:'1793491200.000001'},bytes);s.move(id,'received','receipt_unknown',{commit:MERGE,proof:{publication_status:'verified',commit:MERGE,bundle_sha256:hash}});return s;};
 const queued={request_id:id,report_date:'2026-11-01',report_commit:MERGE,bundle_sha256:hash,status:'queued',phase:'pending',parts_total:2,parts_sent:0};
 
+test('status receipt preserves the bound successor so reconciliation can follow it',async()=>{
+ const s=state();let reply;
+ try{
+  await replyScheduledStatus(s,config,{request_id:id,source_ts:'1793491202.000001',hash:'query-hash'},
+   {controlReceipt:async(_ts,text)=>{reply=JSON.parse(text.slice('!ai-report status-receipt '.length));return '1793491203.000001';}},
+   async()=>({...queued,phase:'superseded',superseded_by:'morning-20261101-r2'}));
+  assert.equal(reply.superseded_by,'morning-20261101-r2');assert.equal(reply.phase,'superseded');
+ }finally{s.close();}
+});
+
 test('status cooldown creates no uncertain send and the same command resumes at its deadline',async()=>{
  const s=state(),event={request_id:id,source_ts:'1793491202.000001',hash:'query-hash'};let clock=1000,posts=0;
  const slack=new SlackHandoff(config,'synthetic',()=>assert.fail('fixture only'),{now:()=>clock,cooldowns:{deadline:()=>5000}});

@@ -42,6 +42,12 @@ test('same date cannot be re-keyed, rewritten or revised',()=>fixture(async s=>{
  const changed=new Map([...FILES].map(([p,b])=>[p.replace('/r1/','/r2/'),p.endsWith('report.json')?Buffer.from(JSON.stringify({...JSON.parse(b),revision:2})):b]));
  await assert.rejects(s.prepare(await encodeBundle(changed,'revision-replacement',BASE,PROMPTS.commit)),/Date already reserved/);
 }));
+test('original recovery accepts declared revision siblings without resetting its source or send identity',()=>fixture(async s=>{
+ const evidence=ledger(TARGET,true,true);
+ evidence.publisher_day.push({request_id:'morning-20261101-r2',report_date:DAY,bundle_sha256:'c'.repeat(64)});
+ s.observeDownstream(ID,evidence);s.observeSource(ID,source());s.observeDownstream(ID,evidence);assert.equal(s.next(ID).type,'done');assert.equal(s.op(ID,'ticket'),null);
+ evidence.publisher_day[1].report_date='2026-11-02';assert.throws(()=>s.observeDownstream(ID,evidence));
+}));
 test('lost ticket response never obtains another file',()=>fixture(async s=>{
  s.observeDownstream(ID,ledger());const a=s.next(ID);assert.equal(s.next(ID).next_action,'reconcile_original_operation');assert.equal(s.op(ID,'ticket').attempt,1);
  assert.throws(()=>s.record(a,{file_id:'FOTHER'}));assert.equal(s.op(ID,'ticket').phase,'unknown');

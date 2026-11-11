@@ -1,7 +1,7 @@
 // Hash-free, read-only discovery before research. This is a snapshot, never a
 // reservation, an upload permit, or proof that a cloud write did not execute.
 import {assertFence,isFencedOut} from './producer-admission-fence.mjs';
-import {decodeBundle,requireThat,reportDate,canonicalRequestDate,MAX_BUNDLE} from './report-handoff.mjs';
+import {decodeBundle,requireThat,reportDate,canonicalRequestDate,MAX_BUNDLE,REQUEST} from './report-handoff.mjs';
 import {scopeDigest,handoffScope} from './handoff-state.mjs';
 const HASH=/^[a-f0-9]{64}$/,SHA=/^[a-f0-9]{40}$/,TS=/^\d{10}\.\d{6}$/;
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
@@ -56,7 +56,7 @@ export async function inspectDay(state,config,command,sourceTs,query,now=Date.no
  requireThat((claim===null)===(status===null),'Scheduler day claim differs');
  let scheduler=null;
  if(status!==null){
-  requireThat(claim&&Object.keys(claim).sort().join()==='bundle_sha256,report_commit,report_date,request_id'&&claim.request_id===command.request_id&&claim.report_date===day&&HASH.test(claim.bundle_sha256)&&SHA.test(claim.report_commit)&&Object.entries(claim).every(([k,v])=>status[k]===v),'Scheduler original day binding differs');
+  requireThat(claim&&Object.keys(claim).sort().join()==='bundle_sha256,report_commit,report_date,request_id'&&REQUEST.test(claim.request_id??'')&&claim.report_date===day&&HASH.test(claim.bundle_sha256)&&SHA.test(claim.report_commit)&&Object.entries(claim).every(([k,v])=>status[k]===v),'Scheduler original day binding differs');
   requireThat(['queued','sending','sent','failed','unknown','partial'].includes(status.status)&&typeof status.phase==='string'&&/^[a-z_]{1,40}$/.test(status.phase)&&Number.isSafeInteger(status.parts_total)&&status.parts_total>0&&Number.isSafeInteger(status.parts_sent)&&status.parts_sent>=0&&status.parts_sent<=status.parts_total,'Scheduler original day status invalid');
   scheduler={...claim,status:status.status,phase:status.phase,parts_sent:status.parts_sent,parts_total:status.parts_total};
   requireThat(local.publisher_day.some(p=>p.request_id===claim.request_id&&p.bundle_sha256===claim.bundle_sha256&&p.report_commit===claim.report_commit),'Scheduler and Publisher original day differ');

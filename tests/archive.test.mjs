@@ -18,7 +18,7 @@ test("MDX/frontmatter cannot become executable content",()=>{const f=copy(),p="r
 function revision(files,{newId=false,changed=false,update=null}={}){
  const oldDir="reports/2026-10-31/r1/",dir="reports/2026-10-31/r2/";
  for(const [p,b]of [...files])if(p.startsWith(oldDir))files.set(p.replace(oldDir,dir),Buffer.from(b));
- const meta=dir+"report.json",r=JSON.parse(files.get(meta));r.revision=2;
+ const meta=dir+"report.json",r=JSON.parse(files.get(meta));Object.assign(r,{schema_version:'1.1',revision:2,revision_notice:{kind:'correction',summary:'更正实验条件。'}});
  if(changed){const p=dir+"articles/kv-cache.md",b=Buffer.concat([files.get(p),Buffer.from("\n更新的实验条件。\n")]);files.set(p,b);r.articles[0].sha256=digest(b);r.entries[0].summary+=" 新证据。";}
  if(newId)r.entries[0].id+="-update";
  r.entries[0].update_of=update;files.set(meta,Buffer.from(json(r)));return files;

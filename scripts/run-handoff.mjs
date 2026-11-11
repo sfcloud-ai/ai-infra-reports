@@ -21,6 +21,7 @@ import {validateCheckerConfig,runNoticeChecker} from "./notice-checker.mjs";
 import {safeDiagnostic,recordHandoffFailure,attemptDetail,localSlackNotStarted} from "./handoff-recovery.mjs";
 import {PublisherInbox,validateIntakeConfig} from './publisher-inbox.mjs';
 import {withHandoffLock} from "./handoff-lock.mjs";
+export const REVISION_NOTICES_VERSION=1;
 export async function privateDirectory(dir){
  requireThat(path.isAbsolute(dir)&&await realpath(dir)===path.resolve(dir),"Private directory must be absolute and not symlinked");
  const s=await lstat(dir);requireThat(s.isDirectory()&&s.uid===process.getuid()&&(s.mode&0o077)===0,"Private directory must be owner-only");
@@ -101,7 +102,7 @@ export async function handoffTick(state,config,slack,io){
    }
    // Ignore other protocols; invalid matching commands fail closed without writes.
    if(inbox&&message?.text?.startsWith('!ai-report publish '))continue;
-   if(inbox&&config.slack_submission&&/^!ai-report (?:stage|submit)(?:-v2)? /.test(message?.text??''))continue;
+   if(inbox&&config.slack_submission&&/^!ai-report (?:(?:stage|submit)(?:-v2)?|revise) /.test(message?.text??''))continue;
    const event=acceptMessage(message,config);if(!event)continue;
    const prior=state.get(event.request_id);
    if(prior){requireThat(prior.hash===event.hash&&prior.source_ts===event.source_ts,"Duplicate request conflict");continue;}

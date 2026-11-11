@@ -9,7 +9,7 @@ import {requireThat} from "./report-handoff.mjs";
 import {recoverySchemaObjects} from "./notice-recovery.mjs";
 import {remoteJournalSchemaObjects} from "./remote-native-journal.mjs";
 import {successorSchemaObjects} from './recovery-control-successor.mjs';
-import {SCHEDULED_SCHEMA,scheduledSchemaObjects} from './scheduled-delivery-state.mjs';
+import {SCHEDULED_SCHEMA,scheduledSchemaObjects,requireSettledScheduled} from './scheduled-delivery-state.mjs';
 import {validateConfig,privateFile,privateDirectory} from "./run-handoff.mjs";
 import {intakeSchemaObjects} from './publisher-intake-state.mjs';
 const known=new Set(["publisher_intake_scan","publisher_inbox","scope","jobs","notice_scope","notices","notice_commands","ready_migrations","notice_recovery_authorizations","remote_native_runs","remote_native_ops","recovery_control_successors",...Object.keys(SCHEDULED_SCHEMA)]);
@@ -25,7 +25,8 @@ function inspect(db){
   requireThat(db.prepare("SELECT count(*) AS n FROM publisher_inbox WHERE phase!='admitted'").get().n===0,'Unresolved durable inbox prevents migration');
   requireThat(db.prepare('SELECT count(*) AS n FROM publisher_intake_scan WHERE upper_bound IS NOT NULL OR page_cursor IS NOT NULL').get().n===0,'Unfinished durable scan prevents migration');
  }
- for(const [name,phase] of [['scheduled_handoffs','complete'],['scheduled_status_replies','sent']]){
+ if(tables.some(t=>t.name==='scheduled_handoffs'))requireSettledScheduled(db);
+ for(const [name,phase] of [['scheduled_status_replies','sent']]){
   if(tables.some(t=>t.name===name))requireThat(db.prepare(`SELECT count(*) AS n FROM ${name} WHERE phase!=?`).get(phase).n===0,'Unresolved scheduled delivery prevents migration');
  }
  requireThat(db.prepare("SELECT count(*) AS n FROM jobs WHERE phase!='receipt_sent'").get().n===0,"Pending report state prevents migration");

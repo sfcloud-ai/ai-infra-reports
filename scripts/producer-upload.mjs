@@ -246,9 +246,13 @@ export class ProducerUploadState{
   exact(e.read_context,['publisher_scope_sha256','scheduler_scope_sha256']);
   requireThat(e.complete===true&&e.read_context.publisher_scope_sha256===this.scope.publisher_scope_sha256&&e.read_context.scheduler_scope_sha256===this.scope.scheduler_scope_sha256,'Authenticated complete original scopes required');
   requireThat(Number.isSafeInteger(e.observed_at)&&e.observed_at<=now&&now-e.observed_at<READ_TTL_MS,'Fresh read evidence required');
-  requireThat(Array.isArray(e.publisher_day)&&e.publisher_day.length<=1,'Ambiguous Publisher date ownership');
+  requireThat(Array.isArray(e.publisher_day)&&e.publisher_day.length<=101&&new Set(e.publisher_day.map(r=>r.request_id)).size===e.publisher_day.length,'Ambiguous Publisher date ownership');
   const binding=v=>requireThat(v?.request_id===j.id&&v.bundle_sha256===j.hash&&v.report_date===j.date,'Original request/date/hash mismatch');
-  for(const row of e.publisher_day)binding(row);
+  for(const row of e.publisher_day){
+   if(row.request_id===j.id)binding(row);
+   else requireThat(row.report_date===j.date&&matches(HASH,row.bundle_sha256)&&new RegExp('^morning-'+j.date.replaceAll('-','')+'-r(?:[2-9]|[1-9][0-9]+)$').test(row.request_id),'Unbound Publisher revision');
+  }
+  requireThat(!e.publisher_day.length||e.publisher_day.some(row=>row.request_id===j.id&&row.bundle_sha256===j.hash),'Original Publisher request missing');
   requireThat((e.publisher===null)===(e.publisher_day.length===0),'Incomplete Publisher date scan');
   requireThat(!j.detail.existing||e.publisher,'Previously observed Publisher intake cannot disappear');
   requireThat(!j.detail.delivery||e.scheduler,'Previously observed scheduler request cannot disappear');

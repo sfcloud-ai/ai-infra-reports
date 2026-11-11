@@ -40,13 +40,13 @@ export async function inspectPublisherDay(state,config,command,sourceTs,{now=()=
    const detail=JSON.parse(original.detail);
    if(row.id===command.request_id)requireThat(bundle.report.date===command.report_date&&row.hash===command.bundle_sha256,'Publisher request conflicts with query');
    if(bundle.report.date!==command.report_date)continue;
-   requireThat(row.id===command.request_id&&row.hash===command.bundle_sha256,'Publisher day occupied');
+   requireThat(row.id===command.request_id&&row.hash===command.bundle_sha256||bundle.report.revision_notice&&canonicalRequestDate(row.id)===command.report_date,'Publisher day occupied');
    requireThat(detail.commit===undefined||SHA.test(detail.commit),'Publisher commit invalid');
    requireThat(detail.intake_file_id===undefined||/^F[A-Z0-9]+$/.test(detail.intake_file_id),'Publisher file identity invalid');
    day.push({request_id:row.id,report_date:bundle.report.date,bundle_sha256:row.hash});
-   target={...day.at(-1),source_ts:row.source_ts,report_commit:detail.commit??null,file_id:detail.intake_file_id??null};
+   if(row.id===command.request_id)target={...day.at(-1),source_ts:row.source_ts,report_commit:detail.commit??null,file_id:detail.intake_file_id??null};
   }
-  budget();requireThat(day.length<=1,'Publisher date ambiguous');
+  budget();requireThat(day.length<=101&&(!day.length||target),'Publisher date ambiguous');
   if(!target){
    // Absence is stronger than request-ID not_found. Relevant messages must be
    // scanned; unresolved envelopes cannot be silently omitted.

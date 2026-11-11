@@ -15,3 +15,28 @@ export function scheduledSchemaObjects(db){
  requireThat(names.has('scheduled_handoffs')===names.has('scheduled_bridge_scope'),'Incomplete scheduled delivery schema');
  return objects;
 }
+
+export function requireSettledScheduled(db){
+ const rows=new Map(db.prepare('SELECT request_id,binding,phase,result FROM scheduled_handoffs').all().map(r=>[r.request_id,r]));
+ const bound=id=>{
+  const row=rows.get(id);requireThat(row,'Scheduled successor missing');
+  const binding=JSON.parse(row.binding),result=JSON.parse(row.result);
+  requireThat(Object.keys(binding).sort().join()==='bundle_sha256,report_commit,report_date,request_id'&&binding.request_id===id&&Object.entries(binding).every(([k,v])=>result?.[k]===v),'Scheduled terminal binding differs');
+  return {row,binding,result};
+ };
+ for(const original of rows.values()){
+  if(original.phase==='complete')continue; // 已有 legacy complete 原样保留。
+  requireThat(['skipped','superseded'].includes(original.phase),'Unresolved scheduled delivery prevents migration');
+  let id=original.request_id,current=bound(id);const seen=new Set();
+  while(current.row.phase==='superseded'){
+   requireThat(!seen.has(id)&&seen.size<=100,'Scheduled successor cycle');seen.add(id);
+   const {binding,result}=current,next=result.superseded_by;
+   requireThat(result.phase==='superseded'&&result.status!=='sent'&&typeof next==='string'&&new RegExp('^morning-'+binding.report_date.replaceAll('-','')+'-r(?:[2-9]|[1-9][0-9]+)$').test(next),'Scheduled successor differs');
+   current=bound(next);requireThat(current.binding.report_date===binding.report_date,'Scheduled successor date differs');id=next;
+  }
+  const {row,result}=current;
+  const complete=row.phase==='complete'&&result.phase==='complete'&&result.status==='sent'&&Number.isSafeInteger(result.parts_sent)&&result.parts_sent>0&&result.parts_sent===result.parts_total;
+  const skipped=row.phase==='skipped'&&result.phase==='skipped'&&result.status==='skipped'&&result.delivery_kind==='web_only'&&Number.isSafeInteger(result.report_revision)&&result.report_revision>1&&result.parts_total===0&&result.parts_sent===0&&Array.isArray(result.images??[])&&(result.images??[]).length===0;
+  requireThat(complete||skipped,'Unresolved scheduled delivery prevents migration');
+ }
+}
