@@ -9,7 +9,8 @@ export class SlackHandoff{
   const deadline=this.cooldowns?.deadline(method)??0;
   if(deadline>this.now())throw localSlackCooldown(operationError('Slack method cooldown',{stage:'slack.'+method,code:'rate_limited',outcome:'not_started',retryable:true,retry_at:deadline}));
  }
- async call(method,params={},write=false){
+ async call(method,params={},write=false,responseLimit=1024*1024){
+  requireThat(Number.isSafeInteger(responseLimit)&&responseLimit>0&&responseLimit<=33*1024*1024&&(responseLimit===1024*1024||method==='files.info'&&!write),'Bounded Slack metadata response required');
   const url=new URL("https://slack.com/api/"+method);
   if(!write)for(const [k,v]of Object.entries(params))url.searchParams.set(k,String(v));
   const failure=(code,outcome,retryable,http_status,retry_at)=>operationError('Slack operation failed; reconcile writes before retrying',{stage:'slack.'+method,code,outcome,retryable,http_status,retry_at});
@@ -24,7 +25,7 @@ export class SlackHandoff{
   }
   // No inline write retry. The durable worker decides whether reconciliation
   // or a bounded retry is safe; only allowlisted error identifiers are logged.
-  const data=JSON.parse((await boundedBytes(response,1024*1024)).toString("utf8"));
+  const data=JSON.parse((await boundedBytes(response,responseLimit)).toString("utf8"));
   if(data.ok!==true){const codes=['ratelimited','invalid_auth','token_revoked','missing_scope','not_authed','account_inactive','channel_not_found','not_in_channel','is_archived','invalid_cursor'];const code=codes.includes(data.error)?data.error:'api_error';const error=failure(code,write&&code==='api_error'?'unknown':'not_started',code==='ratelimited'||!write&&code==='invalid_cursor',undefined,code==='ratelimited'?await limited():undefined);throw write&&code!=='api_error'&&code!=='invalid_cursor'?confirmedSlackRejection(error):error;}
   return {data,scopes:response.headers.get("x-oauth-scopes")};
  }
@@ -64,7 +65,10 @@ export class SlackHandoff{
   return data.messages[0];
  }
  async download(event,{name="ai-brief-bundle.json",limit=MAX_BUNDLE}={}){
-  const {data:{file:f}}=await this.call("files.info",{file:event.file_id});
+  requireThat(Number.isSafeInteger(limit)&&limit>0&&limit<=16*1024*1024,'Bounded Slack file size required');
+  // Native snippet metadata can embed multiple representations of its content.
+  // Bound that envelope separately; the original file retains its own limit.
+  const {data:{file:f}}=await this.call("files.info",{file:event.file_id},false,2*limit+1024*1024);
   const userApp=this.config.sender_user_app_id!==undefined;
   requireThat(f?.id===event.file_id&&f.user===this.config.sender_user_id&&f.name===name&&(f.mode==="hosted"||(userApp&&f.mode==="snippet"))&&(!userApp||f.user_team===this.config.team_id)&&!f.is_external&&Number.isSafeInteger(f.size)&&f.size>0&&f.size<=limit,"Unexpected Slack file metadata");
   requireThat(f.shares?.private?.[this.config.channel_id]?.some(s=>s.ts===event.source_ts),"File is not shared in the command message");
