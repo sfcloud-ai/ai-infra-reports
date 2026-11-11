@@ -8,15 +8,20 @@ import {pathToFileURL} from 'node:url';
 import {decodeBundle,requireThat} from './report-handoff.mjs';
 import {digest} from './archive.mjs';
 import {producerTicket,PRODUCER_TOOLS} from './producer-upload.mjs';
-import {producerCurlEnvironment,uploadProducerBytes} from './producer-upload-adapters.mjs';
+import {producerCurlEnvironment,uploadProducerBytes,uploadResearchArchiveBytes} from './producer-upload-adapters.mjs';
+import {decodeResearchArchive} from './research-archive.mjs';
 
-export async function stageFile(bytes,channel,callTool,{upload=uploadProducerBytes,probe=false,observe=()=>{}}={}){
+export async function stageFile(bytes,channel,callTool,{upload,probe=false,research=false,observe=()=>{}}={}){
  requireThat(/^C[A-Z0-9]+$/.test(channel),'Pinned private channel required');
+ requireThat(!(probe&&research),'Single staging format required');
+ upload??=research?uploadResearchArchiveBytes:uploadProducerBytes;
  let id,name,comment;
  if(probe){
   requireThat(bytes.length<=4096,'Probe size bound');const data=JSON.parse(bytes);
   requireThat(Object.keys(data).sort().join()==='nonce,payload,schema_version'&&data.schema_version==='slack_staging_probe_v1'&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(data.nonce)&&data.payload==='transport validation; no report publication','Exact inert probe required');
   id=data.nonce;name='ai-brief-transport-probe.json';comment=`!ai-transport-probe ${id} ${digest(bytes)}`;
+ }else if(research){
+  const archive=decodeResearchArchive(bytes);id=archive.value.request_id;name='ai-brief-research-archive.json';comment=`!ai-research save ${id} ${archive.hash}`;
  }else{
   const bundle=await decodeBundle(bytes);requireThat(bundle.data.request_id===`morning-${bundle.report.date.replaceAll('-','')}-r1`,'Daily revision-one staging required');
   id=bundle.data.request_id;name='ai-brief-bundle.json';comment=`!ai-report stage ${id} ${bundle.hash}`;
@@ -34,7 +39,7 @@ export async function stagingMain(args){
  let lines;
  const emit=v=>process.stdout.write(JSON.stringify(v)+'\n');
  try{
-  const [filename,channel,mode,...extra]=args;requireThat(isAbsolute(filename??'')&&['--managed-proxy','--probe-managed-proxy'].includes(mode)&&extra.length===0,'Usage: absolute bundle, pinned channel, --managed-proxy');
+  const [filename,channel,mode,...extra]=args;requireThat(isAbsolute(filename??'')&&['--managed-proxy','--probe-managed-proxy','--research-managed-proxy'].includes(mode)&&extra.length===0,'Usage: absolute bundle, pinned channel, managed proxy mode');
   producerCurlEnvironment('managed_proxy');process.umask(0o077);
   const bytes=await readFile(filename);lines=createInterface({input:process.stdin,crlfDelay:Infinity});const iterator=lines[Symbol.asyncIterator]();
   const callTool=async(tool,args)=>{
@@ -43,7 +48,7 @@ export async function stagingMain(args){
    const value=JSON.parse(reply.value);requireThat(Object.keys(value).sort().join()==='operation_id,result,type'&&value.type==='native_result'&&value.operation_id===operation_id,'Original one-shot native result required');
    requireThat(value.result&&!value.result.isError,'Native staging failed; reconcile original file');return value.result;
   };
-  emit(await stageFile(bytes,channel,callTool,{probe:mode==='--probe-managed-proxy',observe:emit}));return 0;
+  emit(await stageFile(bytes,channel,callTool,{probe:mode==='--probe-managed-proxy',research:mode==='--research-managed-proxy',observe:emit}));return 0;
  }catch{emit({type:'staging_unconfirmed',publication_allowed:false,next_action:'read_original_file_and_stage; do not replay this attempt'});return 1;}
  finally{lines?.close();process.stdin.pause();}
 }

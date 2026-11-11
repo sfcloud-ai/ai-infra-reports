@@ -1,0 +1,111 @@
+# Private research checkpoints on the Publisher host
+
+This optional lane persists research inputs and outputs before report staging.
+It does not publish, deliver, assign a researcher, or reset a budget. Date
+ownership and research-operation admission remain a separate activation step.
+Use the existing authenticated native sender and private control channel.
+
+Install reviewed code and the matching CD controller first. Under the original
+exclusive Publisher lock, preserve the original database and configuration,
+then add `research_archive` with a new UUID `generation`, exact `activation_ts`,
+and `first_report_date`. Call `installResearchArchive(db, config, evidenceRef)`
+once. Record the migration privately. Runtime validates this original policy and
+never creates a replacement. Original staging and delivery bindings are retained.
+
+A checkpoint is UTF-8 JSON with exactly these fields:
+
+```json
+{
+  "schema_version": "research_archive_v1",
+  "command_id": "11111111-1111-4111-8111-111111111111",
+  "request_id": "morning-20261111-r1",
+  "report_date": "2026-11-11",
+  "previous_sha256": null,
+  "files": [
+    {"path": "audit/plan.json", "sha256": "EXACT_FILE_SHA256", "content_base64": "EXACT_ORIGINAL_BYTES"}
+  ]
+}
+```
+
+The example's hash and bytes are placeholders. Generate them from original
+private files, retaining whitespace and newlines. Include the original plan,
+fixed prompt/index inputs, source bytes, consumption checkpoints, audit/editor
+outputs, images and final bundle as they become available. Credentials and signed
+upload URLs remain in their existing credential stores and immediate transport.
+Each checkpoint contains up to 128 changed files, each at most 8 MiB, totalling
+at most 12 MiB decoded and 16 MiB encoded. Larger collections use successive
+checkpoints. New checkpoints name the previous checkpoint's exact SHA256; a
+stale predecessor cannot overwrite the selected head. No file is deleted.
+Wait for the host's `stored` confirmation before creating its successor. A
+temporarily unavailable parent remains pending with `archive_parent_unavailable`;
+an already superseded parent produces a terminal predecessor conflict.
+
+Upload through the existing one-shot bridge:
+
+```text
+umask 077
+stty -echo -echonl -icanon min 1 time 0
+node scripts/slack-stage-cli.mjs /private/original-checkpoint.json CHANNEL --research-managed-proxy
+```
+
+Use a persistent PTY with terminal echo disabled before providing native results,
+or a private non-echoing stdin pipe. A signed upload URL must never appear in a
+terminal transcript, journal, checkpoint, or command argument.
+
+The original native tool result is passed to that same session exactly as for
+report staging. Its completion comment is `!ai-research save REQUEST_ID HASH`.
+The host downloads the authenticated original file, validates every file hash,
+and commits the original archive bytes, manifest, chain head and command result
+in one SQLite transaction before acknowledging `stored`. Upload completion
+alone is not a host persistence receipt. This lane creates no report job.
+
+After an uncertain save, read the existing original file and command; query the
+host result using a new read command instead of uploading a replacement:
+
+```text
+!ai-research read REQUEST_ID QUERY_UUID receipt ARCHIVE_SHA256 0
+!ai-research read REQUEST_ID QUERY_UUID head head 0
+!ai-research read REQUEST_ID QUERY_UUID manifest ARCHIVE_SHA256 0
+!ai-research read REQUEST_ID QUERY_UUID file FILE_SHA256 0
+```
+
+Every query uses a fresh UUID. Verify the Publisher user/bot, original request
+thread, `source_ts`, query UUID, request/date and returned hash. The receipt query
+reads committed host state even if an earlier Slack acknowledgement is unknown.
+Unknown acknowledgements are not resent and cannot block later read queries.
+Confirmed malformed data, reused command IDs and predecessor conflicts produce
+a durable `rejected` result, without repeated downloads. A predecessor conflict
+includes `expected_head`: read and reconcile that head before forming a new
+checkpoint with a new command ID. This is a rejected new checkpoint, not an
+unknown upload or permission to overwrite the old checkpoint.
+Manifest pages contain up to 32 files. Follow `next_offset`.
+`archive_source_ts` identifies the original save, while the outer `source_ts`
+always identifies the current query thread. Follow
+`previous_sha256` for earlier checkpoints. The first occurrence of a path while
+walking backwards is its current version. File queries are scoped to that
+request and return 8192-byte chunks, original total size, offset, chunk hash and
+next offset. Validate each chunk and the complete original SHA256 before use.
+No host path or command can be requested through this interface.
+Missing files/checkpoints return a terminal `not_found` observation; invalid
+offsets return `rejected`. A corrected or later observation uses a new query.
+Neither result is retried indefinitely or marks unrelated publication unhealthy.
+
+A fresh cloud execution first reads the head and small plan/checkpoint files.
+Fetch individual missing files as needed; do not copy an entire audit on every
+hourly run. Large final audits and packaging should run on the host holding the
+original files. This small-message fallback remains available if old Slack
+uploads are removed; original bytes are in the host SQLite database, not just
+referenced by a Slack file ID. Archive storage is bounded to 256 checkpoints per
+date and 2 GiB total; capacity exhaustion is reported without deleting history.
+The command journal accepts up to 100,000 events. At that limit, new research
+commands are refused with `research_command_capacity` in intake diagnostics;
+the shared scan still commits report commands and advances its watermark.
+No refused command is a persistence acknowledgement. Operators must expand the
+reviewed capacity before continuing research; existing history is retained.
+An authenticated file with permanently invalid metadata receives a durable
+`invalid_file_metadata` rejection. Transport failures retain bounded backoff.
+
+In a missing-history migration, preserve the incident evidence and original
+authorization separately. Unknown historical consumption stays unknown. A new
+checkpoint records new observed facts; it never reconstructs an old installation
+identity or proves that a missing prior operation did not occur.

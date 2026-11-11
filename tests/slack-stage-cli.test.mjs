@@ -25,3 +25,10 @@ test('inert probe cannot emit stage or submit commands and requires an exact tin
  await stageFile(probe,'C123',async(tool,args)=>{if(tool===PRODUCER_TOOLS.ticket){assert.equal(args.filename,'ai-brief-transport-probe.json');return ticket;}comment=args.initial_comment;return {};},{probe:true,upload:async()=>({...confirmed,bundle_sha256:digest(probe),metrics:{...confirmed.metrics,upload_bytes:probe.length}})});
  assert.match(comment,/^!ai-transport-probe /);await assert.rejects(stageFile(bytes,'C123',()=>assert.fail(),{probe:true}));
 });
+test('private research upload uses its own file and command domain with the same one-shot transport',async()=>{
+ const data=Buffer.from('original private source\r\n'),archive=Buffer.from(JSON.stringify({schema_version:'research_archive_v1',command_id:'11111111-1111-4111-8111-111111111111',request_id:'morning-20261101-r1',report_date:'2026-11-01',previous_sha256:null,files:[{path:'audit/source.txt',sha256:digest(data),content_base64:data.toString('base64')}]}));
+ const calls=[];
+ const result=await stageFile(archive,'C123',async(tool,args)=>{calls.push({tool,args});return tool===PRODUCER_TOOLS.ticket?ticket:{};},{research:true,upload:async({bytes:actual})=>{assert.deepEqual(actual,archive);return {...confirmed,bundle_sha256:digest(archive),metrics:{...confirmed.metrics,upload_bytes:archive.length}};}});
+ assert.equal(calls.length,2);assert.equal(calls[0].args.filename,'ai-brief-research-archive.json');assert.equal(calls[1].args.initial_comment,`!ai-research save morning-20261101-r1 ${digest(archive)}`);assert.equal(result.publication_allowed,false);
+ await assert.rejects(stageFile(archive,'C123',()=>assert.fail('no write on conflicting modes'),{research:true,probe:true}));
+});
