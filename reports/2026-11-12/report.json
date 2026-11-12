@@ -1,0 +1,64 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-11-12",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-11-12",
+  "subtitle": "部分晨报｜覆盖缺口：vLLM 代码、SGLang 代码、DeepInfer 代码、vLLM 博客、SGLang 博客、DeepSeek 文章、DeepInfer 文章。抽样。",
+  "articles": [
+    {
+      "id": "vllm-kv-startup",
+      "title": "vLLM：CUDA Graph 捕获前释放热身 KV",
+      "summary": "启动显存生命周期修复，以及更准确的 KV 配额告警。",
+      "sha256": "8ef869287e1f8f23c1fa9515f32079707b3df6995b80d5ef1448d766ad1aaa9e"
+    },
+    {
+      "id": "inference-engines",
+      "title": "推理引擎每日变动：保留真实 CUDA 错误",
+      "summary": "SGLang 主机内存注册诊断修复，并明确本期覆盖缺口。",
+      "sha256": "304013c8518fd16b5894f8a97b767b3acf0c2d188a66e0844c840766b0b2e009"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-11-12-vllm-pr-66523",
+      "event_key": "vllm-pr-66523",
+      "title": "vLLM 在 CUDA Graph 捕获前释放热身 KV 块",
+      "summary": "vLLM 在 CUDA Graph 捕获前释放热身 KV 块",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/66523"
+      ],
+      "update_of": null,
+      "article_id": "vllm-kv-startup"
+    },
+    {
+      "id": "2026-11-12-vllm-pr-66704",
+      "event_key": "vllm-pr-66704",
+      "title": "vLLM 增加 extensible KV 显存配额告警",
+      "summary": "vLLM 增加 extensible KV 显存配额告警",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/66704"
+      ],
+      "update_of": null,
+      "article_id": "vllm-kv-startup"
+    },
+    {
+      "id": "2026-11-12-sglang-pr-48272",
+      "event_key": "sglang-pr-48272",
+      "title": "SGLang 保留主机内存注册的原 CUDA 错误",
+      "summary": "SGLang 保留主机内存注册的原 CUDA 错误",
+      "source_urls": [
+        "https://github.com/sgl-project/sglang/pull/48272"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    }
+  ],
+  "images": [
+    {
+      "path": "assets/overview.png",
+      "sha256": "cdd44ca72f88d61bae402fa07788fdb9e958fa56cfe2cb671ef511acb56113f9",
+      "alt": "vLLM 启动显存修复、SGLang 错误诊断与本期覆盖缺口"
+    }
+  ],
+  "poster": "assets/overview.png"
+}
