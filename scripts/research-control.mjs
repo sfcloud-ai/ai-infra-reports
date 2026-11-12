@@ -6,6 +6,7 @@ import {canonicalRequestDate,reportDate,requireThat,decodeBundle} from './report
 import {assertResearchArchive,decodeResearchArchive} from './research-archive.mjs';
 import {handoffScope,scopeDigest} from './handoff-state.mjs';
 import {repositoryResearchInputs,repositoryResearchInputsHash,REPOSITORY_RESEARCH_INPUTS_VERSION} from './repository-research-inputs.mjs';
+import {requiredCoverageValid} from './research-coverage.mjs';
 export {REPOSITORY_RESEARCH_INPUTS_VERSION};
 
 const HASH=/^[a-f0-9]{64}$/,SHA=/^[a-f0-9]{40}$/,UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
@@ -107,7 +108,8 @@ function publicationEvidence(db,run,plan,args){
  need(exact(bundle,'schema_version,request_id,repository,expected_base_sha,prompt_commit_sha,files')&&bundle.schema_version==='1.0'&&bundle.repository===REPOSITORY&&bundle.request_id===run.request_id&&bundle.expected_base_sha===plan.reports_commit_sha&&bundle.prompt_commit_sha===plan.prompt_commit_sha,'publication_plan_binding');
  // This is the existing trusted researcher's declaration, not a replacement
  // fact-checking engine. Keep its original bytes and explicit selected binding.
- need(audit&&audit.schema_version==='1.2'&&audit.date===run.report_date&&audit.audit_valid===true&&Array.isArray(audit.blockers)&&audit.blockers.length===0&&['ready','partial','zero_items'].includes(audit.readiness),'publication_audit_blocked');
+ need(audit&&audit.date===run.report_date&&audit.audit_valid===true&&Array.isArray(audit.blockers)&&audit.blockers.length===0&&['ready','partial','zero_items'].includes(audit.readiness),'publication_audit_blocked');
+ need(requiredCoverageValid(audit,plan,bundle),'publication_coverage_contract');
 }
 export function researchSourceIdentity(input){
  need(exact(input,'method,url')&&input.method==='GET'&&typeof input.url==='string'&&input.url.length<=2000,'source_identity');

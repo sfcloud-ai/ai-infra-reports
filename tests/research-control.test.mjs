@@ -7,6 +7,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {spawnSync} from 'node:child_process';
+import {REQUIRED_RESEARCH_CHECKS} from '../scripts/research-coverage.mjs';
 import {HandoffState,handoffScope} from '../scripts/handoff-state.mjs';
 import {installFence} from '../scripts/producer-admission-fence.mjs';
 import {installSubmission,advanceSubmission} from '../scripts/slack-submission.mjs';
@@ -29,6 +30,17 @@ const config={...identity,durable_intake:{not_before:'1793462400.000000'},produc
 const input=Buffer.from('new research output\r\n');
 const repositoryFiles=new Map(REPOSITORY_INPUT_PATHS.map(path=>[path,Buffer.from('original repository file: '+path+'\r\n')]));
 const plan=Buffer.from(JSON.stringify({schema_version:'research_plan_v3',request_id:id,report_date:DAY,prompt_commit_sha:'a'.repeat(40),reports_commit_sha:'b'.repeat(40),files:Object.fromEntries([...repositoryFiles].map(([path,data])=>[path,digest(data)])),model_stages:['editor','review'],limits:{max_attempts_per_source:2,max_attempts_per_model:1,operation_timeout_seconds:180,total_budget_seconds:3600}}));
+function auditSummary(overrides={},files=FILES){
+ const p=JSON.parse(plan),gaps=overrides.readiness==='partial'?['qwen_blog']:[];
+ return {schema_version:'1.3',date:DAY,audit_valid:true,blockers:[],readiness:'ready',delivery_allowed:false,
+  coverage_contract:'daily_required_v1',required_checks:[...REQUIRED_RESEARCH_CHECKS],coverage_unchecked:[],
+  coverage_checked:REQUIRED_RESEARCH_CHECKS.filter(name=>!gaps.includes(name)),coverage_incomplete:gaps,
+  selected_count:overrides.readiness==='zero_items'?0:1,budget_unknown:true,
+  inputs:{prompt_commit:p.prompt_commit_sha,history_commit:p.reports_commit_sha,
+   prompt_hashes:Object.fromEntries(Object.entries(p.files).filter(([path])=>path.startsWith('ai_brief/')).map(([path,hash])=>[path.split('/').at(-1),hash])),
+   history_sha256:p.files['reports/index.json'],draft_sha256:digest([...files].find(([path])=>path.endsWith('/report.json'))[1])},
+  limits:{source_attempts:2,model_attempts:1,operation_seconds:180,run_seconds:3600},...overrides};
+}
 function setup(path=':memory:',c=config){
  const state=new HandoffState(path,handoffScope(c));installFence(state.db,fence,'synthetic',[]);installSubmission(state.db,c,'synthetic');installResearchArchive(state.db,c,'synthetic');installResearchControl(state.db,c,'synthetic');return state;
 }
@@ -184,10 +196,34 @@ test('the existing zero-items report and audit contract remains eligible for a p
   for(const key of files.keys())if(key.includes('/articles/')&&!key.endsWith('/hardware-status.md')||key.includes('/assets/')&&!key.endsWith('/'+report.poster))files.delete(key);
   files.set(path,Buffer.from(JSON.stringify(report)));
   validateArchive(files,{checkIndex:false});
-  const bytes=await encodeBundle(files,id,'b'.repeat(40),'a'.repeat(40)),audit=Buffer.from(JSON.stringify({schema_version:'1.2',date:DAY,audit_valid:true,blockers:[],readiness:'zero_items'}));
+  const bytes=await encodeBundle(files,id,'b'.repeat(40),'a'.repeat(40)),audit=Buffer.from(JSON.stringify(auditSummary({readiness:'zero_items'},files)));
   const hash=archive(s,{'bundle.json':bytes,'audit.json':audit});assert.equal((await issuePermit(s,command('permit',{archive_sha256:hash,bundle_sha256:digest(bytes),audit_sha256:digest(audit)},run))).status,'committed');
  }finally{s.close();}
 });
+test('publication rejects downgraded, incomplete, re-bound or over-budget audit declarations before any permit',async()=>{
+ const s=setup();try{
+  const run=start(s),bundle=await encodeBundle(FILES,id,'b'.repeat(40),'a'.repeat(40)),valid=auditSummary();
+  const mutations=[
+   a=>{a.schema_version='1.2';},a=>{delete a.coverage_contract;},a=>{a.delivery_allowed=true;},
+   a=>{a.coverage_unchecked=['small_models'];},a=>{a.coverage_checked.push('vllm');},
+   a=>{a.coverage_checked.pop();},a=>{a.required_checks.push('unknown');},
+   a=>{a.readiness='partial';},a=>{a.selected_count=0;},
+   a=>{a.inputs.prompt_commit='c'.repeat(40);},a=>{a.inputs.history_commit='c'.repeat(40);},
+   a=>{a.inputs.history_sha256='c'.repeat(64);},a=>{a.inputs.prompt_hashes['research.md']='c'.repeat(64);},
+   a=>{a.inputs.draft_sha256='c'.repeat(64);},a=>{delete a.limits;},a=>{a.limits.source_attempts=3;},
+   a=>{a.coverage_incomplete=['qwen_blog'];a.coverage_checked=a.coverage_checked.filter(x=>x!=='qwen_blog');}
+  ];
+  for(const name of REQUIRED_RESEARCH_CHECKS)mutations.push(a=>{a.required_checks=a.required_checks.filter(x=>x!==name);});
+  for(const mutate of mutations){
+   const rejected=structuredClone(valid);mutate(rejected);const audit=Buffer.from(JSON.stringify(rejected)),hash=archive(s,{'bundle.json':bundle,'audit.json':audit});
+   const result=await issuePermit(s,command('permit',{archive_sha256:hash,bundle_sha256:digest(bundle),audit_sha256:digest(audit)},run));
+   assert.equal(result.code,'publication_coverage_contract');assert.equal(s.db.prepare('SELECT permit FROM research_control_runs').get().permit,null);
+  }
+  const audit=Buffer.from(JSON.stringify(valid)),hash=archive(s,{'bundle.json':bundle,'audit.json':audit});
+  assert.equal((await issuePermit(s,command('permit',{archive_sha256:hash,bundle_sha256:digest(bundle),audit_sha256:digest(audit)},run))).status,'committed');
+ }finally{s.close();}
+});
+
 test('native control parser binds the original tool parent and Publisher metadata, not body claims',()=>{
  const s=setup();try{
   const run=start(s),c=command('reserve',{operations:[source()]},run),bytes=Buffer.from(JSON.stringify(c)),ts='1793491202.000001';
@@ -202,7 +238,7 @@ test('native control parser binds the original tool parent and Publisher metadat
 });
 test('publication permit requires original plan identity and a nonblocking audit for that date',async()=>{
  const s=setup();try{
-  const run=start(s),bundle=await encodeBundle(FILES,id,'b'.repeat(40),'a'.repeat(40)),audit={schema_version:'1.2',date:DAY,audit_valid:true,blockers:[],readiness:'partial',delivery_allowed:false,budget_unknown:true};
+  const run=start(s),bundle=await encodeBundle(FILES,id,'b'.repeat(40),'a'.repeat(40)),audit=auditSummary({readiness:'partial'});
   for(const [bytes,review,code] of [[await encodeBundle(FILES,id,'a'.repeat(40),'a'.repeat(40)),audit,'publication_plan_binding'],[bundle,{...audit,date:'2026-11-02'},'publication_audit_blocked'],[bundle,{...audit,blockers:['unsupported fact']},'publication_audit_blocked']]){
    const originalAudit=Buffer.from(JSON.stringify(review)),hash=archive(s,{'bundle.json':bytes,'audit.json':originalAudit});
    assert.equal((await issuePermit(s,command('permit',{archive_sha256:hash,bundle_sha256:digest(bytes),audit_sha256:digest(originalAudit)},run))).code,code);
@@ -268,7 +304,7 @@ test('retired and premature envelopes create no upload work and cannot stop hist
 });
 test('a malformed bundle cannot consume the immutable permit before a corrected original is reviewed',async()=>{
  const s=setup();try{
-  const run=start(s),bundle=await encodeBundle(FILES,id,'b'.repeat(40),'a'.repeat(40)),data=JSON.parse(bundle),empty=Buffer.from(JSON.stringify({...data,files:[]})),audit=Buffer.from(JSON.stringify({schema_version:'1.2',date:DAY,audit_valid:true,blockers:[],readiness:'ready'}));
+  const run=start(s),bundle=await encodeBundle(FILES,id,'b'.repeat(40),'a'.repeat(40)),data=JSON.parse(bundle),empty=Buffer.from(JSON.stringify({...data,files:[]})),audit=Buffer.from(JSON.stringify(auditSummary()));
   const badHash=archive(s,{'bundle.json':empty,'audit.json':audit}),bad=command('permit',{archive_sha256:badHash,bundle_sha256:digest(empty),audit_sha256:digest(audit)},run);queue(s,bad);
   let reply;await advanceResearchControl(s,config,{controlReceipt:async(_ts,text)=>{reply=JSON.parse(text.slice('!ai-research control-receipt '.length));return '1793491209.000001';}},now);
   assert.equal(reply.code,'publication_bundle_invalid');assert.equal(reply.run.permit,null);assert.equal(execute(s,command('receipt',{command_id:bad.command_id})).original_result.code,'publication_bundle_invalid');
@@ -492,7 +528,7 @@ test('reopened original host ledger recovers plan and operations after disposabl
 test('real staging path accepts the original completed upload after takeover and fences unrelated envelopes',async()=>{
  const inputPlan=plan;
  const s=setup();try{
-  let run=start(s,inputPlan);const bytes=await encodeBundle(FILES,id,'b'.repeat(40),'a'.repeat(40)),hash=digest(bytes),audit=Buffer.from(JSON.stringify({schema_version:'1.2',date:DAY,audit_valid:true,delivery_allowed:true,blockers:[],readiness:'partial',budget_unknown:true}));
+  let run=start(s,inputPlan);const bytes=await encodeBundle(FILES,id,'b'.repeat(40),'a'.repeat(40)),hash=digest(bytes),audit=Buffer.from(JSON.stringify(auditSummary({readiness:'partial'})));
   const checkpoint=archive(s,{'bundle.json':bytes,'audit.json':audit});run=(await issuePermit(s,command('permit',{archive_sha256:checkpoint,bundle_sha256:hash,audit_sha256:digest(audit)},run))).run;
   const permit=run.permit.permit_id;let completeOp;
   for(const step of ['ticket','post','complete']){
