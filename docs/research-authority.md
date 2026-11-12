@@ -14,8 +14,20 @@ report date are immutable. `installResearchControl` requires the archive policy
 and refuses dates with an existing publication. Start with the next unused date;
 preserve older missing-history evidence separately. Verify two fresh healthy
 ticks. Runtime never initializes or replaces this authority. Installing it does
-not require an input archive. Live native output-transport acceptance remains
-necessary before schedule activation; an input-reference test does not prove it.
+not require an input archive. Before schedule cutover, verify the actual native
+transport with original uploaded bytes and readback (an existing successful
+upload on the same installed transport may supply this evidence), then verify
+authenticated control queries against the activated host. Keep production runs
+empty during this installation. Input-reference tests alone prove neither path.
+
+The first real daily claim starts the original research deadline. Verify the
+complete authority-to-archive chain using that run's first new research output:
+native operation intents, stored archive bytes and authenticated hash readback.
+After that receipt, continue the authorized research, audit, publication and
+delivery. Do not claim a future date for today's acceptance: even zero-charge
+native operations would consume its wall-clock research window. Record this
+first-run acceptance as pending until it actually happens; transport/control
+acceptance and isolated recovery tests are not a full live archive receipt.
 The host client is the single daily research/publication entry. Retired cloud
 guards, Producer upload CLIs, archive-based plans and unpermitted stage/submit
 commands cannot start work. Before activation, keep the service available for
@@ -284,6 +296,9 @@ It provides automatic recovery of stored research and unsent host grants, not a
 claim that every external-provider uncertainty is automatically decidable.
 
 Changes to the original database/schema, source channel, plan, budget or policy
-are explicit migrations. All history remains intact. Validate the real native
-bridge and original-byte archive readback before activating it in a schedule;
-isolated fixtures alone are not live-provider acceptance evidence.
+are explicit migrations. All history remains intact. Use the staged acceptance
+above: actual transport and activated control queries before schedule cutover,
+then the first new-output archive on the real daily run. Isolated fixtures alone
+are not live-provider acceptance evidence. An uncertain first archive preserves
+its original operation/file and enters recovery; it never authorizes a replacement
+upload or a fresh daily plan.
