@@ -57,6 +57,24 @@ unchanged and queryable. Unknown v3 dispatches still block health. The CD probe
 checks the configuration against the installed authority binding; after migration,
 even an empty authority rejects an old runtime before opening the ledger.
 
+## Required coverage before publication
+
+Every new daily permit requires the original validator's `schema_version=1.3`
+summary and `coverage_contract=daily_required_v1`. All six research directions
+and thirteen official source groups must be present. The host rejects an older
+summary, missing/duplicate checks, unchecked directions, a substituted draft or
+prompt/history bytes, and changed attempt/time limits before storing a permit.
+The summary's `inputs.draft_sha256` binds the exact bundled report metadata;
+prompt and history hashes bind the original host plan. This is a trusted audit
+declaration, not automated fact checking or a substitute for content review.
+
+Verified nonempty partial reports remain eligible with actual failed-source
+gaps and public disclosure. Missing timing remains a warning; original attempt
+and elapsed budgets remain enforced. Zero-news reports require complete checked
+coverage. The pinned prompt commit and its validator must implement this contract;
+an older validator cannot be used as a fallback for a new daily permit. Historical
+receipts remain readable and their original bytes are retained.
+
 ## Starting or resuming a day
 
 1. Derive the original `morning-YYYYMMDD-r1` identity. Send a fresh `status`
