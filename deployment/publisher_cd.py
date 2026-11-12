@@ -362,7 +362,9 @@ def snapshot(path, settled=True):
             if len(records) != 1 or records[0][0] != 1 or not records[0][2]:
                 raise ValueError('incomplete_research_control_policy')
             control_policy = json.loads(records[0][1])
-            if (set(control_policy) != {'generation', 'activation_ts', 'first_report_date', 'archive_generation', 'publisher_scope_sha256'}
+            original_keys = {'generation', 'activation_ts', 'first_report_date', 'archive_generation', 'publisher_scope_sha256'}
+            if (set(control_policy) not in (original_keys, original_keys | {'protocol'})
+                    or ('protocol' in control_policy and control_policy['protocol'] != 'repository_inputs_v1')
                     or not re.fullmatch(r'[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}', control_policy['generation'])
                     or not re.fullmatch(r'\d{10}\.\d{6}', control_policy['activation_ts'])
                     or control_policy['activation_ts'] < archive_policy['activation_ts']
@@ -686,6 +688,15 @@ def revision_runtime_required(database):
     return False
 
 
+def repository_inputs_runtime_required(database):
+    # Activation closes the old entry even before the first claim. An unmigrated
+    # binding permits the ordinary CD compatibility probe of the old release.
+    if database.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='research_control_policy'").fetchone() is None:
+        return False
+    binding = json.loads(database.execute('SELECT binding FROM research_control_policy WHERE id=1').fetchone()[0])
+    return binding.get('protocol') == 'repository_inputs_v1'
+
+
 def compatibility(config, release, operation, expected):
     """仅打开隔离的账本副本，不提供生产凭据或网络。"""
     probe = operation / ("probe-" + uuid.uuid4().hex)
@@ -701,6 +712,7 @@ def compatibility(config, release, operation, expected):
         raise ValueError("state_changed_during_backup")
     with closing(sqlite3.connect(database)) as isolated:
         needs_revision = revision_runtime_required(isolated)
+        needs_repository_inputs = repository_inputs_runtime_required(isolated)
     copied = json.loads(Path(config["publisher_config"]).read_text())
     copied["state_dir"] = "/probe"
     (probe / "publisher.json").write_text(json.dumps(copied))
@@ -710,7 +722,9 @@ def compatibility(config, release, operation, expected):
     script = "import{readFileSync}from'node:fs';import{HandoffState,handoffScope}from'./scripts/handoff-state.mjs';import{NoticeOutbox,notificationScope}from'./scripts/notice-outbox.mjs';import * as runtime from'./scripts/run-handoff.mjs';"
     if needs_revision:
         script += "if(runtime.REVISION_NOTICES_VERSION!==1)throw Error('revision_ledger_requires_compatible_release');"
-    script += "const c=runtime.validateConfig(JSON.parse(readFileSync('/probe/publisher.json')));const s=new HandoffState('/probe/handoff.sqlite',handoffScope(c));try{if(c.notification_destination)new NoticeOutbox(s,notificationScope(c));}finally{s.close();}"
+    if needs_repository_inputs:
+        script += "const inputs=await import('./scripts/research-control.mjs');if(inputs.REPOSITORY_RESEARCH_INPUTS_VERSION!==1)throw Error('repository_inputs_require_compatible_release');"
+    script += "const c=(runtime.validateLiveConfig??runtime.validateConfig)(JSON.parse(readFileSync('/probe/publisher.json')));const s=new HandoffState('/probe/handoff.sqlite',handoffScope(c));try{if(c.research_control||s.db.prepare(\"SELECT 1 FROM sqlite_master WHERE name='research_control_policy'\").get()){const authority=await import('./scripts/research-control.mjs');authority.assertResearchControl(s.db,c);}if(c.notification_destination)new NoticeOutbox(s,notificationScope(c));}finally{s.close();}"
     container(config, release, ["/node/bin/node", "--input-type=module", "-e", script], uid=config["uid"], readonly=True,
               extra=["--mount", "type=bind,src=" + str(probe) + ",dst=/probe"] + legacy_dependency_mount(config, release))
     if snapshot(database) != expected:

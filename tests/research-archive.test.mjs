@@ -14,23 +14,26 @@ import {handoffTick,validateConfig} from '../scripts/run-handoff.mjs';
 import {digest} from '../scripts/archive.mjs';
 import {stageFile} from '../scripts/slack-stage-cli.mjs';
 import {installResearchArchive,assertResearchArchive,decodeResearchArchive,acceptResearchArchive,advanceResearchArchive,readResearchArchive,ARCHIVE_SCHEMA,ARCHIVE_CHUNK} from '../scripts/research-archive.mjs';
+import {installFixtureAuthority,fixtureNative} from './helpers/repository-authority-fixture.mjs';
 import {SCOPE,DAY} from './helpers/cloud-sender-fixture.mjs';
 
 const id='morning-20261101-r1',now=1793491210000,ts='1793491201.000001',uuid='d1111111-1111-4111-8111-111111111111';
 const fence={generation:'a1111111-1111-4111-8111-111111111111',activation_ts:'1793491200.000000',producer_scope_sha256:'b'.repeat(64),installation:{journal_device:'1',journal_inode:'2',lock_device:'1',lock_inode:'3'}};
 const {transport_profile,notification_destination,...identity}=SCOPE;
 const config={...identity,ready_for_review:false,producer_app_id:1,merger_app_id:2,slack_token_file:'/private/token',producer_key_file:'/private/key',state_dir:'/private/state',durable_intake:{not_before:'1793462400.000000'},producer_fence:fence,scheduled_delivery:{activation_date:DAY,executable:'/usr/bin/python3',args:[]},slack_submission:{activation_ts:fence.activation_ts,first_report_date:DAY,generation:'b1111111-1111-4111-8111-111111111111'},research_archive:{activation_ts:fence.activation_ts,first_report_date:DAY,generation:'c1111111-1111-4111-8111-111111111111'}};
+config.research_control={...config.research_archive,generation:'e1111111-1111-4111-8111-111111111111',protocol:'repository_inputs_v1'};
 function packet({data=Buffer.from('{"budget":3600}\n'),path='audit/plan.json',command_id=uuid,previous_sha256=null,request_id=id,report_date=DAY}={}){
  return Buffer.from(JSON.stringify({schema_version:'research_archive_v1',command_id,request_id,report_date,previous_sha256,files:[{path,sha256:digest(data),content_base64:data.toString('base64')}]}));
 }
 function message(text,source=ts,file){return {type:'message',user:SCOPE.sender_user_id,app_id:SCOPE.sender_user_app_id,ts:source,text:text+' '+SCOPE.sender_attribution_text,...(file?{files:[{id:file}]}:{}),blocks:[{type:'rich_text',elements:[{type:'rich_text_section',elements:[{type:'text',text}]}]},{type:'context',elements:[{type:'mrkdwn',text:SCOPE.sender_attribution_text,verbatim:false}]}]};}
 function setup(filename=':memory:'){
- const state=new HandoffState(filename,handoffScope(config));installFence(state.db,fence,'synthetic original',[]);installSubmission(state.db,config,'synthetic staging');installResearchArchive(state.db,config,'synthetic archive');return state;
+ const state=new HandoffState(filename,handoffScope(config));installFence(state.db,fence,'synthetic original',[]);installSubmission(state.db,config,'synthetic staging');installResearchArchive(state.db,config,'synthetic archive');installFixtureAuthority(state,config);return state;
 }
 function slackFor(messages,bytes,receipt=async()=> '1793491209.000001'){
  return {history:async()=>[],historyPage:async({from,to})=>({messages:messages.filter(m=>m.ts>=from&&m.ts<=to),next_cursor:null}),exactPublish:async source=>messages.find(m=>m.ts===source),download:async(_event,options)=>{assert.equal(options.name,'ai-brief-research-archive.json');return bytes;},controlReceipt:receipt};
 }
 async function ingest(state,bytes=packet(),source=ts,receipt){
+ fixtureNative(state,config,{hash:digest(bytes),bytes:bytes.length});
  const msg=message(`!ai-research save ${id} ${digest(bytes)}`,source,'FSOURCE'),slack=slackFor([msg],bytes,receipt);
  await new PublisherInbox(state,config).scan(slack,Math.ceil(Number(source)*1000));await advanceResearchArchive(state,config,slack,now);return slack;
 }
@@ -80,7 +83,7 @@ test('coercible identifiers receive durable rejection without repeated downloads
    assert.throws(()=>decodeResearchArchive(bytes),/identity/);
    const msg=message(`!ai-research save ${id} ${digest(bytes)}`,ts,'FSOURCE'),slack=slackFor([msg],bytes);
    slack.download=async()=>{downloads++;return bytes;};
-   await new PublisherInbox(state,config).scan(slack,now);await advanceResearchArchive(state,config,slack,now);
+   fixtureNative(state,config,{hash:digest(bytes),bytes:bytes.length});await new PublisherInbox(state,config).scan(slack,now);await advanceResearchArchive(state,config,slack,now);
    assert.equal(readResearchArchive(state.db,id,query('receipt',digest(bytes))).status,'rejected');
    await advanceResearchArchive(state,config,slack,now+600000);await advanceResearchArchive(state,config,slack,now+1200000);
    assert.equal(downloads,1);assert.equal(state.db.prepare('SELECT phase FROM research_archive_events').get().phase,'sent');
@@ -92,7 +95,7 @@ test('archive storage failure stays unhealthy through backoff until stored',asyn
  const state=setup(),bytes=packet(),msg=message(`!ai-research save ${id} ${digest(bytes)}`,ts,'FSOURCE');let clock=now,downloads=0;try{
   const slack=slackFor([msg],bytes);slack.download=async()=>{downloads++;if(downloads===1)throw Error('synthetic download failure');return bytes;};
   const io={now:()=>clock,scheduleQuery:()=>assert.fail('no report to schedule'),propose:()=>assert.fail('not report content')};
-  const failed=await handoffTick(state,config,slack,io);assert.equal(failed.healthy,false);assert.equal(failed.blocked_research.length,1);
+  fixtureNative(state,config,{hash:digest(bytes),bytes:bytes.length});const failed=await handoffTick(state,config,slack,io);assert.equal(failed.healthy,false);assert.equal(failed.blocked_research.length,1);
   clock+=1000;const backoff=await handoffTick(state,config,slack,io);assert.deepEqual(backoff.errors,[]);assert.equal(backoff.healthy,false);assert.equal(backoff.blocked_research[0].source_ts,ts);assert.equal(downloads,1);
   clock+=600000;const recovered=await handoffTick(state,config,slack,io);assert.equal(recovered.healthy,true);assert.deepEqual(recovered.blocked_research,[]);assert.equal(readResearchArchive(state.db,id,query()).status,'stored');
  }finally{state.close();}
@@ -102,7 +105,7 @@ test('full research command journal refuses new research without rolling back re
   // Constructed capacity fixture; exercise the actual shared native intake.
   state.db.exec("WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<100000) INSERT INTO research_archive_events(source_ts,kind,request_id,hash,phase) SELECT printf('1793400000.%06d',x),'read','morning-20261101-r1','fixture','sent' FROM n");
   const save=message(`!ai-research save ${id} ${digest(bytes)}`,ts,'FSOURCE');
-  const stage=message(`!ai-report stage ${id} ${'a'.repeat(64)}`,'1793491202.000001','FREPORT');
+  const stage=message(`!ai-report stage-v2 ${id} ${'a'.repeat(64)} ${uuid}`,'1793491202.000001','FREPORT');
   const inbox=new PublisherInbox(state,config),result=await inbox.scan(slackFor([save,stage],bytes),now);
   assert.equal(result.page_complete,true);assert.equal(result.rejected.length,1);assert.equal(result.rejected[0].code,'research_command_capacity');
   assert.equal(state.db.prepare('SELECT kind FROM slack_submission_events').get().kind,'stage');
@@ -119,7 +122,7 @@ test('permanently invalid native file metadata is rejected once while transport 
     return new Response(JSON.stringify({ok:true,file:{id:'FSOURCE',user:config.sender_user_id,user_team:config.team_id,name:'ai-brief-research-archive.json',mode:'snippet',size:bytes.length,...patch}}),{headers:{'content-type':'application/json'}});
    });
    const slack=slackFor([msg],bytes);slack.download=native.download.bind(native);
-   await new PublisherInbox(state,config).scan(slack,now);await advanceResearchArchive(state,config,slack,now);
+   fixtureNative(state,config,{hash:digest(bytes),bytes:bytes.length});await new PublisherInbox(state,config).scan(slack,now);await advanceResearchArchive(state,config,slack,now);
    assert.equal(readResearchArchive(state.db,id,query('receipt',digest(bytes))).status,'rejected');
    assert.equal(JSON.parse(state.db.prepare('SELECT diagnostic FROM research_archive_events').get().diagnostic).code,'invalid_file_metadata');
    await advanceResearchArchive(state,config,slack,now+600000);await advanceResearchArchive(state,config,slack,now+1200000);
@@ -178,7 +181,7 @@ test('unknown save acknowledgement does not replay it or block a new query of co
   assert.equal(attempts,1);assert.equal(state.db.prepare('SELECT phase FROM research_archive_events').get().phase,'unknown');
   const msg=message(`!ai-research read ${id} ${uuid} receipt ${digest(bytes)} 0`,'1793491202.000001');let reply;
   const slack=slackFor([msg],null,async(_ts,text)=>{reply=text;return '1793491209.000001';});
-  await new PublisherInbox(state,config).scan(slack,now);await advanceResearchArchive(state,config,slack,now);
+  fixtureNative(state,config,{hash:digest(bytes),bytes:bytes.length});await new PublisherInbox(state,config).scan(slack,now);await advanceResearchArchive(state,config,slack,now);
   assert.equal(attempts,1);assert.match(reply,/"status":"stored"/);assert.match(reply,new RegExp(digest(bytes)));assert.equal(state.pending().length,0);
  }finally{state.close();}
 });
@@ -201,7 +204,7 @@ test('manifest receipt binds the new query thread and preserves the original arc
 });
 test('archive lane in a real tick persists private bytes without report publication or scheduled admission',async()=>{
  const state=setup(),bytes=packet(),msg=message(`!ai-research save ${id} ${digest(bytes)}`,ts,'FSOURCE');try{
-  const result=await handoffTick(state,config,slackFor([msg],bytes),{now:()=>now,scheduleQuery:()=>assert.fail('no report to schedule'),propose:()=>assert.fail('not report content')});
+  fixtureNative(state,config,{hash:digest(bytes),bytes:bytes.length});const result=await handoffTick(state,config,slackFor([msg],bytes),{now:()=>now,scheduleQuery:()=>assert.fail('no report to schedule'),propose:()=>assert.fail('not report content')});
   assert.deepEqual(result.errors,[]);assert.equal(state.pending().length,0);assert.equal(readResearchArchive(state.db,id,query()).status,'stored');
  }finally{state.close();}
 });

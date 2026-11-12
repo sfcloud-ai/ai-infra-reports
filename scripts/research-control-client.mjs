@@ -1,7 +1,8 @@
 // Disposable native-tool client. Authority and original bytes live on the host.
 import {randomUUID} from 'node:crypto';
 import {digest} from './archive.mjs';
-import {decodeResearchControl} from './research-control.mjs';
+import {decodeResearchControl,decodeResearchPlan} from './research-control.mjs';
+import {assertResearchOutputFiles} from './repository-research-inputs.mjs';
 import {requireThat} from './report-handoff.mjs';
 export const CONTROL_THREAD_TOOL='mcp__codex_apps__slack_slack_read_thread';
 const escape=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
@@ -38,6 +39,13 @@ export function nativeResearchAuthority({request_id,owner_id,permit_id=null,arch
   requireThat(observed.status==='observed'&&observed.run?.owner_id===owner_id&&observed.run.lease_until>now(),'Read and claim the original host run first');return observed;
  };
  return {permit_id,
+  async validateArchive(archive){
+   const observed=await control(controlCommand(request_id,'status',{offset:0}));
+   requireThat(observed.status==='observed'&&observed.run?.owner_id===owner_id&&observed.run.lease_until>now(),'Read and claim the original host run first');
+   const plan=decodeResearchPlan(observed.plan_base64,request_id);
+   requireThat(digest(plan.bytes)===observed.run.plan_hash&&archive.value.request_id===request_id&&archive.hash===archive_sha256,'Original checkpoint plan binding differs');
+   assertResearchOutputFiles(plan.value,archive.files);
+  },
   async recover(bytes){
    const observed=await current(),ops=observed.operations,hash=digest(bytes);
    requireThat(ops.every(op=>op.input.sha256===hash&&op.input.bytes===bytes.length),'Original upload bytes differ');

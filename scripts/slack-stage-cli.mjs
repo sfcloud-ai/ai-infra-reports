@@ -16,6 +16,7 @@ export async function stageFile(bytes,channel,callTool,{upload,probe=false,resea
  requireThat(Number(probe)+Number(research)+Number(revision)<=1,'Single staging format required');
  requireThat(!revision||!authority,'Revisions do not consume a new-daily research permit');
  requireThat(!authority||!probe&&typeof authority.before==='function'&&typeof authority.after==='function','Explicit research authority bridge required');
+ requireThat(probe||revision||authority,'Original host research client required before any upload');
  upload??=research?uploadResearchArchiveBytes:uploadProducerBytes;
  let id,name,comment;
  if(probe){
@@ -24,12 +25,14 @@ export async function stageFile(bytes,channel,callTool,{upload,probe=false,resea
   id=data.nonce;name='ai-brief-transport-probe.json';comment=`!ai-transport-probe ${id} ${digest(bytes)}`;
  }else if(research){
   const archive=decodeResearchArchive(bytes);id=archive.value.request_id;name='ai-brief-research-archive.json';comment=`!ai-research save ${id} ${archive.hash}`;
+  requireThat(typeof authority?.validateArchive==='function','Original repository plan check required before upload');
+  await authority.validateArchive(archive);
  }else if(revision){
   const bundle=await decodeBundle(bytes);requireThat(bundle.report.schema_version==='1.1'&&bundle.report.revision>1,'Explicit revision notice required');
   id=bundle.data.request_id;name='ai-brief-bundle.json';comment=`!ai-report revise ${id} ${bundle.hash}`;
  }else{
   const bundle=await decodeBundle(bytes);requireThat(bundle.data.request_id===`morning-${bundle.report.date.replaceAll('-','')}-r1`,'Daily revision-one staging required');
-  id=bundle.data.request_id;name='ai-brief-bundle.json';comment=authority?`!ai-report stage-v2 ${id} ${bundle.hash} ${authority.permit_id}`:`!ai-report stage ${id} ${bundle.hash}`;
+  id=bundle.data.request_id;name='ai-brief-bundle.json';comment=`!ai-report stage-v2 ${id} ${bundle.hash} ${authority.permit_id}`;
  }
  const recovered=await authority?.recover?.(bytes);
  if(recovered?.complete)return {type:'staging_attempt_finished',request_id:id,bundle_sha256:digest(bytes),file_id:recovered.file_id,source_ts:recovered.source_ts,publication_allowed:false,next_action:'read_original_stage_and_publisher_status'};
@@ -61,7 +64,7 @@ export async function stagingMain(args){
  const revision=args[2]==='--revision-managed-proxy';
  const emit=v=>process.stdout.write(JSON.stringify(v)+'\n');
  try{
-  const [filename,channel,mode,...extra]=args;requireThat(isAbsolute(filename??'')&&['--managed-proxy','--probe-managed-proxy','--research-managed-proxy','--revision-managed-proxy'].includes(mode)&&extra.length===0,'Usage: absolute bundle, pinned channel, managed proxy mode');
+  const [filename,channel,mode,...extra]=args;requireThat(isAbsolute(filename??'')&&['--probe-managed-proxy','--revision-managed-proxy'].includes(mode)&&extra.length===0,'Daily reports and research archives require research-client-cli; this utility accepts probe or revision only');
   producerCurlEnvironment('managed_proxy');process.umask(0o077);
   const bytes=await readFile(filename);lines=createInterface({input:process.stdin,crlfDelay:Infinity});const iterator=lines[Symbol.asyncIterator]();
   const callTool=async(tool,args)=>{
@@ -70,7 +73,7 @@ export async function stagingMain(args){
    const value=JSON.parse(reply.value);requireThat(Object.keys(value).sort().join()==='operation_id,result,type'&&value.type==='native_result'&&value.operation_id===operation_id,'Original one-shot native result required');
    requireThat(value.result&&!value.result.isError,'Native staging failed; reconcile original file');return value.result;
   };
-  emit(await stageFile(bytes,channel,callTool,{probe:mode==='--probe-managed-proxy',research:mode==='--research-managed-proxy',revision:mode==='--revision-managed-proxy',observe:emit}));return 0;
+  emit(await stageFile(bytes,channel,callTool,{probe:mode==='--probe-managed-proxy',revision:mode==='--revision-managed-proxy',observe:emit}));return 0;
  }catch{emit(revision?{type:'revision_submission_unconfirmed',publication_requested:true,outcome:'unknown',next_action:'reconcile_original_file_command_and_revision_status'}:{type:'staging_unconfirmed',publication_allowed:false,next_action:'read_original_file_and_stage; do not replay this attempt'});return 1;}
  finally{lines?.close();process.stdin.pause();}
 }

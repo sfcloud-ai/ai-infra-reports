@@ -5,6 +5,8 @@ import {digest,REPOSITORY} from './archive.mjs';
 import {canonicalRequestDate,reportDate,requireThat,decodeBundle} from './report-handoff.mjs';
 import {assertResearchArchive,decodeResearchArchive} from './research-archive.mjs';
 import {handoffScope,scopeDigest} from './handoff-state.mjs';
+import {repositoryResearchInputs,repositoryResearchInputsHash,REPOSITORY_RESEARCH_INPUTS_VERSION} from './repository-research-inputs.mjs';
+export {REPOSITORY_RESEARCH_INPUTS_VERSION};
 
 const HASH=/^[a-f0-9]{64}$/,SHA=/^[a-f0-9]{40}$/,UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const keyName=/^[a-zA-Z0-9_.-]{1,80}$/,LEASE_MS=15*60000;
@@ -36,13 +38,14 @@ export const RESEARCH_CONTROL_SCHEMA={
  research_control_events:"CREATE TABLE research_control_events(source_ts TEXT PRIMARY KEY,command_id TEXT NOT NULL,hash TEXT NOT NULL,bytes BLOB NOT NULL,phase TEXT NOT NULL DEFAULT 'pending',attempts INTEGER NOT NULL DEFAULT 0,next_at INTEGER NOT NULL DEFAULT 0,reply_text TEXT,reply_ts TEXT,diagnostic TEXT)"
 };
 export function validateResearchControlConfig(c){
- requireThat(exact(c,'generation,activation_ts,first_report_date')&&string(c.generation,UUID)&&string(c.activation_ts,/^\d{10}\.\d{6}$/)&&reportDate(c.first_report_date),'Explicit research authority activation required');return c;
+ const legacy=exact(c,'generation,activation_ts,first_report_date');
+ requireThat((legacy||exact(c,'generation,activation_ts,first_report_date,protocol')&&c.protocol==='repository_inputs_v1')&&string(c.generation,UUID)&&string(c.activation_ts,/^\d{10}\.\d{6}$/)&&reportDate(c.first_report_date),'Explicit repository-input authority activation required');return c;
 }
 function policy(c){
  validateResearchControlConfig(c.research_control);
  requireThat(c.research_archive&&c.research_control.activation_ts>=c.research_archive.activation_ts&&c.research_control.first_report_date>=c.research_archive.first_report_date,'Research authority requires original archive policy');
- const {generation,activation_ts,first_report_date}=c.research_control;
- return JSON.stringify({generation,activation_ts,first_report_date,archive_generation:c.research_archive.generation,publisher_scope_sha256:scopeDigest(handoffScope(c))});
+ const {generation,activation_ts,first_report_date,protocol}=c.research_control;
+ return JSON.stringify({generation,activation_ts,first_report_date,protocol,archive_generation:c.research_archive.generation,publisher_scope_sha256:scopeDigest(handoffScope(c))});
 }
 export function assertResearchControl(db,c){
  const rows=db.prepare("SELECT name,sql FROM sqlite_master WHERE type='table' AND name LIKE 'research_control_%'").all();
@@ -53,12 +56,27 @@ export function assertResearchControl(db,c){
 }
 export function installResearchControl(db,c,reference){
  assertResearchArchive(db,c);const binding=policy(c);
+ requireThat(c.research_control.protocol==='repository_inputs_v1','New authority requires repository-input protocol');
  requireThat(typeof reference==='string'&&reference.length>0&&reference.length<=512&&!db.prepare("SELECT 1 FROM sqlite_master WHERE name LIKE 'research_control_%'").get(),'Explicit first authority installation required');
  const first=c.research_control.first_report_date;
  requireThat(!db.prepare('SELECT 1 FROM slack_staged_bundles WHERE report_date>=?').get(first)&&!db.prepare("SELECT 1 FROM jobs WHERE substr(json_extract(detail,'$.proof.edition'),1,10)>=? OR id>=? AND id GLOB 'morning-????????-r1'").get(first,'morning-'+first.replaceAll('-','')+'-r1'),'Authority activation must preserve existing publication dates');
  db.exec('BEGIN IMMEDIATE');try{
   for(const sql of Object.values(RESEARCH_CONTROL_SCHEMA))db.exec(sql);
   db.prepare('INSERT INTO research_control_policy VALUES(1,?,?)').run(binding,reference);db.exec('COMMIT');
+ }catch(e){db.exec('ROLLBACK');throw e;}
+}
+// Offline under the original Publisher lock. Runtime/CD never migrate a ledger.
+export function migrateResearchControl(db,c,reference){
+ requireThat(c.research_control?.protocol==='repository_inputs_v1'&&typeof reference==='string'&&reference.length>0&&reference.length<=512,'Explicit authority migration reference required');
+ const {protocol,...original}=c.research_control,previous={...c,research_control:original};
+ db.exec('BEGIN IMMEDIATE');try{
+  assertResearchControl(db,previous);
+  requireThat(!db.prepare("SELECT 1 FROM slack_staged_bundles WHERE phase!='admitted'").get(),'Reconcile original staged bundles before authority migration');
+  requireThat(!db.prepare("SELECT 1 FROM slack_submission_events WHERE phase!='done' AND NOT coalesce(phase='fenced' AND json_extract(diagnostic,'$.stage')='research_publication' AND json_extract(diagnostic,'$.outcome')='rejected',0)").get(),'Reconcile original submission events before authority migration');
+  const prior=db.prepare('SELECT evidence_reference FROM research_control_policy WHERE id=1').get();
+  const evidence=JSON.stringify({original_evidence_reference:prior.evidence_reference,migration_reference:reference,protocol});
+  db.prepare('UPDATE research_control_policy SET binding=?,evidence_reference=? WHERE id=1').run(policy(c),evidence);
+  assertResearchControl(db,c);db.exec('COMMIT');
  }catch(e){db.exec('ROLLBACK');throw e;}
 }
 export function decodeResearchControl(bytes){
@@ -68,13 +86,15 @@ export function decodeResearchControl(bytes){
  canonicalRequestDate(c.request_id);
  need(['status','upload_status','receipt'].includes(c.action)?c.owner_id===null:string(c.owner_id,UUID),'control_owner');return c;
 }
-function decodePlan(encoded,id){
+export function decodeResearchPlan(encoded,id){
  need(typeof encoded==='string'&&encoded.length<=10000,'plan_size');const bytes=Buffer.from(encoded,'base64');need(bytes.toString('base64')===encoded,'plan_encoding');
  let p;try{p=JSON.parse(new TextDecoder('utf8',{fatal:true}).decode(bytes));}catch{refuse('plan_json');}
- need(exact(p,'schema_version,request_id,report_date,prompt_commit_sha,reports_commit_sha,files,model_stages,limits')&&p.schema_version==='research_plan_v2'&&p.request_id===id&&p.report_date===canonicalRequestDate(id)&&string(p.prompt_commit_sha,SHA)&&string(p.reports_commit_sha,SHA),'plan_identity');
+ need(exact(p,'schema_version,request_id,report_date,prompt_commit_sha,reports_commit_sha,files,model_stages,limits')&&p.schema_version==='research_plan_v3'&&p.request_id===id&&p.report_date===canonicalRequestDate(id)&&string(p.prompt_commit_sha,SHA)&&string(p.reports_commit_sha,SHA),'plan_identity');
  need(exact(p.limits,'max_attempts_per_source,max_attempts_per_model,operation_timeout_seconds,total_budget_seconds')&&integer(p.limits.max_attempts_per_source,1,2)&&p.limits.max_attempts_per_model===1&&integer(p.limits.operation_timeout_seconds,1,180)&&integer(p.limits.total_budget_seconds,1,3600),'plan_limits');
  need(p.files&&typeof p.files==='object'&&!Array.isArray(p.files)&&Object.keys(p.files).length>0&&Object.keys(p.files).length<=32&&Object.entries(p.files).every(([name,hash])=>name.length<=200&&/^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*(?:\/[a-zA-Z0-9_.-]+)*$/.test(name)&&name.split('/').every(x=>x!=='.'&&x!=='..')&&string(hash,HASH)),'plan_files');
- need(Array.isArray(p.model_stages)&&p.model_stages.length>0&&p.model_stages.length<=12&&new Set(p.model_stages).size===p.model_stages.length&&p.model_stages.every(x=>string(x,keyName)),'plan_model_stages');return {bytes,value:p};
+ need(Array.isArray(p.model_stages)&&p.model_stages.length>0&&p.model_stages.length<=12&&new Set(p.model_stages).size===p.model_stages.length&&p.model_stages.every(x=>string(x,keyName)),'plan_model_stages');
+ try{repositoryResearchInputs(p);}catch{refuse('plan_repository_inputs');}
+ return {bytes,value:p};
 }
 function archive(db,id,hash){
  need(string(hash,HASH),'archive_hash');const row=db.prepare('SELECT manifest FROM research_archives WHERE request_id=? AND hash=?').get(id,hash);need(row,'archive_not_stored');return JSON.parse(row.manifest);
@@ -139,12 +159,13 @@ function apply(db,c,now){
   return {status:prior?'observed':'not_found',original_command_id:c.args.command_id,original_hash:prior?.hash??null,original_result:prior?{...JSON.parse(prior.result),dispatch_granted:false}:null};
  }
  if(c.action==='claim'){
-  need(exact(c.args,'plan_base64'),'claim_fields');const plan=decodePlan(c.args.plan_base64,c.request_id);
+  need(exact(c.args,'plan_base64'),'claim_fields');const plan=decodeResearchPlan(c.args.plan_base64,c.request_id);
   if(!run){
    need(c.expected_revision===0&&c.epoch===0,'initial_claim_revision');
    need(!db.prepare('SELECT 1 FROM jobs WHERE id=?').get(c.request_id)&&!db.prepare('SELECT 1 FROM slack_staged_bundles WHERE request_id=?').get(c.request_id),'existing_publication');
    db.prepare('INSERT INTO research_control_runs VALUES(?,?,?,?,?,1,1,?,?,0,NULL,NULL,NULL)').run(c.request_id,plan.value.report_date,plan.bytes,digest(plan.bytes),c.owner_id,now+LEASE_MS,now);
   }else{
+   need(JSON.parse(Buffer.from(run.plan)).schema_version==='research_plan_v3','retired_plan_read_only');
    need(run.plan_hash===digest(plan.bytes)&&Buffer.from(run.plan).equals(plan.bytes),'immutable_plan');
    need(run.revision===c.expected_revision&&run.epoch===c.epoch,'revision_conflict');
    need(run.lease_until<=now,'owner_still_live');
@@ -152,6 +173,7 @@ function apply(db,c,now){
   }
   return {status:'claimed',run:view(load(db,c.request_id))};
  }
+ need(!run||JSON.parse(Buffer.from(run.plan)).schema_version==='research_plan_v3','retired_plan_read_only');
  if(c.action==='settle')need(exact(c.args,'operation_id,outcome,elapsed_seconds,archive_sha256,file_sha256,native_result')&&string(c.args.operation_id,UUID)&&['acknowledged','unknown'].includes(c.args.outcome),'settle_fields');
  if(c.action==='settle'&&run&&run.revision===c.expected_revision){
   const original=db.prepare('SELECT owner_id,epoch FROM research_control_ops WHERE request_id=? AND operation_id=?').get(c.request_id,c.args.operation_id??'');
@@ -162,13 +184,14 @@ function apply(db,c,now){
  }else owner(run,c,now);
  const plan=JSON.parse(Buffer.from(run.plan));let grants=[];
  if(c.action==='renew')need(exact(c.args,''),'renew_fields');
- else if(c.action==='inputs'||c.action==='checkpoint'){
-  need(exact(c.args,'archive_sha256'),'checkpoint_fields');const files=archive(db,c.request_id,c.args.archive_sha256);
-  if(c.action==='inputs'){
-   need(run.inputs_hash===null||run.inputs_hash===c.args.archive_sha256,'immutable_inputs');
-   need(Object.entries(plan.files).every(([path,sha])=>files.some(f=>f.path===path&&f.sha256===sha)),'fixed_inputs_missing');
-   db.prepare('UPDATE research_control_runs SET inputs_hash=? WHERE request_id=?').run(c.args.archive_sha256,c.request_id);
-  }
+ else if(c.action==='inputs'){
+  need(exact(c.args,''),'repository_inputs_fields');
+  const hash=repositoryResearchInputsHash(plan);
+  need(run.inputs_hash===null||run.inputs_hash===hash,'immutable_inputs');
+  db.prepare('UPDATE research_control_runs SET inputs_hash=? WHERE request_id=?').run(hash,c.request_id);
+ }
+ else if(c.action==='checkpoint'){
+  need(exact(c.args,'archive_sha256'),'checkpoint_fields');archive(db,c.request_id,c.args.archive_sha256);
   db.prepare('UPDATE research_control_runs SET checkpoint_hash=? WHERE request_id=?').run(c.args.archive_sha256,c.request_id);
  }else if(c.action==='reserve'){
   need(exact(c.args,'operations')&&Array.isArray(c.args.operations)&&c.args.operations.length>0&&c.args.operations.length<=8,'operation_batch');
@@ -243,6 +266,7 @@ export function executeResearchControl(db,config,bytes,now=Date.now(),{onResult=
   if(prior){need(prior.hash===hash&&prior.request_id===c.request_id,'command_identity_conflict');const result={...JSON.parse(prior.result),replayed:true,dispatch_granted:false};onResult(result);db.exec('COMMIT');return result;}
   let result;db.exec('SAVEPOINT command');
   try{
+   need(config.research_control.protocol==='repository_inputs_v1'||['status','upload_status','receipt'].includes(c.action),'authority_migration_required');
    if(c.action==='permit'){const check=publicationChecks.get(publicationCheck);need(check?.command_hash===hash,'publication_validation_required');need(!check.code,check.code);}
    result=apply(db,c,now);db.exec('RELEASE command');
   }catch(e){if(!e.researchControlCode)throw e;db.exec('ROLLBACK TO command; RELEASE command');result={status:'rejected',code:e.researchControlCode,run:view(load(db,c.request_id)),dispatch_granted:false};}

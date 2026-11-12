@@ -2,7 +2,7 @@
 // Installation is offline under the original Publisher lock; normal ticks never
 // create policy or infer a missing ledger. Old Producer unknowns remain fenced.
 import {randomUUID} from 'node:crypto';
-import {acceptDataCommand,acceptReadCommand,canonicalRequestDate,decodeBundle,requireThat,reportDate} from './report-handoff.mjs';
+import {acceptDataCommand,canonicalRequestDate,decodeBundle,requireThat,reportDate} from './report-handoff.mjs';
 import {assertFence} from './producer-admission-fence.mjs';
 import {handoffScope,scopeDigest} from './handoff-state.mjs';
 import {producerInspection} from './producer-inspect.mjs';
@@ -53,17 +53,10 @@ export function acceptSubmission(message,config,now,window){
   requireThat(canonicalRequestDate(revision.request_id)>=config.slack_submission.first_report_date&&revision.source_ts>=config.slack_submission.activation_ts,'Revision outside activation boundary');
   return {...revision,kind:'revision',target_ts:null};
  }
- let event=acceptPermitSubmission(message,config,now,window);
- if(!event){const stage=acceptDataCommand(message,config,'!ai-report stage ',/^!ai-report stage (morning-\d{8}-r1) ([a-f0-9]{64})$/,now,window);event=stage?{...stage,kind:'stage',target_ts:null}:null;}
- if(!event){
-  const read=acceptReadCommand(message,config,'!ai-report submit ',/^!ai-report submit (morning-\d{8}-r1) ([a-f0-9]{64}) (\d{10}\.\d{6})$/,now,window);
-  if(!read)return null;
-  event={kind:'submit',source_ts:read.source_ts,request_id:read.match[1],hash:read.match[2],target_ts:read.match[3],file_id:null};
-  requireThat(event.target_ts<event.source_ts,'Submission must follow original staging');
- }
+ requireThat(!/^!ai-report (?:stage|submit) /.test(message?.text??''),'Retired publication entry; use the original host research client');
+ const event=acceptPermitSubmission(message,config,now,window);if(!event)return null;
  const date=canonicalRequestDate(event.request_id);
- requireThat(!controlledDate(config,event.request_id)||event.permit_id,'Activated research dates require their original publication permit');
- if(event.permit_id)requireThat(controlledDate(config,event.request_id)&&event.source_ts>=config.research_control.activation_ts&&(event.kind==='stage'||event.target_ts<event.source_ts),'Permit submission outside authority activation');
+ requireThat(event.permit_id&&controlledDate(config,event.request_id)&&event.source_ts>=config.research_control.activation_ts&&(event.kind==='stage'||event.target_ts<event.source_ts),'Permit submission outside authority activation');
  requireThat(date>=config.slack_submission.first_report_date&&event.source_ts>=config.slack_submission.activation_ts,'Staging outside activation boundary');return event;
 }
 // Called in the same transaction as the fixed history-page checkpoint.

@@ -8,6 +8,7 @@ import {stageFile} from '../scripts/slack-stage-cli.mjs';
 import {digest} from '../scripts/archive.mjs';
 import {PRODUCER_TOOLS} from '../scripts/producer-upload.mjs';
 import {producerTicket} from '../scripts/producer-upload.mjs';
+const authority={permit_id:null,before:async()=>null,after:async()=>{},validateArchive:async()=>{}};
 const proxy='http://managed.invalid:3128',url='https://files.slack.com/upload/v1/SYNTHETIC-token';
 test('managed transport restricts environment and fails closed',()=>{
  assert.deepEqual(producerCurlEnvironment('managed_proxy',{PATH:'/bin',https_proxy:proxy,NO_PROXY:'*',SECRET:'hidden'}),{PATH:'/bin',LANG:'C',https_proxy:proxy,HTTPS_PROXY:proxy,no_proxy:'',NO_PROXY:''});
@@ -43,8 +44,8 @@ test('research archives above report cap traverse the actual adapter while repor
    child.stdout.write(`200\t1\t0\t${bytes.length}\t0\t0\t0\t0\t0\t0\t0`);child.emit('close',0);
   }catch(e){child.emit('error',e);}});return child;
  };
- await stageFile(bytes,'C123',async(tool)=>{writes++;return tool===PRODUCER_TOOLS.ticket?{file_id:ticket.file_id,upload_url:ticket.upload_url}:{};},{research:true,upload:request=>uploadResearchArchiveBytes(request,{spawnCurl,transport:'managed_proxy',environment:{PATH:'/bin',https_proxy:proxy}})});
+ await stageFile(bytes,'C123',async(tool)=>{writes++;return tool===PRODUCER_TOOLS.ticket?{file_id:ticket.file_id,upload_url:ticket.upload_url}:{};},{authority,research:true,upload:request=>uploadResearchArchiveBytes(request,{spawnCurl,transport:'managed_proxy',environment:{PATH:'/bin',https_proxy:proxy}})});
  assert.equal(posts,1);assert.equal(writes,2);
  await assert.rejects(uploadProducerBytes({bytes,ticket},{spawnCurl}),/Bounded/);assert.equal(posts,1);
- await assert.rejects(stageFile(Buffer.alloc(16*1024*1024+1),'C123',()=>assert.fail('oversize fails before ticket'),{research:true}),/Bounded/);
+ await assert.rejects(stageFile(Buffer.alloc(16*1024*1024+1),'C123',()=>assert.fail('oversize fails before ticket'),{authority,research:true}),/Bounded/);
 });

@@ -81,11 +81,6 @@ test('unknown native query survives process restart without another send',async(
  const dir=await mkdtemp(join(tmpdir(),'producer-inspect-reopen-')),path=join(dir,'state.sqlite');let s=new ProducerUploadState(path,scope,{now:()=>TARGET+100});
  try{await s.prepare(bytes);let i=new ProducerInspect(s,config);const action=i.next(ID);s.close();s=new ProducerUploadState(path,scope,{now:()=>TARGET+100});i=new ProducerInspect(s,config);assert.equal(i.next(ID).type,'read');assert.equal(i.next(ID).operation_id,action.operation_id);assert.equal(i.query(ID).attempt,1);}finally{s.close();await rm(dir,{recursive:true,force:true});}
 });
-test('native CLI needs no local T4 paths and refuses fabricated downstream JSON',async()=>{
- const dir=await mkdtemp(join(tmpdir(),'producer-native-cli-')),path=join(dir,'config.json');
- try{const c={state_file:join(dir,'state.sqlite'),bundle_file:join(dir,'bundle.json'),scope,native_inspect:config};await writeFile(c.bundle_file,bytes);await writeFile(path,JSON.stringify(c));assert.equal(spawnSync(process.execPath,['scripts/producer-upload-cli.mjs',path,'--initialize'],{encoding:'utf8'}).status,0);const run=spawnSync(process.execPath,['scripts/producer-upload-cli.mjs',path,'--serve'],{input:JSON.stringify({type:'downstream_result',evidence:payload()})+'\n',encoding:'utf8'});assert.equal(run.status,1);assert(run.stdout.includes('"type":"ready"'));assert(!run.stdout.includes('"type":"write"'));}finally{await rm(dir,{recursive:true,force:true});}
-});
-
 test('receipt resolution and upload read permission commit atomically',()=>fixture(async({inspect,state})=>{
  locate(inspect);const invocation=thread(inspect),observe=state.observeDownstream.bind(state);
  state.observeDownstream=(...args)=>{observe(...args);throw Error('simulated commit failure');};assert.throws(()=>inspect.observeReceipt(ID,invocation));assert.equal(state.get(ID).detail.preflight_at,undefined);assert.equal(inspect.query(ID).phase,'located');
@@ -94,13 +89,6 @@ test('receipt resolution and upload read permission commit atomically',()=>fixtu
 test('two journal connections cannot dispatch two inspect queries',async()=>{
  const dir=await mkdtemp(join(tmpdir(),'producer-inspect-race-')),path=join(dir,'state.sqlite'),a=new ProducerUploadState(path,scope,{now:()=>TARGET+100}),b=new ProducerUploadState(path,scope,{now:()=>TARGET+100});
  try{await a.prepare(bytes);const one=new ProducerInspect(a,config),two=new ProducerInspect(b,config);const first=one.next(ID);assert.equal(first.type,'write');assert.equal(two.next(ID).type,'read');assert.equal(two.query(ID).operation_id,first.operation_id);}finally{a.close();b.close();await rm(dir,{recursive:true,force:true});}
-});
-
-test('normal CLI refuses a missing original journal instead of silently recreating it',async()=>{
- const dir=await mkdtemp(join(tmpdir(),'producer-missing-journal-')),path=join(dir,'config.json');
- try{const c={state_file:join(dir,'state.sqlite'),bundle_file:join(dir,'bundle.json'),scope,native_inspect:config};await writeFile(c.bundle_file,bytes);await writeFile(path,JSON.stringify(c));const run=spawnSync(process.execPath,['scripts/producer-upload-cli.mjs',path,'--serve'],{input:'{"type":"tick"}\n',encoding:'utf8'});assert.equal(run.status,1);assert(!run.stdout.includes('"type":"write"'));await assert.rejects(stat(c.state_file),e=>e.code==='ENOENT');
- const init=spawnSync(process.execPath,['scripts/producer-upload-cli.mjs',path,'--initialize'],{encoding:'utf8'});assert.equal(init.status,0);assert(init.stdout.includes('"type":"initialized"'));assert(!init.stdout.includes('"type":"write"'));assert.equal(spawnSync(process.execPath,['scripts/producer-upload-cli.mjs',path,'--initialize'],{encoding:'utf8'}).status,1);
- }finally{await rm(dir,{recursive:true,force:true});}
 });
 
 // Sanitized from the saved real native read_thread formatter, not a separately

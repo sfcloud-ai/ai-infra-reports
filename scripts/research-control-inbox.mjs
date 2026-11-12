@@ -17,20 +17,28 @@ export function queueResearchControl(db,event){
  if(db.prepare('SELECT count(*) n FROM research_control_events').get().n>=100000)return {source_ts:event.source_ts,stage:'research_control',code:'control_capacity',outcome:'not_started',retryable:false};
  db.prepare('INSERT INTO research_control_events(source_ts,command_id,hash,bytes) VALUES(?,?,?,?)').run(event.source_ts,event.command_id,event.hash,event.bytes);
 }
-export function pendingResearchControls(db){
+export function researchControlHealth(db){
  const rows=db.prepare("SELECT source_ts,command_id,phase,next_at,diagnostic,reply_text FROM research_control_events WHERE phase IN ('pending','ready','sending','unknown') ORDER BY source_ts").iterate();
- const blocked=[];
+ const blocked=[],frozen=[];
+ const migrated=JSON.parse(db.prepare('SELECT binding FROM research_control_policy WHERE id=1').get().binding).protocol==='repository_inputs_v1';
  for(const {diagnostic,reply_text,...row} of rows){
   let error=diagnostic?JSON.parse(diagnostic):null;
   if(['sending','unknown'].includes(row.phase)){
    const reply=reply_text?JSON.parse(reply_text.slice('!ai-research control-receipt '.length)):null;
    if(!reply?.dispatch_granted||!reply.operations?.some(op=>db.prepare('SELECT phase FROM research_control_ops WHERE operation_id=?').get(op.operation_id)?.phase==='intent'))continue;
    error??={stage:'research_control',code:'dispatch_receipt_unknown',outcome:'unknown',retryable:false};
+   const original=db.prepare('SELECT request_id FROM research_control_commands WHERE command_id=?').get(row.command_id);
+   const run=original&&original.request_id===reply.request_id?db.prepare('SELECT plan FROM research_control_runs WHERE request_id=?').get(original.request_id):null;
+   if(migrated&&run&&JSON.parse(Buffer.from(run.plan)).schema_version==='research_plan_v2'){
+    if(frozen.length<16)frozen.push({...row,request_id:original.request_id,error,reason:'retired_plan_read_only'});
+    continue;
+   }
   }
-  if(error)blocked.push({...row,error});if(blocked.length===16)break;
+  if(error&&blocked.length<16)blocked.push({...row,error});
  }
- return blocked;
+ return {blocked,frozen};
 }
+export function pendingResearchControls(db){return researchControlHealth(db).blocked;}
 export async function advanceResearchControl(state,config,slack,now=Date.now()){
  const db=state.db;if(!assertResearchControl(db,config))return;
  const row=db.prepare("SELECT * FROM research_control_events WHERE phase IN ('pending','ready') AND next_at<=? ORDER BY source_ts LIMIT 1").get(now);
@@ -51,7 +59,7 @@ export async function advanceResearchControl(state,config,slack,now=Date.now()){
   // A cooldown or delayed response cannot resurrect an expired dispatch grant.
   if(result.dispatch_granted){
    const run=db.prepare('SELECT owner_id,epoch,lease_until,permit,started_at,plan FROM research_control_runs WHERE request_id=?').get(result.request_id);
-   const live=run&&run.owner_id===result.run.owner_id&&run.epoch===result.run.epoch&&run.lease_until>now&&result.run.lease_until>now&&result.operations.every(op=>{
+   const live=run&&JSON.parse(Buffer.from(run.plan)).schema_version==='research_plan_v3'&&run.owner_id===result.run.owner_id&&run.epoch===result.run.epoch&&run.lease_until>now&&result.run.lease_until>now&&result.operations.every(op=>{
     const original=db.prepare('SELECT phase,owner_id,epoch,kind FROM research_control_ops WHERE operation_id=?').get(op.operation_id);
     return original?.phase==='intent'&&(original.kind==='native'||run.permit===null&&now<run.started_at+JSON.parse(Buffer.from(run.plan)).limits.total_budget_seconds*1000);
    });

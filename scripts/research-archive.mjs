@@ -6,6 +6,7 @@ import {handoffScope,scopeDigest} from './handoff-state.mjs';
 import {assertSubmission} from './slack-submission.mjs';
 import {safeDiagnostic,recoveryDelay,isSlackWriteUnexecuted} from './handoff-recovery.mjs';
 import {settleResearchArchiveUpload} from './research-control-publication.mjs';
+import {assertResearchOutputFiles} from './repository-research-inputs.mjs';
 
 const HASH=/^[a-f0-9]{64}$/, UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const TS=/^\d{10}\.\d{6}$/;
@@ -94,6 +95,15 @@ export function storeResearchArchive(db,event,bytes){
  if(hash!==event.hash||value.request_id!==event.request_id)rejectArchive('archive_envelope_mismatch');
  const prior=db.prepare('SELECT hash FROM research_archives WHERE command_id=? OR hash=?').all(value.command_id,hash);
  if(prior.length){if(prior.length!==1||prior[0].hash!==hash)rejectArchive('archive_command_id_conflict');return {hash,command_id:value.command_id,already_stored:true};}
+ // Repository inputs are recoverable references, never new private checkpoint
+ // files. Retain historical archives unchanged, including replay receipts.
+ if(db.prepare("SELECT 1 FROM sqlite_master WHERE name='research_control_runs'").get()){
+  const run=db.prepare('SELECT plan FROM research_control_runs WHERE request_id=?').get(value.request_id);
+  const plan=run?JSON.parse(Buffer.from(run.plan)):null;
+  if(plan?.schema_version==='research_plan_v3'){
+   try{assertResearchOutputFiles(plan,files);}catch{rejectArchive('repository_inputs_must_be_references');}
+  }
+ }
  const head=db.prepare('SELECT hash FROM research_archive_heads WHERE report_date=?').get(value.report_date);
  if((head?.hash??null)!==value.previous_sha256){
   const parent=value.previous_sha256?db.prepare('SELECT request_id FROM research_archives WHERE hash=?').get(value.previous_sha256):null;
@@ -147,6 +157,15 @@ export async function advanceResearchArchive(state,c,slack,now=Date.now()){
   if(row.phase==='pending'){
    let result;
    if(row.kind==='save'){
+    // Production writes require the one original host operation before file
+    // retrieval. Historical readback remains available without a new claim.
+    if(!c.research_control||!db.prepare("SELECT 1 FROM sqlite_master WHERE name='research_control_runs'").get())rejectArchive('original_research_authority_required');
+    const run=db.prepare('SELECT plan FROM research_control_runs WHERE request_id=?').get(row.request_id);
+    if(!run||JSON.parse(Buffer.from(run.plan)).schema_version!=='research_plan_v3')rejectArchive('original_repository_plan_required');
+    const op=db.prepare("SELECT input,phase FROM research_control_ops WHERE request_id=? AND operation_key=? AND kind='native'").get(row.request_id,'archive:'+row.hash+':complete');
+    if(!op||!['intent','unknown','acknowledged'].includes(op.phase))rejectArchive('original_archive_operation_required');
+    const input=JSON.parse(op.input);
+    if(input.permit_id!==null||input.file_id!==row.file_id||input.sha256!==row.hash)rejectArchive('original_archive_operation_mismatch');
     const message=await slack.exactPublish(row.source_ts);
     const original=acceptResearchArchive(message,c,now,{from:c.research_archive.activation_ts,to:row.source_ts});
     requireThat(original&&['kind','request_id','hash','file_id'].every(k=>original[k]===row[k]),'Original research file source changed');

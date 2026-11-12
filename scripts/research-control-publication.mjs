@@ -20,9 +20,10 @@ const need=(ok,code)=>{if(!ok)reject(code);};
 // Check in the same final transaction as stage/admission. Epoch does not erase
 // a prior immutable external intent. It never permits a second intent either.
 export function permitSubmission(db,c,row,stored=null){
- if(!controlledDate(c,row.request_id))return null;
+ need(controlledDate(c,row.request_id),'retired_publication_entry');
  const envelope=db.prepare('SELECT permit_id FROM research_control_submissions WHERE source_ts=?').get(row.source_ts);
- const run=db.prepare('SELECT permit FROM research_control_runs WHERE request_id=?').get(row.request_id),permit=run?.permit?JSON.parse(run.permit):null;
+ const run=db.prepare('SELECT permit,plan FROM research_control_runs WHERE request_id=?').get(row.request_id),permit=run?.permit?JSON.parse(run.permit):null;
+ need(run&&JSON.parse(Buffer.from(run.plan)).schema_version==='research_plan_v3','retired_plan_read_only');
  need(envelope&&permit&&envelope.permit_id===permit.permit_id&&permit.request_id===row.request_id&&permit.bundle_sha256===row.hash&&permit.report_date===canonicalRequestDate(row.request_id),'publication_permit_binding');
  need(permit.publisher_scope_sha256===db.prepare('SELECT value FROM scope WHERE id=1').get().value,'publication_permit_scope');
  const step=row.kind==='stage'?'complete':'submit';
@@ -32,6 +33,7 @@ export function permitSubmission(db,c,row,stored=null){
  need(input.permit_id===permit.permit_id&&input.sha256===row.hash&&input.archive_sha256===permit.archive_sha256,'publication_intent_binding');
  if(row.kind==='stage')need(input.file_id===row.file_id&&input.source_ts===null,'publication_original_file');
  else{
+  requireThat(stored,'Original staging has not been observed yet');
   need(stored&&stored.hash===row.hash&&input.file_id===stored.file_id&&input.source_ts===stored.source_ts&&row.target_ts===stored.source_ts,'publication_original_stage');
   const original=db.prepare('SELECT permit_id FROM research_control_submissions WHERE source_ts=?').get(stored.source_ts);need(original?.permit_id===permit.permit_id,'publication_stage_permit');
  }

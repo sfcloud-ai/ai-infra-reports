@@ -2,7 +2,7 @@ import {validateFenceConfig,assertFence} from './producer-admission-fence.mjs';
 import {validateSubmissionConfig,assertSubmission,advanceSubmission,pendingSubmissions} from './slack-submission.mjs';
 import {validateArchiveConfig,assertResearchArchive,advanceResearchArchive} from './research-archive.mjs';
 import {validateResearchControlConfig,assertResearchControl} from './research-control.mjs';
-import {advanceResearchControl,pendingResearchControls} from './research-control-inbox.mjs';
+import {advanceResearchControl,researchControlHealth} from './research-control-inbox.mjs';
 import {validateScheduledConfig,advanceScheduledDelivery,advanceScheduledStatus} from "./scheduled-delivery-bridge.mjs";
 // Single bounded tick, suitable for a separately approved 120-second service timer.
 // No default config, environment token, daemon, scheduler or deployment is installed.
@@ -67,6 +67,11 @@ export async function prepareSlack(slack){
   const blocked=localSlackNotStarted(Object.assign(Error('Slack identity not verified'),{diagnostic:{...safeDiagnostic(error,'slack.preflight','not_started'),outcome:'not_started'}}));
   return Object.fromEntries(['history','historyPage','exactPublish','download','controlAsset','controlReceipt','findControlReceipt','receipt','assertReady'].map(name=>[name,()=>{throw blocked;}]));
  }
+}
+export function validateLiveConfig(c){
+ validateConfig(c);
+ requireThat(c.slack_submission&&c.research_archive,'Live Publisher requires the original host research entry; retired Producer configurations cannot run');
+ return c;
 }
 // Dependencies here are supplied only by trusted runtime code, never the payload.
 export async function handoffTick(state,config,slack,io){
@@ -199,7 +204,8 @@ export async function handoffTick(state,config,slack,io){
   // Keep the report degraded until the original request finishes or is reconciled.
   const blocked_reports=pending.filter(job=>['proposal_failed','proposing','proposal_unknown','sending','receipt_unknown'].includes(job.phase)||job.detail.recovery?.last_error).slice(0,16).map(job=>({request_id:job.id,phase:job.phase,...(job.detail.recovery?.last_error?{error:safeDiagnostic({diagnostic:job.detail.recovery.last_error},job.phase)}:{})}));
   const blocked_research=config.research_archive?state.db.prepare("SELECT source_ts,request_id,kind,phase,next_at,diagnostic FROM research_archive_events WHERE phase='pending' AND diagnostic IS NOT NULL ORDER BY source_ts LIMIT 16").all().map(({diagnostic,...row})=>({...row,error:JSON.parse(diagnostic)})):[];
-  const blocked_control=config.research_control?pendingResearchControls(state.db):[];
+  const control_health=config.research_control?researchControlHealth(state.db):{blocked:[],frozen:[]};
+  const blocked_control=control_health.blocked,frozen_control=control_health.frozen;
   const due=pending.filter(job=>job.phase!=='proposal_failed').map(job=>job.detail.recovery?.next_at).filter(t=>Number.isFinite(t)&&t>0);
   if(config.research_control){
    const controls=state.db.prepare("SELECT next_at FROM research_control_events WHERE phase IN ('pending','ready') LIMIT 1000").all();
@@ -226,11 +232,11 @@ export async function handoffTick(state,config,slack,io){
    }
   }
   const next_delay_ms=due.length?Math.max(1000,Math.min(120000,Math.min(...due)-now())):120000;
-  return {...(id?{request_id:id,phase:state.metadata(id).phase}:noticeResult??{phase:'idle'}),...(noticeResult?{notice:noticeResult}:{}),...(scheduled?{scheduled}:{}),...(inbox?{blocked_intake}:{}),errors,blocked_reports,blocked_research,blocked_control,healthy:errors.length===0&&blocked_reports.length===0&&blocked_intake.length===0&&blocked_research.length===0&&blocked_control.length===0,next_delay_ms};
+  return {...(id?{request_id:id,phase:state.metadata(id).phase}:noticeResult??{phase:'idle'}),...(noticeResult?{notice:noticeResult}:{}),...(scheduled?{scheduled}:{}),...(inbox?{blocked_intake}:{}),errors,blocked_reports,blocked_research,blocked_control,frozen_control,healthy:errors.length===0&&blocked_reports.length===0&&blocked_intake.length===0&&blocked_research.length===0&&blocked_control.length===0,next_delay_ms};
 }
 export async function runHandoff(configFile){
  requireThat(process.platform==="linux","Live publisher requires the reviewed Linux service layout");
- const config=validateConfig(JSON.parse((await privateFile(configFile,16384)).toString("utf8")));
+ const config=validateLiveConfig(JSON.parse((await privateFile(configFile,16384)).toString("utf8")));
  const token=(await privateFile(config.slack_token_file,8192)).toString("utf8").trim();requireThat(/^xoxb-[a-zA-Z0-9-]+$/.test(token),"Dedicated Slack bot token required");
  await privateDirectory(config.state_dir);
  return withHandoffLock(config.state_dir,async()=>{
