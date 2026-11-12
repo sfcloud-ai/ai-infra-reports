@@ -1544,6 +1544,30 @@
       "revision": 1,
       "fingerprint": "a5144b90010c7def697cee239bf784ec1777c643b298b29fa7592736571c7b69",
       "content_sha256": "e73aa0e667a4c7e4f489d4efdac4ab955d12d9f5d789a0f3d8806f8a523fa3e0"
+    },
+    {
+      "id": "2026-11-12-sglang-pr-48272",
+      "event_key": "sglang-pr-48272",
+      "date": "2026-11-12",
+      "revision": 1,
+      "fingerprint": "7b6d0d073e312841e0c857e25d2a58be7a0e3bb31fb2e6c25d9ce2bb7466901f",
+      "content_sha256": "c68b77e36043f826a6f7226f0bc656ebfe7a5058405880d969edcedd10d08152"
+    },
+    {
+      "id": "2026-11-12-vllm-pr-66523",
+      "event_key": "vllm-pr-66523",
+      "date": "2026-11-12",
+      "revision": 1,
+      "fingerprint": "392fbe6cb54a7a125eb38e6b4586e03ff2192feec51927f39e7335b71ae1326e",
+      "content_sha256": "a2239926ee73f328f115c7bdadc7ae849e0a93b2c2f1db1b8c16368ef323e868"
+    },
+    {
+      "id": "2026-11-12-vllm-pr-66704",
+      "event_key": "vllm-pr-66704",
+      "date": "2026-11-12",
+      "revision": 1,
+      "fingerprint": "cf452480045281bd9712b825db79496f3a194a49d424ed3efae7f0f0f96fd08b",
+      "content_sha256": "9ec2f780efe83dc51f47c039a029866640bb44a69032b6b33869409158d61a87"
     }
   ]
 }

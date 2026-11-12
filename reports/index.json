@@ -1163,28 +1163,60 @@
       "path": "reports/2026-11-11/"
     },
     {
-      "schema_version": "1.0",
+      "schema_version": "1.1",
       "date": "2026-11-12",
-      "revision": 1,
+      "revision": 2,
       "title": "AI Infra 晨报 · 2026-11-12",
-      "subtitle": "部分晨报｜覆盖缺口：vLLM 代码、SGLang 代码、DeepInfer 代码、vLLM 博客、SGLang 博客、DeepSeek 文章、DeepInfer 文章。抽样。",
+      "subtitle": "模型服务、硬件、架构、具身训练、小模型与引擎技术文章；模型源保留具体覆盖缺口。",
       "articles": [
         {
-          "id": "vllm-kv-startup",
-          "title": "vLLM：CUDA Graph 捕获前释放热身 KV",
-          "summary": "启动显存生命周期修复，以及更准确的 KV 配额告警。",
-          "sha256": "8ef869287e1f8f23c1fa9515f32079707b3df6995b80d5ef1448d766ad1aaa9e",
-          "path": "reports/2026-11-12/articles/vllm-kv-startup.md"
+          "id": "model-serving-gpu",
+          "title": "多模型服务与超配：预热收益与独立状态预算",
+          "summary": "SHADOWPREFILL 的真实原型与完整设计分开核对，保留多模型容量和隔离边界。",
+          "sha256": "3c6b8d4fd5682979aa1462e9156373369efd1f12e0709142727002d8d0402a80",
+          "path": "reports/2026-11-12/articles/model-serving-gpu.md"
+        },
+        {
+          "id": "hardware-status",
+          "title": "H100 长上下文解码：权重放置与请求 KV 分开",
+          "summary": "TKNP 的 H100 配置、排队收益与 H200、Pro5500 的迁移边界。",
+          "sha256": "b5d394cf3d18cf2263e7b03d51daf7eca6adc4e0f55ce51be8c350066e7ff715",
+          "path": "reports/2026-11-12/articles/hardware-status.md"
+        },
+        {
+          "id": "model-architecture-status",
+          "title": "模型与架构：Qwen4 预览接入，SinkState 循环状态",
+          "summary": "Qwen4 输出预算语义变化；混合模型状态压缩与缓存适配。",
+          "sha256": "3cde434a3a6a948c02ad27dfde0dcd177e49719658cbc0652a19711621ada15b",
+          "path": "reports/2026-11-12/articles/model-architecture-status.md"
+        },
+        {
+          "id": "embodied-training",
+          "title": "DexSeed：从人类示范到仿真数据与实机策略",
+          "summary": "19 条示范扩展训练数据；分开核对仿真、8 H20 微调和 80 次实机评估。",
+          "sha256": "23c0dc80c4d7e76f51e327c74bee61df23c1bb0fdf599c4a9ce1a4b58924676c",
+          "path": "reports/2026-11-12/articles/embodied-training.md"
+        },
+        {
+          "id": "small-model-status",
+          "title": "Kanana 2-V Decide：3.67B 多模态决策小模型",
+          "summary": "给定候选集的质量比较、接口形式与部署成本限制。",
+          "sha256": "f17c81ecbd52848db9813592a554314083c5a7199077b06bd1d79ecc0e0e79ea",
+          "path": "reports/2026-11-12/articles/small-model-status.md"
         },
         {
           "id": "inference-engines",
-          "title": "推理引擎每日变动：保留真实 CUDA 错误",
-          "summary": "SGLang 主机内存注册诊断修复，并明确本期覆盖缺口。",
-          "sha256": "304013c8518fd16b5894f8a97b767b3acf0c2d188a66e0844c840766b0b2e009",
+          "title": "推理引擎每日变动：技术文章、缓存与卸载",
+          "summary": "vLLM EPD、SGLang 统一内存和 megakernel，以及 CPU 卸载与 KV 修复；DeepInfer 独立核查。",
+          "sha256": "e944e6a877e447f24c17820b90c5b851624d7bb6d9c170b80d45de907e1c4ff0",
           "path": "reports/2026-11-12/articles/inference-engines.md"
         }
       ],
       "poster": "assets/overview.png",
+      "revision_notice": {
+        "kind": "correction",
+        "summary": "补齐首版遗漏的模型服务与超配、硬件、新架构、具身训练、小模型和官方技术文章；推理引擎合并为统一栏目。"
+      },
       "path": "reports/2026-11-12/"
     }
   ],
@@ -3883,46 +3915,243 @@
       "revision": 1
     },
     {
-      "id": "2026-11-12-vllm-pr-66523",
+      "id": "2026-11-12-arxiv-2611-13176-v1",
+      "event_key": "arxiv-2611-13176-v1",
+      "title": "SHADOWPREFILL：独立模型状态预热",
+      "summary": "11月9日论文；区分22对模型仿真与16 H100请求级原型，不将预热当显存超配。",
+      "source_urls": [
+        "https://arxiv.org/html/2611.13176v1"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "c1738da9cd1500c9f4247b28035579f0f6e6a92bc4ba60fad79c66b994182bdb",
+      "date": "2026-11-12",
+      "revision": 2
+    },
+    {
+      "id": "2026-11-12-arxiv-2611-13293-v1",
+      "event_key": "arxiv-2611-13293-v1",
+      "title": "TKNP：权重放置与请求 KV 所有权分离",
+      "summary": "11月9日论文；H100长上下文解码比较，计入准入排队，不将decode指标当端到端。",
+      "source_urls": [
+        "https://arxiv.org/html/2611.13293v1"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status",
+      "fingerprint": "af318562f74dca37eb9c5c2a49ba081c1084ef6b801253104426e055e81c0a27",
+      "date": "2026-11-12",
+      "revision": 2
+    },
+    {
+      "id": "2026-11-12-arxiv-2611-14246-v1",
+      "event_key": "arxiv-2611-14246-v1",
+      "title": "SinkState：混合架构循环状态压缩",
+      "summary": "11月10日论文；状态子项内存优化，保留RTX PRO6000平台和准确率变化边界。",
+      "source_urls": [
+        "https://arxiv.org/html/2611.14246v1"
+      ],
+      "update_of": null,
+      "article_id": "model-architecture-status",
+      "fingerprint": "e1a465d41c39a8a56f5cf99e2f6bc01c0ef7888784cbedeea54dea973f851745",
+      "date": "2026-11-12",
+      "revision": 2
+    },
+    {
+      "id": "2026-11-12-arxiv-2611-14092-v1",
+      "event_key": "arxiv-2611-14092-v1",
+      "title": "DexSeed：仿真演示生成与 VLA 微调",
+      "summary": "11月10日论文；19条人类序列转仿真演示，8 H20训练，80次实机评估。",
+      "source_urls": [
+        "https://arxiv.org/html/2611.14092v1"
+      ],
+      "update_of": null,
+      "article_id": "embodied-training",
+      "fingerprint": "fc4ed7d76c3017014d68d9b3076c3bab6a691a9444805bc271b9a76148b7db97",
+      "date": "2026-11-12",
+      "revision": 2
+    },
+    {
+      "id": "2026-11-12-qwen4-max-preview-20261111",
+      "event_key": "qwen4-max-preview-20261111",
+      "title": "Qwen4-Max 预览与输出预算语义",
+      "summary": "11月11日10:00 UTC+8开始限期预览；思考与回答共享输出预算，未取得本地架构配置。",
+      "source_urls": [
+        "https://docs.qwencloud.com/changelog/models",
+        "https://docs.qwencloud.com/developer-guides/getting-started/latest-model"
+      ],
+      "update_of": null,
+      "article_id": "model-architecture-status",
+      "fingerprint": "840c971eaeca31453e9f0a862485572a266b8e5be5fd2f6ace1b6245dac185f8",
+      "date": "2026-11-12",
+      "revision": 2
+    },
+    {
+      "id": "2026-11-12-kanana-2-v-decide-3b-2611",
+      "event_key": "kanana-2-v-decide-3b-2611",
+      "title": "Kanana 2-V Decide 3B 多模态决策模型",
+      "summary": "模型卡标注11月6日发布，时间精度为日期；3.67B，给定决策评测四模型比较，不泛称通用SOTA。",
+      "source_urls": [
+        "https://huggingface.co/kakaocorp/kanana-2-v-decide-3b-2611"
+      ],
+      "update_of": null,
+      "article_id": "small-model-status",
+      "fingerprint": "281bd192ffe8d280ca486e9d2bcd4c57e1f7554969997e709d1f270a3c5f30e4",
+      "date": "2026-11-12",
+      "revision": 2
+    },
+    {
+      "id": "2026-11-12-vllm-epd-blog-20261111",
+      "event_key": "vllm-epd-blog-20261111",
+      "title": "vLLM EPD：编码、预填充与解码分离",
+      "summary": "11月11日博客；GB200八卡PD对十二卡EPD，吞吐按全部GPU归一化并保留负载交叉点。",
+      "source_urls": [
+        "https://vllm.ai/blog/2026-11-11-encoder-disaggregation-epd"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "e055ea710c671cbfbb4fd4e6f236e81af3325fb093590aff62617c9e226517bd",
+      "date": "2026-11-12",
+      "revision": 2
+    },
+    {
+      "id": "2026-11-12-sglang-unified-memory-blog-20261111",
+      "event_key": "sglang-unified-memory-blog-20261111",
+      "title": "SGLang 统一内存：联合容量与页面生命周期",
+      "summary": "11月11日博客；补充完整架构与单H200负载比较；此前页回收修复作为沿革。",
+      "source_urls": [
+        "https://www.lmsys.org/blog/2026-11-11-unified-memory/"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "4d788519110025b6c55d5db882611ce12b58e04d71cfc9bc548c76e25d73da44",
+      "date": "2026-11-12",
+      "revision": 2
+    },
+    {
+      "id": "2026-11-12-sglang-muse-megakernel-blog-20261111",
+      "event_key": "sglang-muse-megakernel-blog-20261111",
+      "title": "SGLang Muse Spark：每层 megakernel",
+      "summary": "页面发布日期11月11日；8 GB300 TP8 batch1的专用decode实现，不外推至在线或H100/H200。",
+      "source_urls": [
+        "https://www.lmsys.org/blog/2026-11-05-muse-spark-open-ultrafast/"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "ae16ae9ddfb94252c8c80b01b94dcb8d3d2a80a878192d07458695b3ac59db1d",
+      "date": "2026-11-12",
+      "revision": 2
+    },
+    {
+      "id": "2026-11-12-vllm-pr-66523-r2",
       "event_key": "vllm-pr-66523",
       "title": "vLLM 在 CUDA Graph 捕获前释放热身 KV 块",
       "summary": "vLLM 在 CUDA Graph 捕获前释放热身 KV 块",
       "source_urls": [
         "https://github.com/vllm-project/vllm/pull/66523"
       ],
-      "update_of": null,
-      "article_id": "vllm-kv-startup",
-      "fingerprint": "392fbe6cb54a7a125eb38e6b4586e03ff2192feec51927f39e7335b71ae1326e",
+      "update_of": "2026-11-12-vllm-pr-66523",
+      "article_id": "inference-engines",
+      "fingerprint": "95a37a18d617822e51801df9f8de13388de3b9acddce5997ae152603a468f6f6",
       "date": "2026-11-12",
-      "revision": 1
+      "revision": 2
     },
     {
-      "id": "2026-11-12-vllm-pr-66704",
+      "id": "2026-11-12-vllm-pr-66704-r2",
       "event_key": "vllm-pr-66704",
       "title": "vLLM 增加 extensible KV 显存配额告警",
       "summary": "vLLM 增加 extensible KV 显存配额告警",
       "source_urls": [
         "https://github.com/vllm-project/vllm/pull/66704"
       ],
-      "update_of": null,
-      "article_id": "vllm-kv-startup",
-      "fingerprint": "cf452480045281bd9712b825db79496f3a194a49d424ed3efae7f0f0f96fd08b",
+      "update_of": "2026-11-12-vllm-pr-66704",
+      "article_id": "inference-engines",
+      "fingerprint": "580bc03536768ec86426f0fba456a5f5a8becea57831f7e68a4d5c0dcef1c6cf",
       "date": "2026-11-12",
-      "revision": 1
+      "revision": 2
     },
     {
-      "id": "2026-11-12-sglang-pr-48272",
+      "id": "2026-11-12-sglang-pr-48272-r2",
       "event_key": "sglang-pr-48272",
       "title": "SGLang 保留主机内存注册的原 CUDA 错误",
       "summary": "SGLang 保留主机内存注册的原 CUDA 错误",
       "source_urls": [
         "https://github.com/sgl-project/sglang/pull/48272"
       ],
+      "update_of": "2026-11-12-sglang-pr-48272",
+      "article_id": "inference-engines",
+      "fingerprint": "6ba513d5fe2c2090dead6162420a6171b47c3baa21c918b70689d24329dd7136",
+      "date": "2026-11-12",
+      "revision": 2
+    },
+    {
+      "id": "2026-11-12-vllm-pr-61797",
+      "event_key": "vllm-pr-61797",
+      "title": "vLLM 增加可选 GPU 前缀惰性卸载",
+      "summary": "默认关闭；固定传输源块，区分不可达与miss，保留搬运开销和AMD验证平台。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/61797"
+      ],
       "update_of": null,
       "article_id": "inference-engines",
-      "fingerprint": "7b6d0d073e312841e0c857e25d2a58be7a0e3bb31fb2e6c25d9ce2bb7466901f",
+      "fingerprint": "32f0796e868c55db946548ede257aa565f025a78ad43f057dbb05a04080787e1",
       "date": "2026-11-12",
-      "revision": 1
+      "revision": 2
+    },
+    {
+      "id": "2026-11-12-vllm-pr-66419",
+      "event_key": "vllm-pr-66419",
+      "title": "vLLM Transformers 后端接入 CPU 权重卸载",
+      "summary": "逐层构建与卸载，保留多模态和MTP草稿限制，非大模型吞吐实证。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/66419"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "eaecda89a89df4031f367de6e506aeb8835d7c92983d143731b1e2c231abf14e",
+      "date": "2026-11-12",
+      "revision": 2
+    },
+    {
+      "id": "2026-11-12-vllm-pr-66292",
+      "event_key": "vllm-pr-66292",
+      "title": "GLM-5.3-Flash DFlash 草稿继承 FP8 KV",
+      "summary": "特定TP4请求预算下减少草稿KV，单并发吞吐基本不变。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/66292"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "39fa80ca3055b3cc916c32e52e3a9730cf4aca6e6492f6c10ac404eb41d7635d",
+      "date": "2026-11-12",
+      "revision": 2
+    },
+    {
+      "id": "2026-11-12-vllm-pr-66731",
+      "event_key": "vllm-pr-66731",
+      "title": "vLLM 按完整 token 预算测量启动峰值",
+      "summary": "多请求prefill和单并发fallback，保留full-vocab logprobs峰值缺口。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/66731"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "f993dbedc27852b6bfbc197fbc8236e7892c1b9e1396038ad12edfa93cf808ac",
+      "date": "2026-11-12",
+      "revision": 2
+    },
+    {
+      "id": "2026-11-12-sglang-pr-48316",
+      "event_key": "sglang-pr-48316",
+      "title": "SGLang CPU 卸载保留 DSA 索引器在 GPU",
+      "summary": "修复breakable prefill图中层外索引器执行的设备不一致，并保留常驻容量预算。",
+      "source_urls": [
+        "https://github.com/sgl-project/sglang/pull/48316"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "b3ea48cffba55868447b21966a9bb542c1b7f4fc76fc7b76f1c974d6b7bb3593",
+      "date": "2026-11-12",
+      "revision": 2
     }
   ]
 }
