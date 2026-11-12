@@ -5,24 +5,26 @@ import {PRODUCER_TOOLS,producerTicket} from '../scripts/producer-upload.mjs';
 import {encodeBundle} from '../scripts/report-handoff.mjs';
 import {digest} from '../scripts/archive.mjs';
 import {FILES} from './helpers/cloud-sender-fixture.mjs';
+const permit='11111111-1111-4111-8111-111111111111';
+const authority={permit_id:permit,before:async()=>permit,after:async()=>{},validateArchive:async()=>{}};
 const bytes=await encodeBundle(FILES,'morning-20261101-r1','a'.repeat(40),'b'.repeat(40));
 const ticket={file_id:'FFIRST',upload_url:'https://files.slack.com/upload/v1/synthetic-test-only'};
 const confirmed={adapter:'producer_curl_managed_proxy_v1',file_id:ticket.file_id,url_sha256:producerTicket(ticket).url_sha256,bundle_sha256:digest(bytes),metrics:{curl_exit:0,http_status:200,upload_bytes:bytes.length,num_redirects:0,ssl_verify_result:0}};
 test('one-shot staging uses real native tool arguments and original bytes; never submits a report',async()=>{
  const calls=[],evidence=[];
- const result=await stageFile(bytes,'C123',async(tool,args)=>{calls.push({tool,args});return tool===PRODUCER_TOOLS.ticket?ticket:{content:[]};},{observe:e=>evidence.push(e),upload:async(request,options)=>{assert.deepEqual(request.bytes,bytes);assert.deepEqual(options,{transport:'managed_proxy'});return confirmed;}});
- assert.deepEqual(calls,[{tool:PRODUCER_TOOLS.ticket,args:{filename:'ai-brief-bundle.json',content_length:bytes.length}},{tool:PRODUCER_TOOLS.complete,args:{file_id:'FFIRST',channel_id:'C123',initial_comment:`!ai-report stage morning-20261101-r1 ${digest(bytes)}`}}]);
+ const result=await stageFile(bytes,'C123',async(tool,args)=>{calls.push({tool,args});return tool===PRODUCER_TOOLS.ticket?ticket:{content:[]};},{authority,observe:e=>evidence.push(e),upload:async(request,options)=>{assert.deepEqual(request.bytes,bytes);assert.deepEqual(options,{transport:'managed_proxy'});return confirmed;}});
+ assert.deepEqual(calls,[{tool:PRODUCER_TOOLS.ticket,args:{filename:'ai-brief-bundle.json',content_length:bytes.length}},{tool:PRODUCER_TOOLS.complete,args:{file_id:'FFIRST',channel_id:'C123',initial_comment:`!ai-report stage-v2 morning-20261101-r1 ${digest(bytes)} ${permit}`}}]);
  assert.equal(result.publication_allowed,false);assert.equal(evidence[0].file_id,'FFIRST');assert(!JSON.stringify([result,evidence]).includes('https://'));
 });
 test('unknown POST stops before completion without refreshing ticket or replaying data',async()=>{
  for(const result of [{...confirmed,metrics:{...confirmed.metrics,http_status:0}},{...confirmed,metrics:{...confirmed.metrics,curl_exit:28}},null]){
-  let tools=0,posts=0;await assert.rejects(stageFile(bytes,'C123',async()=>{tools++;return ticket;},{upload:async()=>{posts++;if(!result)throw Error('unknown');return result;}}));
+  let tools=0,posts=0;await assert.rejects(stageFile(bytes,'C123',async()=>{tools++;return ticket;},{authority,upload:async()=>{posts++;if(!result)throw Error('unknown');return result;}}));
   assert.equal(tools,1);assert.equal(posts,1);
  }
 });
 test('failed POST keeps safe measurements available without exposing response text or signed URLs',async()=>{
  const observations=[],failed={...confirmed,metrics:{...confirmed.metrics,http_status:503,response_body:'private response',upload_url:ticket.upload_url}};
- await assert.rejects(stageFile(bytes,'C123',async()=>ticket,{upload:async()=>failed,observe:value=>observations.push(value)}));
+ await assert.rejects(stageFile(bytes,'C123',async()=>ticket,{authority,upload:async()=>failed,observe:value=>observations.push(value)}));
  const post=observations.find(value=>value.type==='staging_post_observed');assert.equal(post.metrics.http_status,503);assert.equal(post.metrics.upload_bytes,bytes.length);
  assert.equal(JSON.stringify(observations).includes('private response'),false);assert.equal(JSON.stringify(observations).includes(ticket.upload_url),false);
 });
@@ -34,7 +36,7 @@ test('inert probe cannot emit stage or submit commands and requires an exact tin
 test('private research upload uses its own file and command domain with the same one-shot transport',async()=>{
  const data=Buffer.from('original private source\r\n'),archive=Buffer.from(JSON.stringify({schema_version:'research_archive_v1',command_id:'11111111-1111-4111-8111-111111111111',request_id:'morning-20261101-r1',report_date:'2026-11-01',previous_sha256:null,files:[{path:'audit/source.txt',sha256:digest(data),content_base64:data.toString('base64')}]}));
  const calls=[];
- const result=await stageFile(archive,'C123',async(tool,args)=>{calls.push({tool,args});return tool===PRODUCER_TOOLS.ticket?ticket:{};},{research:true,upload:async({bytes:actual})=>{assert.deepEqual(actual,archive);return {...confirmed,bundle_sha256:digest(archive),metrics:{...confirmed.metrics,upload_bytes:archive.length}};}});
+ const result=await stageFile(archive,'C123',async(tool,args)=>{calls.push({tool,args});return tool===PRODUCER_TOOLS.ticket?ticket:{};},{authority,research:true,upload:async({bytes:actual})=>{assert.deepEqual(actual,archive);return {...confirmed,bundle_sha256:digest(archive),metrics:{...confirmed.metrics,upload_bytes:archive.length}};}});
  assert.equal(calls.length,2);assert.equal(calls[0].args.filename,'ai-brief-research-archive.json');assert.equal(calls[1].args.initial_comment,`!ai-research save morning-20261101-r1 ${digest(archive)}`);assert.equal(result.publication_allowed,false);
  await assert.rejects(stageFile(archive,'C123',()=>assert.fail('no write on conflicting modes'),{research:true,probe:true}));
 });

@@ -81,6 +81,7 @@ export class PublisherInbox{
     continue;
    }
    if(!message?.text?.startsWith('!ai-report publish '))continue;
+   if(this.config.slack_submission){rejected.push({source_ts:message.ts,stage:'intake_message',code:'retired_publication_entry',outcome:'not_started'});continue;}
    try{events.push(acceptQueuedPublish(message,this.config,{from:this.config.durable_intake.not_before,to:scan.upper_bound},now));}
    catch(error){rejected.push({source_ts:message.ts,...safeDiagnostic(error,'intake_message','not_started')});}
   }

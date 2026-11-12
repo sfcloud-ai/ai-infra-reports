@@ -28,10 +28,15 @@ A checkpoint is UTF-8 JSON with exactly these fields:
 ```
 
 The example's hash and bytes are placeholders. Generate them from original
-private files, retaining whitespace and newlines. Include the original plan,
-fixed prompt/index inputs, source bytes, consumption checkpoints, audit/editor
+private files, retaining whitespace and newlines. Include source bytes,
+consumption checkpoints, audit/editor
 outputs, images and final bundle as they become available. Credentials and signed
 upload URLs remain in their existing credential stores and immediate transport.
+The original plan lives in T4 authority. Fixed prompts and the history index are
+read from their pinned Git commits using [repository inputs](research-authority.md).
+They are not checkpoint payloads. Before obtaining an upload ticket, the client
+reads the authenticated original host plan and rejects fixed input paths and
+byte-identical copies under another name. The host repeats this check on receipt.
 Each checkpoint contains up to 128 changed files, each at most 8 MiB, totalling
 at most 12 MiB decoded and 16 MiB encoded. Larger collections use successive
 checkpoints. New checkpoints name the previous checkpoint's exact SHA256; a
@@ -45,15 +50,18 @@ Upload through the existing one-shot bridge:
 ```text
 umask 077
 stty -echo -echonl -icanon min 1 time 0
-node scripts/slack-stage-cli.mjs /private/original-checkpoint.json CHANNEL --research-managed-proxy
+node scripts/research-client-cli.mjs /private/client.json /private/original-checkpoint.json --archive
 ```
 
 Use a persistent PTY with terminal echo disabled before providing native results,
 or a private non-echoing stdin pipe. A signed upload URL must never appear in a
 terminal transcript, journal, checkpoint, or command argument.
 
-The original native tool result is passed to that same session exactly as for
-report staging. Its completion comment is `!ai-research save REQUEST_ID HASH`.
+Use the original scope and upload binding described in
+[research authority](research-authority.md). The bridge obtains authenticated
+host control receipts before each native operation. Pass the original native
+tool result to that same session exactly as for report staging. Its completion
+comment is `!ai-research save REQUEST_ID HASH`.
 The host downloads the authenticated original file, validates every file hash,
 and commits the original archive bytes, manifest, chain head and command result
 in one SQLite transaction before acknowledging `stored`. Upload completion
@@ -90,7 +98,8 @@ Missing files/checkpoints return a terminal `not_found` observation; invalid
 offsets return `rejected`. A corrected or later observation uses a new query.
 Neither result is retried indefinitely or marks unrelated publication unhealthy.
 
-A fresh cloud execution first reads the head and small plan/checkpoint files.
+A fresh cloud execution first reads the original host run and plan, then the
+archive head and small checkpoint files.
 Fetch individual missing files as needed; do not copy an entire audit on every
 hourly run. Large final audits and packaging should run on the host holding the
 original files. This small-message fallback remains available if old Slack

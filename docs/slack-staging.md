@@ -33,11 +33,13 @@ an old unknown upload. CD must defer while staging or publication is unfinished.
    already has `publisher_submission.bundle`, retain its request, hash, original
    file and source; do not regenerate or replace it. An admitted job follows the
    existing status/recovery path.
-2. To stage a new bundle, run Node 24 with the reviewed release and its locked
-   dependencies in the existing cloud environment:
+2. Read and claim the original [research authority](research-authority.md),
+   recover its pinned repository inputs, and obtain the host publication permit
+   for the validated original audit and bundle. To stage it, run Node 24 with
+   the reviewed release and its locked dependencies:
 
    ```sh
-   node scripts/slack-stage-cli.mjs /absolute/original/ai-brief-bundle.json PINNED_CHANNEL --managed-proxy
+   node scripts/research-client-cli.mjs /private/client.json /absolute/original/ai-brief-bundle.json --stage
    ```
 
    Use a persistent PTY, disable terminal echo, and pass actual native tool
@@ -49,17 +51,18 @@ an old unknown upload. CD must defer while staging or publication is unfinished.
    native result. The CLI performs one raw POST using the existing managed proxy,
    TLS verification, fixed Slack host, no redirects and no retry. Only confirmed
    original-byte upload permits native completion with the exact comment:
-   `!ai-report stage REQUEST_ID BUNDLE_SHA256`.
+   `!ai-report stage-v2 REQUEST_ID BUNDLE_SHA256 ORIGINAL_PERMIT_ID`.
 3. Read the original file/share and issue the existing `!ai-report status
    REQUEST_ID`. Verify the real Publisher identity and source-bound receipt.
    `publisher_submission.bundle` must contain the original request/date/hash,
    `source_ts`, `file_id`, and `phase: staged`. This means the original bytes are
    durably on the host. Upload completion alone does not establish this.
-4. Only after that exact staging receipt, send a native top-level plain command:
-   `!ai-report submit REQUEST_ID BUNDLE_SHA256 ORIGINAL_STAGE_TS`.
-   No attachment and no hand-written connector attribution. This authorizes the
-   existing publication and scheduled-delivery path. Reconcile an uncertain
-   submit from its original message and status; do not repeatedly resend it.
+4. After that exact staging receipt, retain its `file_id` and `source_ts` in the
+   client configuration's `stage` field and run the same bridge with `--submit`.
+   It obtains the original host submit intent and emits
+   `!ai-report submit-v2 REQUEST_ID BUNDLE_SHA256 ORIGINAL_STAGE_TS ORIGINAL_PERMIT_ID`.
+   This enters the existing publication and scheduled-delivery path. Reconcile
+   an uncertain submit from its original operation, message and host status.
 5. Continue existing Pages and scheduler checks. `staged`, `received` or a Slack
    receipt is not delivery success. Require matching original commit/hash/date
    and actual text/image completion from the original scheduler ledger.

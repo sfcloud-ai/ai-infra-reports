@@ -2,17 +2,60 @@
 
 The cloud execution is disposable. The Publisher's original SQLite database
 owns the exact plan, input hashes, selected checkpoints, owner lease, operation
-intents, attempts, elapsed charges and publication permit. Private file bytes
-use [research checkpoints](research-archive.md). A cloud directory is a cache;
+intents, attempts, elapsed charges and publication permit. New research outputs
+use [research checkpoints](research-archive.md). Fixed public inputs use Git
+references in `research_plan_v3`; they are not uploaded as checkpoints. A cloud directory is a cache;
 its disappearance never means that a previous request did not run.
 
 Deploy reviewed code and its matching CD controller, then install
-`research_control` explicitly under the original Publisher lock with database
+`research_control` with `protocol: "repository_inputs_v1"` explicitly under the original Publisher lock with database
 and configuration backups. Its UUID generation, activation timestamp and first
 report date are immutable. `installResearchControl` requires the archive policy
 and refuses dates with an existing publication. Start with the next unused date;
 preserve older missing-history evidence separately. Verify two fresh healthy
-ticks. Runtime never initializes or replaces this authority.
+ticks. Runtime never initializes or replaces this authority. Installing it does
+not require an input archive. Live native output-transport acceptance remains
+necessary before schedule activation; an input-reference test does not prove it.
+The host client is the single daily research/publication entry. Retired cloud
+guards, Producer upload CLIs, archive-based plans and unpermitted stage/submit
+commands cannot start work. Before activation, keep the service available for
+historical queries and completion of already admitted jobs; new research waits
+for the original host policy. No legacy fallback is enabled during cutover.
+
+An already installed authority retains its original configuration and policy
+while the reviewed runtime and matching CD controller are deployed. That binding
+allows historical `status`, `upload_status` and `receipt` observations only; it
+cannot claim, renew, reserve, settle, checkpoint or permit research. CD accepts
+either exact policy shape and still requires byte-identical ledger snapshots
+before and after its isolated probe. It never performs this migration itself.
+Before this cutover, finish or reconcile original staged submissions while their
+original runtime can still complete them. The migration refuses unadmitted bundles
+and unfinished submission events without changing any row; it cannot strand them
+behind the v2 execution fence or label an unpublished bundle as admitted.
+
+For an existing installation, stop the Publisher and hold its original lock.
+Back up the database and configuration together. Add only
+`protocol: "repository_inputs_v1"` to a copy of the original configuration and
+call `migrateResearchControl(db, newConfig, evidenceReference)` with the reviewed
+runtime. This transaction preserves every generation, activation date, archive
+binding, run, plan byte, attempt, budget, unknown operation and receipt; it changes
+only the authority policy and retains the original installation reference in its
+migration evidence. Atomically install the matching configuration before restart.
+If interrupted, reconcile the policy against the two saved configurations under
+the same lock; do not rerun installation or reset any ledger. A repeated or
+mismatched migration is refused. Verify the original inode, historical observations
+and two fresh healthy ticks before admitting a v3 day. Historical v2 plans remain
+read-only after migration as well.
+
+An original v2 dispatch receipt in `sending` or `unknown` remains a blocking
+unknown before migration, because the old release is still a possible CD
+rollback. Such installations require the explicit stopped-service maintenance
+cutover above; ordinary CD cannot bypass its healthy-service prerequisite.
+After the protocol binding is durably migrated, those exact v2 unknowns appear
+as `frozen_control` warnings. Their events, operations and charged budgets stay
+unchanged and queryable. Unknown v3 dispatches still block health. The CD probe
+checks the configuration against the installed authority binding; after migration,
+even an empty authority rejects an old runtime before opening the ledger.
 
 ## Starting or resuming a day
 
@@ -21,17 +64,18 @@ ticks. Runtime never initializes or replaces this authority.
    the original plan bytes, owner, epoch, revision, lease and charged budget.
    Follow `next_offset` for operations; pages contain one operation so the plan
    and source URL still fit one bounded reply.
-2. Restore fixed inputs and needed results from the host's checkpoint chain.
-   Verify chunk hashes and complete file hashes. Cache files may be recreated
-   from these original bytes; journals and attempts are never reconstructed.
+2. For a v3 plan, read the five public prompt files and report index from their
+   original full Git commits, verifying every byte hash. Recover needed new
+   research results from the host's checkpoint chain and verify their hashes.
+   Journals and attempts are never reconstructed from a cloud directory.
 3. If no run exists on an activated unused date, create the plan below and
    `claim` it. An expired run is claimed with its original plan bytes, current
    epoch and revision, and the new execution's owner UUID. A live competing
    owner is refused. Claims preserve the first start time and every attempt.
-4. Upload the fixed input checkpoint through the authority bridge, wait for the
-   host's stored receipt, and select it with `inputs`. Each path/hash in the
-   plan must exist in that checkpoint. Later `checkpoint` selections name
-   already stored archives. The selected inputs cannot change.
+4. After verifying repository inputs, send `inputs` with `{}` for a v3 plan.
+   The host stores the canonical reference-list hash; this is not an archive
+   hash and does not select or reset a result checkpoint. Later `checkpoint`
+   selections name already stored new-output archives. Inputs cannot change.
 5. Reserve source/model operations before executing them. Store their original
    outputs in private checkpoints, then `settle` with the archive/file hashes
    and actual elapsed seconds. A missing duration stays `null` and retains the
@@ -42,12 +86,19 @@ The original UTF-8 plan has exactly these fields:
 
 ```json
 {
-  "schema_version": "research_plan_v2",
+  "schema_version": "research_plan_v3",
   "request_id": "morning-20261112-r1",
   "report_date": "2026-11-12",
   "prompt_commit_sha": "EXACT_PROMPT_COMMIT",
   "reports_commit_sha": "EXACT_REPORT_BASE_COMMIT",
-  "files": {"prompts/research.md": "EXACT_ORIGINAL_FILE_SHA256"},
+  "files": {
+    "ai_brief/resources/prompts/audit.md": "EXACT_ORIGINAL_FILE_SHA256",
+    "ai_brief/resources/prompts/delivery.md": "EXACT_ORIGINAL_FILE_SHA256",
+    "ai_brief/resources/prompts/editor.md": "EXACT_ORIGINAL_FILE_SHA256",
+    "ai_brief/resources/prompts/research.md": "EXACT_ORIGINAL_FILE_SHA256",
+    "ai_brief/resources/prompts/sources.md": "EXACT_ORIGINAL_FILE_SHA256",
+    "reports/index.json": "EXACT_ORIGINAL_FILE_SHA256"
+  },
   "model_stages": ["editor", "review"],
   "limits": {
     "max_attempts_per_source": 2,
@@ -58,12 +109,40 @@ The original UTF-8 plan has exactly these fields:
 }
 ```
 
-Hashes in examples are placeholders. Include every mandatory fixed input,
-including prompt files and the original report index. The host accepts at most
-32 file hashes and 12 model stages; it cannot increase these budget ceilings.
+Hashes in examples are placeholders. V3 accepts exactly these six paths:
+prompts come from `sfcloud-ai/ai-infra-brief` at `prompt_commit_sha`, the index
+from `sfcloud-ai/ai-infra-reports` at `reports_commit_sha`. URLs are constructed
+from this allowlist; redirects, missing files and hash mismatches fail. There is
+no fallback to `main` or a previous cache. Each new day reads its pinned public
+repository inputs again. The host accepts up to 12 model stages and cannot
+increase the budget ceilings.
 The research deadline remains first claim plus total budget across takeovers.
 Native transport consumes distinct single-dispatch intents, without charging
 research/model time. Native provider cooldowns remain enforced.
+
+Pipe the original plan recovered from the authenticated host receipt to:
+
+```text
+node scripts/research-inputs-cli.mjs /private/unused-disposable-cache
+```
+
+It fetches through the configured managed HTTPS proxy with normal TLS checks,
+no direct fallback or provider retries, and verifies all six files before
+creating the cache. Prompt bytes are materialized as `prompts/*.md` and the
+index as `history.json`, matching the existing audit. The returned `inputs_hash` hashes
+the ordered list of repository, commit, path, byte hash and URL. Losing this
+directory requires a fresh host status read and Git fetch, not a replacement
+plan, journal, budget or upload. Result checkpoints contain newly generated
+research only; fixed input paths or byte-identical copies under another name
+are rejected. This check is not a general content-classification engine.
+
+Existing `research_plan_v2` records remain queryable but cannot claim, renew,
+reserve, resume, settle or publish. Their unknown operations remain unknown;
+they are never rewritten or reset as v3. Install the matching CD controller
+before authority activation: even an empty installed authority rejects a
+runtime without the single repository-input entry before opening the isolated
+ledger. Recovery must use the current protocol; it must not restore an older
+database to permit downgrade.
 
 ## Commands and original native receipts
 
@@ -80,7 +159,8 @@ use the current owner and revision. Every command is committed once by UUID.
 | `receipt` | original mutation `command_id` |
 | `claim` | original `plan_base64` |
 | `renew` | empty object |
-| `inputs`, `checkpoint` | stored `archive_sha256` |
+| `inputs` | empty object |
+| `checkpoint` | stored new-output `archive_sha256` |
 | `reserve` | `operations`, one to eight |
 | `resume` | original `operation_id` |
 | `settle` | `operation_id`, `outcome`, `elapsed_seconds`, `archive_sha256`, `file_sha256`, `native_result` |
@@ -99,7 +179,7 @@ The final native control message is limited to 5,000 characters, including
 base64 encoding. Validate it before sending. Split a large reservation batch
 into smaller commands using the returned revision; a refused oversized batch
 reserves nothing. Keep the initial plan small enough for this wire limit and
-store full source catalogs in its immutable input archive. An already claimed
+keep the public source catalog in its pinned `sources.md`. An already claimed
 plan is never shortened or reformatted to fit a later retry.
 
 Use a private non-echoing stdin pipe, or disable terminal echo before supplying

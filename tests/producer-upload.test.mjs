@@ -169,19 +169,9 @@ test('read-only adapters never perform Store constructor recovery on sending row
  populate(d);d.s.prepare("UPDATE requests SET status='sending'").run();d.s.prepare("UPDATE parts SET status='sending'").run();d.s.prepare('UPDATE requests SET parts_sent=1').run();
  const before=await readFile(d.config.scheduler_database);await d.read();const after=await readFile(d.config.scheduler_database);assert.deepEqual(after,before);assert.equal(d.s.prepare('SELECT status FROM requests').get().status,'sending');
 }));
-test('CLI refuses arbitrary downstream proof instead of granting write permission',()=>databases(async d=>{
- const config={...d.config,state_file:join(d.dir,'state.sqlite'),bundle_file:join(d.dir,'bundle.json')};await writeFile(config.bundle_file,bytes);const path=join(d.dir,'config.json');await writeFile(path,JSON.stringify(config));
- assert.equal(spawnSync(process.execPath,['scripts/producer-upload-cli.mjs',path,'--initialize'],{encoding:'utf8'}).status,0);const run=spawnSync(process.execPath,['scripts/producer-upload-cli.mjs',path,'--serve'],{input:JSON.stringify({type:'downstream_result',evidence:ledger()})+'\n',encoding:'utf8'});assert.equal(run.status,1);assert(!run.stdout.includes('"type":"write"'));assert(run.stdout.includes('producer_bridge_stopped'));
-}));
-
 test('foreign journal is refused before creating any Producer tables',()=>databases(async d=>{
  const before=await readFile(d.config.publisher_database);assert.throws(()=>new ProducerUploadState(d.config.publisher_database,scope),/dedicated Producer journal/);assert.deepEqual(await readFile(d.config.publisher_database),before);
  assert.equal(d.p.prepare("SELECT count(*) AS n FROM sqlite_master WHERE name LIKE 'producer_%'").get().n,0);
-}));
-test('local CLI cannot turn jobs-only absence into a native upload permission',()=>databases(async d=>{
- const config={...d.config,state_file:join(d.dir,'state.sqlite'),bundle_file:join(d.dir,'bundle.json')},path=join(d.dir,'config.json');await writeFile(config.bundle_file,bytes);await writeFile(path,JSON.stringify(config));
- assert.equal(spawnSync(process.execPath,['scripts/producer-upload-cli.mjs',path,'--initialize'],{encoding:'utf8'}).status,0);const run=spawnSync(process.execPath,['scripts/producer-upload-cli.mjs',path,'--serve'],{input:'{"type":"tick"}\n{"type":"close"}\n',encoding:'utf8'});assert.equal(run.status,0,run.stdout+run.stderr);const messages=run.stdout.trim().split('\n').map(JSON.parse);assert.deepEqual(messages.map(m=>m.type),['ready','blocked']);assert.equal(messages[1].write_allowed,false);
- const state=new ProducerUploadState(config.state_file,scope);try{assert.equal(state.get(ID).detail.preflight_at,undefined);assert.equal(state.op(ID,'ticket'),null);}finally{state.close();}
 }));
 test('adapter refreshes stale daily evidence before requesting a lost original ticket',()=>fixture(async(s,c)=>{
  s.observeDownstream(ID,ledger());s.record(s.next(ID),ticket);c.advance(READ_TTL_MS);
