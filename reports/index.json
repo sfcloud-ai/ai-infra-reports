@@ -1161,6 +1161,31 @@
       ],
       "poster": "assets/overview.png",
       "path": "reports/2026-11-11/"
+    },
+    {
+      "schema_version": "1.0",
+      "date": "2026-11-12",
+      "revision": 1,
+      "title": "AI Infra 晨报 · 2026-11-12",
+      "subtitle": "部分晨报｜覆盖缺口：vLLM 代码、SGLang 代码、DeepInfer 代码、vLLM 博客、SGLang 博客、DeepSeek 文章、DeepInfer 文章。抽样。",
+      "articles": [
+        {
+          "id": "vllm-kv-startup",
+          "title": "vLLM：CUDA Graph 捕获前释放热身 KV",
+          "summary": "启动显存生命周期修复，以及更准确的 KV 配额告警。",
+          "sha256": "8ef869287e1f8f23c1fa9515f32079707b3df6995b80d5ef1448d766ad1aaa9e",
+          "path": "reports/2026-11-12/articles/vllm-kv-startup.md"
+        },
+        {
+          "id": "inference-engines",
+          "title": "推理引擎每日变动：保留真实 CUDA 错误",
+          "summary": "SGLang 主机内存注册诊断修复，并明确本期覆盖缺口。",
+          "sha256": "304013c8518fd16b5894f8a97b767b3acf0c2d188a66e0844c840766b0b2e009",
+          "path": "reports/2026-11-12/articles/inference-engines.md"
+        }
+      ],
+      "poster": "assets/overview.png",
+      "path": "reports/2026-11-12/"
     }
   ],
   "entries": [
@@ -3855,6 +3880,48 @@
       "article_id": "inference-engines",
       "fingerprint": "9c17f4f6c9c72ef5b6d3b719be5157ece47a34956edd6547ac2abba53799f8a4",
       "date": "2026-11-11",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-12-vllm-pr-66523",
+      "event_key": "vllm-pr-66523",
+      "title": "vLLM 在 CUDA Graph 捕获前释放热身 KV 块",
+      "summary": "vLLM 在 CUDA Graph 捕获前释放热身 KV 块",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/66523"
+      ],
+      "update_of": null,
+      "article_id": "vllm-kv-startup",
+      "fingerprint": "392fbe6cb54a7a125eb38e6b4586e03ff2192feec51927f39e7335b71ae1326e",
+      "date": "2026-11-12",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-12-vllm-pr-66704",
+      "event_key": "vllm-pr-66704",
+      "title": "vLLM 增加 extensible KV 显存配额告警",
+      "summary": "vLLM 增加 extensible KV 显存配额告警",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/66704"
+      ],
+      "update_of": null,
+      "article_id": "vllm-kv-startup",
+      "fingerprint": "cf452480045281bd9712b825db79496f3a194a49d424ed3efae7f0f0f96fd08b",
+      "date": "2026-11-12",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-12-sglang-pr-48272",
+      "event_key": "sglang-pr-48272",
+      "title": "SGLang 保留主机内存注册的原 CUDA 错误",
+      "summary": "SGLang 保留主机内存注册的原 CUDA 错误",
+      "source_urls": [
+        "https://github.com/sgl-project/sglang/pull/48272"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "7b6d0d073e312841e0c857e25d2a58be7a0e3bb31fb2e6c25d9ce2bb7466901f",
+      "date": "2026-11-12",
       "revision": 1
     }
   ]

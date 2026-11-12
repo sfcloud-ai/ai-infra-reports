@@ -1488,6 +1488,62 @@
       "revision": 3,
       "fingerprint": "0e23d16296c7537a83318f98f8221ff06938760b6fc97683af100020af3eaaa3",
       "content_sha256": "3cb4fd761a553eb31ca65a82edf5034fbc4d801f6d4a6d8ba0678e042c6c404d"
+    },
+    {
+      "id": "2026-11-11-arxiv-2611-08577-v1",
+      "event_key": "arxiv-2611-08577-v1",
+      "date": "2026-11-11",
+      "revision": 1,
+      "fingerprint": "ec3021ba926c8d294b675aa46fe55899c670fec7cb9336cdcedf48c9b55e29fb",
+      "content_sha256": "c2fc68096474671dfcfecf4bf31a565a39ea7f69b9a0cefec64d6f6185a01c5b"
+    },
+    {
+      "id": "2026-11-11-arxiv-2611-12304-v1",
+      "event_key": "arxiv-2611-12304-v1",
+      "date": "2026-11-11",
+      "revision": 1,
+      "fingerprint": "a30e273975aede0f6fe685c81cea16094b817335a0e95c26b53b2952effa85ed",
+      "content_sha256": "2377e6c4341b9db92bddeffe67ddecdd9859944c4fdb58fe5a568db444069cb4"
+    },
+    {
+      "id": "2026-11-11-hardware-status",
+      "event_key": "hardware-status-20261111",
+      "date": "2026-11-11",
+      "revision": 1,
+      "fingerprint": "8ca4a01e3fd0974e25e2e3300c36dd631ea9c4d3b01d028e5e5717e3663b240c",
+      "content_sha256": "49f6e861ffc52299b7d989f8d42b79e14ce49f3277cf48a45d2ff1de65dece37"
+    },
+    {
+      "id": "2026-11-11-inference-engines",
+      "event_key": "inference-engines-20261111",
+      "date": "2026-11-11",
+      "revision": 1,
+      "fingerprint": "9c17f4f6c9c72ef5b6d3b719be5157ece47a34956edd6547ac2abba53799f8a4",
+      "content_sha256": "73a2ab5ff8c3faa5c22129237a8e368bb0ff25abcad7d256814f701bedba2244"
+    },
+    {
+      "id": "2026-11-11-longcat-25-model-card-20261105",
+      "event_key": "longcat-25-model-card-20261105",
+      "date": "2026-11-11",
+      "revision": 1,
+      "fingerprint": "973151d4c3dad68b872a06bbdeb779b21ea717d4255d5daa909d81c50ebee6f7",
+      "content_sha256": "1f764c21eeac0b09d17db6296cf358983d9ac8ddd4dd68f0b3706e2b300cf882"
+    },
+    {
+      "id": "2026-11-11-nvidia-snapshot-20261110",
+      "event_key": "nvidia-snapshot-20261110",
+      "date": "2026-11-11",
+      "revision": 1,
+      "fingerprint": "aaf5f1fc82bc1d37d56d2b06b72264354b71dc6fc3f4ea7622aa40b477e5ac9b",
+      "content_sha256": "cd066c5b9c0d415f65d9e2b123b3d5de433e4c709f072ea504939bf2e7b9b74a"
+    },
+    {
+      "id": "2026-11-11-small-model-status",
+      "event_key": "small-model-status-20261111",
+      "date": "2026-11-11",
+      "revision": 1,
+      "fingerprint": "a5144b90010c7def697cee239bf784ec1777c643b298b29fa7592736571c7b69",
+      "content_sha256": "e73aa0e667a4c7e4f489d4efdac4ab955d12d9f5d789a0f3d8806f8a523fa3e0"
     }
   ]
 }
