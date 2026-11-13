@@ -16,7 +16,8 @@ try:
   case.plans[item['hash']]=plan
   case.q.admit(rid,raw,item['commit'])
   if item.get('unknown'):case.outcomes=['unknown']
-  for _ in range(4):case.advance()
+  if not item.get('queued'):
+   for _ in range(4):case.advance()
   receipts.append(case.q.status(rid))
  print(json.dumps(receipts))
 finally:case.tearDown()

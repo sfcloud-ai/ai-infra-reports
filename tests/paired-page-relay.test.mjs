@@ -1,3 +1,5 @@
+import {advanceHandoff} from '../scripts/handoff-worker.mjs';
+import {installScheduledTables} from '../scripts/scheduled-delivery-state.mjs';
 import {checkDailyDelivery} from '../scripts/publisher-watchdog.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -22,6 +24,25 @@ test('paired actual relay r1 r2 r3 receipts advance bridge and original authorit
    const files=new Map([...FILES].filter(([p])=>!p.includes('/articles/')||topics.slice(0,revision).some(id=>p.endsWith('/'+id+'.md'))).map(([p,b])=>[p.replace('/r1/','/'),b]));files.set(root+'report.json',Buffer.from(JSON.stringify(report)));
    const request_id=`morning-${DAY.replaceAll('-','')}-r${revision}`,bytes=await encodeBundle(files,request_id,'d'.repeat(40),'b'.repeat(40)),hash=digest(bytes),commit=String(revision).repeat(40);
    items.push({request_id,bytes,hash,report,commit,bundle_base64:bytes.toString('base64')});previous={request_id,bundle_sha256:hash};
+  }
+  // The real relay is only a downstream consumer: an unstarted original must
+  // prevent Publisher from proposing a correction, not be superseded after it.
+  const queuedRun=spawnSync('python',['tests/helpers/paired-page-relay.py',paired],{input:JSON.stringify([{...items[0],bytes:undefined,queued:true}]),encoding:'utf8',maxBuffer:4*1024*1024});
+  assert.equal(queuedRun.status,0,queuedRun.stderr);const queued=JSON.parse(queuedRun.stdout)[0];assert.equal(queued.status,'queued');assert.equal(queued.parts_sent,0);
+  for(const kind of ['correction','maintenance']){
+   const guard=new HandoffState(':memory:',handoffScope(config));try{
+    const first=items[0],rid=items[1].request_id;
+    guard.admit({request_id:first.request_id,hash:first.hash,source_ts:'1793491202.000001'},first.bytes);
+    guard.move(first.request_id,'received','receipt_sent',{commit:first.commit,proof:{publication_status:'verified',bundle_sha256:first.hash,commit:first.commit}});
+    installScheduledTables(guard.db,['scheduled_handoffs','scheduled_bridge_scope']);
+    const binding={request_id:first.request_id,report_date:DAY,report_commit:first.commit,bundle_sha256:first.hash};
+    guard.db.prepare('INSERT INTO scheduled_handoffs VALUES(?,?,?,?,0)').run(first.request_id,JSON.stringify(binding),'observed',JSON.stringify(queued));
+    const correction=structuredClone(first.report);correction.revision=2;correction.revision_notice={kind,summary:'Correct only after original delivery'};correction.page_delivery={...correction.page_delivery,previous:{request_id:first.request_id,bundle_sha256:first.hash},added:[]};
+    const files=new Map(JSON.parse(first.bytes).files.map(f=>[f.path,Buffer.from(f.base64,'base64')]));files.set(root+'report.json',Buffer.from(JSON.stringify(correction)));
+    const raw=await encodeBundle(files,rid,'d'.repeat(40),'b'.repeat(40));guard.admit({request_id:rid,hash:digest(raw),source_ts:'1793491202.000002'},raw);
+    await assert.rejects(advanceHandoff(guard,rid,{propose:()=>assert.fail('Live publication must remain untouched')}),/page_correction_delivery_incomplete/);
+    assert.equal(guard.get(rid).phase,'received');assert.deepEqual(guard.get(first.request_id).bytes,first.bytes);
+   }finally{guard.close();}
   }
   const child=spawnSync('python',['tests/helpers/paired-page-relay.py',paired],{input:JSON.stringify(items.map(({bytes,...v})=>v)),encoding:'utf8',maxBuffer:4*1024*1024});assert.equal(child.status,0,child.stderr);const receipts=JSON.parse(child.stdout);assert.equal(receipts[1].delivery_kind,'page_completion');assert.equal(receipts[2].delivery_kind,'page_completion');
   const bindings=items.map((item,i)=>({request_id:item.request_id,report_date:DAY,report_commit:item.commit,bundle_sha256:item.hash,published:true,...(i?{report_revision:i+1,revision_kind:'page_completion'}:{})}));
