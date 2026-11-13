@@ -19,8 +19,8 @@ export async function inspectPublisherDay(state,config,command,sourceTs,{now=()=
  try{
   assertFence(db,config.producer_fence);
   if(config.producer_fence)requireThat(!db.prepare('SELECT 1 FROM producer_quarantined_dates WHERE report_date=?').get(command.report_date),'Original unresolved date is quarantined');
-  if(exists(db,'slack_staged_bundles')){
-   const staged=db.prepare('SELECT request_id,hash,phase,source_ts FROM slack_staged_bundles WHERE report_date=? OR request_id=?').all(command.report_date,command.request_id);
+  for(const staging of ['slack_staged_bundles','research_page_staged'])if(exists(db,staging)){
+   const staged=db.prepare(`SELECT request_id,hash,phase,source_ts FROM ${staging} WHERE report_date=? OR request_id=?`).all(command.report_date,command.request_id);
    requireThat(staged.every(s=>s.request_id===command.request_id&&s.hash===command.bundle_sha256&&(s.request_id===stagedRequest||s.phase==='admitted'&&db.prepare('SELECT 1 FROM jobs WHERE id=? AND hash=? AND source_ts=?').get(s.request_id,s.hash,s.source_ts))),'Date reserved by original Slack staging');
   }
   const scope=db.prepare('SELECT value FROM scope WHERE id=1').get()?.value;
