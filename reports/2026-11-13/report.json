@@ -1,0 +1,137 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-11-13",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-11-13",
+  "subtitle": "部分晨报｜覆盖缺口：硬件、架构、具身、小模型、引擎。部分官方入口异常，代码与模型卡核验不完整。",
+  "articles": [
+    {
+      "id": "model-serving-gpu",
+      "title": "Inkling 2 Small：通信、运行状态与专家计算一起优化",
+      "summary": "同一模型的融合与缓存适配；不同负载的性能结果不横向排名。",
+      "sha256": "3bd9c499a6747bebf015d21014db203e57b7c8b6375aa6b2448eb89b0a146698"
+    },
+    {
+      "id": "hardware-status",
+      "title": "硬件适用边界：不把新平台吞吐外推到H100/H200",
+      "summary": "已读硬件发现页，具体新文章与目标卡验证仍有缺口。",
+      "sha256": "e42d3c752f1b3d0d6a5b3298c0dbdfa741f8f14dfa068596965d88083a6cdc76"
+    },
+    {
+      "id": "model-architecture-status",
+      "title": "模型与架构：混合状态已见，模型卡变更待核",
+      "summary": "明确Inkling机制边界；GLM、DeepSeek、Qwen仍保留具体缺口。",
+      "sha256": "85d6f342d5c3dad7b0a5cea4f7e21c313dae30a075062686c7dd88b072492aea"
+    },
+    {
+      "id": "embodied-training",
+      "title": "制造业具身训练：发现线索尚未完成全文核验",
+      "summary": "已查LeRobot发布列表和NVIDIA发现页，不虚构工厂实测。",
+      "sha256": "5eb246583e0255659594953a42c2dd84f12d6a5a5b254ef84c838114dcd46d95"
+    },
+    {
+      "id": "small-model-status",
+      "title": "前沿小模型：不把17B激活误当小权重",
+      "summary": "模型目录已读，完整任务质量与成本比较仍缺失。",
+      "sha256": "96d104975fccb79ed6d46f3113fe5d8167ce0dc29cfac5cbd247f5a7001853ab"
+    },
+    {
+      "id": "inference-engines",
+      "title": "推理引擎每日变动：技术文章已读，代码覆盖有缺口",
+      "summary": "vLLM、SGLang合并事件交叉引用；DeepInfer单独保留核查范围。",
+      "sha256": "0a550c48d8c90b28df5a5619979512da841c84feee9fb193b8903c3c0434dc3b"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-11-13-inkling2-small-day0-20261112",
+      "event_key": "inkling2-small-day0-20261112",
+      "title": "Inkling 2 Small：通信、运行状态与专家计算一起优化",
+      "summary": "同一模型的融合与缓存适配；不同负载的性能结果不横向排名。",
+      "source_urls": [
+        "https://vllm.ai/blog/2026-11-12-inkling2-small",
+        "https://www.sglang.io/blog/inkling-2-small-day0-support",
+        "https://raw.githubusercontent.com/vllm-project/vllm-project.github.io/main/_posts/2026-11-12-inkling2-small.md"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-11-13-hardware-status-20261113",
+      "event_key": "hardware-status-20261113",
+      "title": "硬件适用边界：不把新平台吞吐外推到H100/H200",
+      "summary": "已读硬件发现页，具体新文章与目标卡验证仍有缺口。",
+      "source_urls": [
+        "https://developer.nvidia.com/blog/",
+        "https://www.sglang.io/blog/inkling-2-small-day0-support"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status"
+    },
+    {
+      "id": "2026-11-13-model-architecture-status-20261113",
+      "event_key": "model-architecture-status-20261113",
+      "title": "模型与架构：混合状态已见，模型卡变更待核",
+      "summary": "明确Inkling机制边界；GLM、DeepSeek、Qwen仍保留具体缺口。",
+      "source_urls": [
+        "https://vllm.ai/blog/2026-11-12-inkling2-small",
+        "https://huggingface.co/api/models?author=deepseek-ai&direction=-1&limit=5&sort=lastModified",
+        "https://www.deepseek.com/news/"
+      ],
+      "update_of": null,
+      "article_id": "model-architecture-status"
+    },
+    {
+      "id": "2026-11-13-embodied-training-20261113",
+      "event_key": "embodied-training-20261113",
+      "title": "制造业具身训练：发现线索尚未完成全文核验",
+      "summary": "已查LeRobot发布列表和NVIDIA发现页，不虚构工厂实测。",
+      "source_urls": [
+        "https://api.github.com/repos/huggingface/lerobot/releases?per_page=3",
+        "https://developer.nvidia.com/blog/"
+      ],
+      "update_of": null,
+      "article_id": "embodied-training"
+    },
+    {
+      "id": "2026-11-13-small-model-status-20261113",
+      "event_key": "small-model-status-20261113",
+      "title": "前沿小模型：不把17B激活误当小权重",
+      "summary": "模型目录已读，完整任务质量与成本比较仍缺失。",
+      "source_urls": [
+        "https://huggingface.co/api/models?author=Qwen&direction=-1&limit=5&sort=lastModified",
+        "https://huggingface.co/api/models?author=deepseek-ai&direction=-1&limit=5&sort=lastModified",
+        "https://huggingface.co/api/models?author=zai-org&direction=-1&limit=5&sort=lastModified"
+      ],
+      "update_of": null,
+      "article_id": "small-model-status"
+    },
+    {
+      "id": "2026-11-13-inference-engines-20261113",
+      "event_key": "inference-engines-20261113",
+      "title": "推理引擎每日变动：技术文章已读，代码覆盖有缺口",
+      "summary": "vLLM、SGLang合并事件交叉引用；DeepInfer单独保留核查范围。",
+      "source_urls": [
+        "https://vllm.ai/blog/archive",
+        "https://www.sglang.io/blog",
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/commits?per_page=5",
+        "https://github.com/deepseek-ai/DeepInfer"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    }
+  ],
+  "images": [
+    {
+      "path": "assets/overview.png",
+      "sha256": "8b3df2ce4287b7193662bf5a658ef1f6744894a05130ce0b049eba6429d1da79",
+      "alt": "六方向晨报总览，一条已核候选与具体覆盖缺口"
+    },
+    {
+      "path": "assets/mechanism.png",
+      "sha256": "9b1921c5879b6ea3a47b565beee45d42f1ef1f2980da10bea62715b8b144ca81",
+      "alt": "同一模型的通信、运行状态与KV读取机制原创简图"
+    }
+  ],
+  "poster": "assets/overview.png"
+}
