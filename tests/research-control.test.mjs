@@ -913,8 +913,9 @@ test('real page bundle permits append to original run and use independent native
   }
   const first=pageBundle(1),scope=report=>({contract:'verified_pages_v1',page_delivery:report.page_delivery,checked_pages:report.page_delivery.added,previous_evidence:null});
   const limits={source_attempts:2,model_attempts:2,source_attempt_seconds:180,model_stage_seconds:1200,run_seconds:3600};
-  let metadata={page_scope:scope(first.report),limits,started_at:'original',budget_policy:'successful_work_hourly_continuation_v1',inputs:auditSummary().inputs,sources:[],checks:Object.fromEntries(REQUIRED_RESEARCH_CHECKS.map(k=>[k,{status:k==='model_serving'?'checked':'not_checked'}])),model_calls:['research','editor'].map(stage=>({stage,attempt_records:[]}))};
+  let metadata={schema_version:'1.4',date:DAY,scope:'new_daily',decisions:[],status_entries:[],page_scope:scope(first.report),limits,started_at:new Date(now).toISOString(),budget_policy:'successful_work_hourly_continuation_v1',inputs:auditSummary().inputs,sources:[],checks:Object.fromEntries(REQUIRED_RESEARCH_CHECKS.map(k=>[k,{status:k==='model_serving'?'checked':'not_checked'}])),model_calls:['research','editor'].map(stage=>({stage,model:{name:null,version:null,unavailable_reason:'Synthetic fixture'},attempt_records:[]}))};
   async function artifacts(page,metadata,base){
+   metadata.inputs={...metadata.inputs,draft_sha256:digest(page.files.get(rootPath+'report.json'))};
    const meta=Buffer.from(JSON.stringify(metadata)),ready=page.report.articles.flatMap(a=>PAGE_CHECKS[a.id]),pending=REQUIRED_RESEARCH_CHECKS.filter(c=>!ready.includes(c));
    const host=execute(s,command('status',{offset:0})).effective_budget.accounting;
    const audit=auditSummary({schema_version:'1.4',readiness:'partial',coverage_checked:ready,coverage_incomplete:pending,coverage_unchecked:pending,page_scope:metadata.page_scope,evidence_metadata_sha256:digest(meta),budget_policy:metadata.budget_policy,limits,budget_accounting:{successful_attempts:host.successful_attempts,failed_attempts:host.failed_attempts,unknown_attempts:host.unknown_attempts,successful_seconds:host.success_seconds,failed_seconds:host.failed_seconds,reserved_unknown_seconds:host.reserved_seconds,charged_seconds:host.success_seconds+host.reserved_seconds}},page.files);
@@ -923,6 +924,20 @@ test('real page bundle permits append to original run and use independent native
    return {bytes,audit,args:{archive_sha256:archiveHash,bundle_sha256:digest(bytes),audit_sha256:digest(auditBytes)}};
   }
   const a=await artifacts(first,metadata,'b'.repeat(40));
+  // Missing or structurally unusable metadata must not freeze an unresumable
+  // first permit. Each rejection is durable and leaves the original run usable.
+  for(const mode of ['missing','null','bad-scope','bad-stages','bad-model']){
+   const bad=structuredClone(a.audit);let rawMetadata;
+   if(mode==='missing')delete bad.evidence_metadata_sha256;
+   else{const m=structuredClone(metadata);if(mode==='null')rawMetadata=Buffer.from('null');else{if(mode==='bad-scope')m.page_scope=null;else if(mode==='bad-model')delete m.model_calls[0].model;else m.model_calls=[];rawMetadata=Buffer.from(JSON.stringify(m));}bad.evidence_metadata_sha256=digest(rawMetadata);}
+   const summary=Buffer.from(JSON.stringify(bad)),files={'bundle.json':a.bytes,'audit-summary.json':summary};if(rawMetadata)files['audit.json']=rawMetadata;
+   const badHead=archive(s,files),cmd=command('permit',{archive_sha256:badHead,bundle_sha256:digest(a.bytes),audit_sha256:digest(summary)},run);
+   const denied=await issuePermit(s,cmd);assert.equal(denied.status,'rejected');assert.equal(denied.code,'publication_page_metadata_required');assert.equal(denied.run.permit,null);
+   const replay=await issuePermit(s,cmd);assert.equal(replay.replayed,true);assert.equal(replay.status,'rejected');
+  }
+  const nullAudit=Buffer.from('null'),nullHead=archive(s,{'bundle.json':a.bytes,'audit-summary.json':nullAudit});
+  const nullCommand=command('permit',{archive_sha256:nullHead,bundle_sha256:digest(a.bytes),audit_sha256:digest(nullAudit)},run);
+  const nullResult=await issuePermit(s,nullCommand);assert.equal(nullResult.status,'rejected');assert.equal(nullResult.code,'publication_audit_blocked');assert.equal((await issuePermit(s,nullCommand)).replayed,true);
   let result=await issuePermit(s,command('permit',a.args,run));assert.equal(result.status,'committed',result.code);run=result.run;const originalPermit=run.permit;
   const commit='c'.repeat(40),job=s.admit({request_id:id,hash:digest(a.bytes),source_ts:'1793491202.000031'},a.bytes);
   s.move(id,'received','receipt_sent',{commit,proof:{publication_status:'verified',bundle_sha256:job.hash,commit}});

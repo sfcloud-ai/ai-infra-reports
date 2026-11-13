@@ -11,6 +11,7 @@ import {assertResearchArchive,decodeResearchArchive} from './research-archive.mj
 import {handoffScope,scopeDigest} from './handoff-state.mjs';
 import {repositoryResearchInputs,repositoryResearchInputsHash,REPOSITORY_RESEARCH_INPUTS_VERSION} from './repository-research-inputs.mjs';
 import {requiredCoverageValid} from './research-coverage.mjs';
+import {resumablePageMetadataValid} from './research-page-coverage.mjs';
 export {REPOSITORY_RESEARCH_INPUTS_VERSION};
 export const LAYERED_RESEARCH_BUDGET_VERSION=1;
 
@@ -114,6 +115,7 @@ function readPublicationBytes(db,run,args,cache){
  need(decoded,'archive_not_stored');const {files}=decoded;
  const read=hash=>{const file=files.find(f=>f.sha256===hash);need(file,'publication_bytes_missing');try{return JSON.parse(new TextDecoder('utf8',{fatal:true}).decode(file.data));}catch{refuse('publication_json');}};
  const bundle=read(args.bundle_sha256),audit=read(args.audit_sha256);
+ need(audit&&typeof audit==='object'&&!Array.isArray(audit),'publication_audit_blocked');
  const metadata=audit.evidence_metadata_sha256?read(audit.evidence_metadata_sha256):null;
  cache.archive=null;cache.archiveKey=null;
  return {bundle,audit,metadata};
@@ -128,6 +130,7 @@ function publicationEvidence(db,run,plan,args,now,cache,page=false){
  const budget=effectiveResearchBudget(db,run,plan,now,cache);
  const coveragePlan=budget?{...plan,schema_version:'research_plan_v4',limits:budget.limits}:plan;
  need(requiredCoverageValid(audit,coveragePlan,bundle,pageBinding?.previous,metadata),'publication_coverage_contract');
+ if(audit.page_scope?.page_delivery.pending.length)need(resumablePageMetadataValid(audit,metadata),'publication_page_metadata_required');
  if(budget){
   need(audit.budget_policy===LAYERED_BUDGET_POLICY,'publication_budget_policy');
   // Every research intent must have an authenticated known outcome before release.

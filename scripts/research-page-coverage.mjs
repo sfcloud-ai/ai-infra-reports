@@ -75,3 +75,20 @@ function successorEvidenceValid(audit,report,previous,metadata){
  }
  return true;
 }
+
+// Before an immutable permit can send a partial edition, preserve everything the
+// next round needs. The caller resolves metadata by its hash from original T4
+// archive bytes, never a client-supplied parsed object or reserialized digest.
+export function resumablePageMetadataValid(audit,metadata){
+ if(!/^[a-f0-9]{64}$/.test(audit?.evidence_metadata_sha256??'')||!metadata||typeof metadata!=='object'||Array.isArray(metadata)
+  ||!equal(metadata.page_scope,audit.page_scope)||!audit.inputs||!Object.keys(audit.inputs).every(k=>equal(metadata.inputs?.[k],audit.inputs[k]))||!equal(metadata.limits,audit.limits)
+  ||metadata.budget_policy!==audit.budget_policy||typeof metadata.started_at!=='string'||!Number.isFinite(Date.parse(metadata.started_at)))return false;
+ if(metadata.schema_version!=='1.4'||metadata.date!==audit.date||metadata.scope!=='new_daily'||!Array.isArray(metadata.decisions)||!Array.isArray(metadata.status_entries))return false;
+ if(!Array.isArray(metadata.sources)||!metadata.sources.every(s=>s&&typeof s==='object'&&!Array.isArray(s)))return false;
+ if(!metadata.checks||typeof metadata.checks!=='object'||!Object.values(PAGE_CHECKS).flat().every(k=>metadata.checks[k]&&typeof metadata.checks[k]==='object'))return false;
+ if(!Array.isArray(metadata.model_calls)||metadata.model_calls.length!==2)return false;
+ return ['research','editor'].every(stage=>{
+  const calls=metadata.model_calls.filter(c=>c&&c.stage===stage);
+  return calls.length===1&&exact(calls[0].model,['name','version','unavailable_reason'])&&['name','version'].every(k=>calls[0].model[k]===null||typeof calls[0].model[k]==='string')&&typeof calls[0].model.unavailable_reason==='string'&&Array.isArray(calls[0].attempt_records)&&calls[0].attempt_records.every(a=>a&&typeof a==='object'&&!Array.isArray(a));
+ });
+}
