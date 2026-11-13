@@ -1218,6 +1218,59 @@
         "summary": "补齐首版遗漏的模型服务与超配、硬件、新架构、具身训练、小模型和官方技术文章；推理引擎合并为统一栏目。"
       },
       "path": "reports/2026-11-12/"
+    },
+    {
+      "schema_version": "1.0",
+      "date": "2026-11-13",
+      "revision": 1,
+      "title": "AI Infra 晨报 · 2026-11-13",
+      "subtitle": "部分晨报｜覆盖缺口：硬件、架构、具身、小模型、引擎。部分官方入口异常，代码与模型卡核验不完整。",
+      "articles": [
+        {
+          "id": "model-serving-gpu",
+          "title": "Inkling 2 Small：通信、运行状态与专家计算一起优化",
+          "summary": "同一模型的融合与缓存适配；不同负载的性能结果不横向排名。",
+          "sha256": "3bd9c499a6747bebf015d21014db203e57b7c8b6375aa6b2448eb89b0a146698",
+          "path": "reports/2026-11-13/articles/model-serving-gpu.md"
+        },
+        {
+          "id": "hardware-status",
+          "title": "硬件适用边界：不把新平台吞吐外推到H100/H200",
+          "summary": "已读硬件发现页，具体新文章与目标卡验证仍有缺口。",
+          "sha256": "e42d3c752f1b3d0d6a5b3298c0dbdfa741f8f14dfa068596965d88083a6cdc76",
+          "path": "reports/2026-11-13/articles/hardware-status.md"
+        },
+        {
+          "id": "model-architecture-status",
+          "title": "模型与架构：混合状态已见，模型卡变更待核",
+          "summary": "明确Inkling机制边界；GLM、DeepSeek、Qwen仍保留具体缺口。",
+          "sha256": "85d6f342d5c3dad7b0a5cea4f7e21c313dae30a075062686c7dd88b072492aea",
+          "path": "reports/2026-11-13/articles/model-architecture-status.md"
+        },
+        {
+          "id": "embodied-training",
+          "title": "制造业具身训练：发现线索尚未完成全文核验",
+          "summary": "已查LeRobot发布列表和NVIDIA发现页，不虚构工厂实测。",
+          "sha256": "5eb246583e0255659594953a42c2dd84f12d6a5a5b254ef84c838114dcd46d95",
+          "path": "reports/2026-11-13/articles/embodied-training.md"
+        },
+        {
+          "id": "small-model-status",
+          "title": "前沿小模型：不把17B激活误当小权重",
+          "summary": "模型目录已读，完整任务质量与成本比较仍缺失。",
+          "sha256": "96d104975fccb79ed6d46f3113fe5d8167ce0dc29cfac5cbd247f5a7001853ab",
+          "path": "reports/2026-11-13/articles/small-model-status.md"
+        },
+        {
+          "id": "inference-engines",
+          "title": "推理引擎每日变动：技术文章已读，代码覆盖有缺口",
+          "summary": "vLLM、SGLang合并事件交叉引用；DeepInfer单独保留核查范围。",
+          "sha256": "0a550c48d8c90b28df5a5619979512da841c84feee9fb193b8903c3c0434dc3b",
+          "path": "reports/2026-11-13/articles/inference-engines.md"
+        }
+      ],
+      "poster": "assets/overview.png",
+      "path": "reports/2026-11-13/"
     }
   ],
   "entries": [
@@ -4152,6 +4205,101 @@
       "fingerprint": "b3ea48cffba55868447b21966a9bb542c1b7f4fc76fc7b76f1c974d6b7bb3593",
       "date": "2026-11-12",
       "revision": 2
+    },
+    {
+      "id": "2026-11-13-inkling2-small-day0-20261112",
+      "event_key": "inkling2-small-day0-20261112",
+      "title": "Inkling 2 Small：通信、运行状态与专家计算一起优化",
+      "summary": "同一模型的融合与缓存适配；不同负载的性能结果不横向排名。",
+      "source_urls": [
+        "https://raw.githubusercontent.com/vllm-project/vllm-project.github.io/main/_posts/2026-11-12-inkling2-small.md",
+        "https://vllm.ai/blog/2026-11-12-inkling2-small",
+        "https://www.sglang.io/blog/inkling-2-small-day0-support"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "b8273bbeecef0387f85ada3f5c8da56af41a05ea08c1837b1eabb7552320baa7",
+      "date": "2026-11-13",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-13-hardware-status-20261113",
+      "event_key": "hardware-status-20261113",
+      "title": "硬件适用边界：不把新平台吞吐外推到H100/H200",
+      "summary": "已读硬件发现页，具体新文章与目标卡验证仍有缺口。",
+      "source_urls": [
+        "https://developer.nvidia.com/blog/",
+        "https://www.sglang.io/blog/inkling-2-small-day0-support"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status",
+      "fingerprint": "002bc7dc53387f17d8a12b101a75882211086e5fd9db0b833c8b3c44a9e31112",
+      "date": "2026-11-13",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-13-model-architecture-status-20261113",
+      "event_key": "model-architecture-status-20261113",
+      "title": "模型与架构：混合状态已见，模型卡变更待核",
+      "summary": "明确Inkling机制边界；GLM、DeepSeek、Qwen仍保留具体缺口。",
+      "source_urls": [
+        "https://huggingface.co/api/models?author=deepseek-ai&direction=-1&limit=5&sort=lastModified",
+        "https://vllm.ai/blog/2026-11-12-inkling2-small",
+        "https://www.deepseek.com/news/"
+      ],
+      "update_of": null,
+      "article_id": "model-architecture-status",
+      "fingerprint": "23559400cb6e94ca4eea3f83385e628426fe59a9605b0317fc4166772b353f40",
+      "date": "2026-11-13",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-13-embodied-training-20261113",
+      "event_key": "embodied-training-20261113",
+      "title": "制造业具身训练：发现线索尚未完成全文核验",
+      "summary": "已查LeRobot发布列表和NVIDIA发现页，不虚构工厂实测。",
+      "source_urls": [
+        "https://api.github.com/repos/huggingface/lerobot/releases?per_page=3",
+        "https://developer.nvidia.com/blog/"
+      ],
+      "update_of": null,
+      "article_id": "embodied-training",
+      "fingerprint": "d7c3b7c9885d3de645ea917ec10c02068c3d1f58ad3cab1f8ec4c995963d7207",
+      "date": "2026-11-13",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-13-small-model-status-20261113",
+      "event_key": "small-model-status-20261113",
+      "title": "前沿小模型：不把17B激活误当小权重",
+      "summary": "模型目录已读，完整任务质量与成本比较仍缺失。",
+      "source_urls": [
+        "https://huggingface.co/api/models?author=Qwen&direction=-1&limit=5&sort=lastModified",
+        "https://huggingface.co/api/models?author=deepseek-ai&direction=-1&limit=5&sort=lastModified",
+        "https://huggingface.co/api/models?author=zai-org&direction=-1&limit=5&sort=lastModified"
+      ],
+      "update_of": null,
+      "article_id": "small-model-status",
+      "fingerprint": "22eb23a058b138087c926d2761ed5b8ca49b3024c6d92b915cec90786134bd91",
+      "date": "2026-11-13",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-13-inference-engines-20261113",
+      "event_key": "inference-engines-20261113",
+      "title": "推理引擎每日变动：技术文章已读，代码覆盖有缺口",
+      "summary": "vLLM、SGLang合并事件交叉引用；DeepInfer单独保留核查范围。",
+      "source_urls": [
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/commits?per_page=5",
+        "https://github.com/deepseek-ai/DeepInfer",
+        "https://vllm.ai/blog/archive",
+        "https://www.sglang.io/blog"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "fa8d7b4fac7b1f53ec95bb0aff77b31a7f54c8efaac4e5db73be9e0c4399f5e9",
+      "date": "2026-11-13",
+      "revision": 1
     }
   ]
 }

@@ -1568,6 +1568,142 @@
       "revision": 1,
       "fingerprint": "cf452480045281bd9712b825db79496f3a194a49d424ed3efae7f0f0f96fd08b",
       "content_sha256": "9ec2f780efe83dc51f47c039a029866640bb44a69032b6b33869409158d61a87"
+    },
+    {
+      "id": "2026-11-12-arxiv-2611-13176-v1",
+      "event_key": "arxiv-2611-13176-v1",
+      "date": "2026-11-12",
+      "revision": 2,
+      "fingerprint": "c1738da9cd1500c9f4247b28035579f0f6e6a92bc4ba60fad79c66b994182bdb",
+      "content_sha256": "5b60acec1b8118353f5572966e0894089c3be38f159b6d27e25538a5f89c8fbe"
+    },
+    {
+      "id": "2026-11-12-arxiv-2611-13293-v1",
+      "event_key": "arxiv-2611-13293-v1",
+      "date": "2026-11-12",
+      "revision": 2,
+      "fingerprint": "af318562f74dca37eb9c5c2a49ba081c1084ef6b801253104426e055e81c0a27",
+      "content_sha256": "88d54a1f211c7c157a73cbc55dbe2d162c030da3a006551f1523d6ec0290c1f0"
+    },
+    {
+      "id": "2026-11-12-arxiv-2611-14092-v1",
+      "event_key": "arxiv-2611-14092-v1",
+      "date": "2026-11-12",
+      "revision": 2,
+      "fingerprint": "fc4ed7d76c3017014d68d9b3076c3bab6a691a9444805bc271b9a76148b7db97",
+      "content_sha256": "a3aaf97c178811fbfa47dbb1a2311c7db6befac520a565fbe980dd34c56fb410"
+    },
+    {
+      "id": "2026-11-12-arxiv-2611-14246-v1",
+      "event_key": "arxiv-2611-14246-v1",
+      "date": "2026-11-12",
+      "revision": 2,
+      "fingerprint": "e1a465d41c39a8a56f5cf99e2f6bc01c0ef7888784cbedeea54dea973f851745",
+      "content_sha256": "0fac6be2cb4e31dbaf73707cf7e469508e45e081095567429d6dcd78b0ebb9a5"
+    },
+    {
+      "id": "2026-11-12-kanana-2-v-decide-3b-2611",
+      "event_key": "kanana-2-v-decide-3b-2611",
+      "date": "2026-11-12",
+      "revision": 2,
+      "fingerprint": "281bd192ffe8d280ca486e9d2bcd4c57e1f7554969997e709d1f270a3c5f30e4",
+      "content_sha256": "34035e254f6b4a3cd108682fac31fa401665c33968e9f3cbe6d7630e11befad6"
+    },
+    {
+      "id": "2026-11-12-qwen4-max-preview-20261111",
+      "event_key": "qwen4-max-preview-20261111",
+      "date": "2026-11-12",
+      "revision": 2,
+      "fingerprint": "840c971eaeca31453e9f0a862485572a266b8e5be5fd2f6ace1b6245dac185f8",
+      "content_sha256": "c9743f2814a837ba943904fcebd04e951dc4118755270b8ec4feb44cafb6689b"
+    },
+    {
+      "id": "2026-11-12-sglang-muse-megakernel-blog-20261111",
+      "event_key": "sglang-muse-megakernel-blog-20261111",
+      "date": "2026-11-12",
+      "revision": 2,
+      "fingerprint": "ae16ae9ddfb94252c8c80b01b94dcb8d3d2a80a878192d07458695b3ac59db1d",
+      "content_sha256": "35fc3d783bb36aa5af71a21ab67d8e49ee1b4e73c498de3b58922f6f4673fb5a"
+    },
+    {
+      "id": "2026-11-12-sglang-pr-48272-r2",
+      "event_key": "sglang-pr-48272",
+      "date": "2026-11-12",
+      "revision": 2,
+      "fingerprint": "6ba513d5fe2c2090dead6162420a6171b47c3baa21c918b70689d24329dd7136",
+      "content_sha256": "c65965e08939ab2e2db611f425e5650dc4cf91c98a306363a6b5aa9083eb37ff"
+    },
+    {
+      "id": "2026-11-12-sglang-pr-48316",
+      "event_key": "sglang-pr-48316",
+      "date": "2026-11-12",
+      "revision": 2,
+      "fingerprint": "b3ea48cffba55868447b21966a9bb542c1b7f4fc76fc7b76f1c974d6b7bb3593",
+      "content_sha256": "ae50f1bfc6131e601aebbf8e608b4375d8e9c1269366ed0d63645c0f2f5827c6"
+    },
+    {
+      "id": "2026-11-12-sglang-unified-memory-blog-20261111",
+      "event_key": "sglang-unified-memory-blog-20261111",
+      "date": "2026-11-12",
+      "revision": 2,
+      "fingerprint": "4d788519110025b6c55d5db882611ce12b58e04d71cfc9bc548c76e25d73da44",
+      "content_sha256": "96e451c4a686075d6381e9d431686eb1a2455f88feb78107aa21698ff68c1ae6"
+    },
+    {
+      "id": "2026-11-12-vllm-epd-blog-20261111",
+      "event_key": "vllm-epd-blog-20261111",
+      "date": "2026-11-12",
+      "revision": 2,
+      "fingerprint": "e055ea710c671cbfbb4fd4e6f236e81af3325fb093590aff62617c9e226517bd",
+      "content_sha256": "e2c0c147b792d4260ce6fe50efb53e3efb31b8943393a069395a3d0dae0fb0c9"
+    },
+    {
+      "id": "2026-11-12-vllm-pr-61797",
+      "event_key": "vllm-pr-61797",
+      "date": "2026-11-12",
+      "revision": 2,
+      "fingerprint": "32f0796e868c55db946548ede257aa565f025a78ad43f057dbb05a04080787e1",
+      "content_sha256": "f3d169de5f9f44d02b39a8003f132d1f295fa8beeaedcc3844aa85c2da7c59f3"
+    },
+    {
+      "id": "2026-11-12-vllm-pr-66292",
+      "event_key": "vllm-pr-66292",
+      "date": "2026-11-12",
+      "revision": 2,
+      "fingerprint": "39fa80ca3055b3cc916c32e52e3a9730cf4aca6e6492f6c10ac404eb41d7635d",
+      "content_sha256": "4e0b042685b1433083134e4a1142672594648ba3f89ff8d25bfc149968a5aa66"
+    },
+    {
+      "id": "2026-11-12-vllm-pr-66419",
+      "event_key": "vllm-pr-66419",
+      "date": "2026-11-12",
+      "revision": 2,
+      "fingerprint": "eaecda89a89df4031f367de6e506aeb8835d7c92983d143731b1e2c231abf14e",
+      "content_sha256": "a8847017714bfdd87a4d48ae4ca92fa9df6688f0c8aff1722e1625331e3978df"
+    },
+    {
+      "id": "2026-11-12-vllm-pr-66523-r2",
+      "event_key": "vllm-pr-66523",
+      "date": "2026-11-12",
+      "revision": 2,
+      "fingerprint": "95a37a18d617822e51801df9f8de13388de3b9acddce5997ae152603a468f6f6",
+      "content_sha256": "557c0ac783aed6d9f69559827dbafb62c7d8d7fd217fa97db05350bcbca66fac"
+    },
+    {
+      "id": "2026-11-12-vllm-pr-66704-r2",
+      "event_key": "vllm-pr-66704",
+      "date": "2026-11-12",
+      "revision": 2,
+      "fingerprint": "580bc03536768ec86426f0fba456a5f5a8becea57831f7e68a4d5c0dcef1c6cf",
+      "content_sha256": "a9af98f1d85b5ab940871f921d4a363c484a360c19896c61bd3ebfec29ed43e6"
+    },
+    {
+      "id": "2026-11-12-vllm-pr-66731",
+      "event_key": "vllm-pr-66731",
+      "date": "2026-11-12",
+      "revision": 2,
+      "fingerprint": "f993dbedc27852b6bfbc197fbc8236e7892c1b9e1396038ad12edfa93cf808ac",
+      "content_sha256": "26735e02bb19ec4c21677a07963849d41912a5f1e0b3dc74cac53dbecb4d83f9"
     }
   ]
 }
