@@ -983,7 +983,7 @@ for(const targetRevision of [2,11])test(`real r${targetRevision} page bundle per
   for(const call of metadata.model_calls){
    call.attempt_records.push({outcome:'success',elapsed_seconds:0,page_round:{revision:targetRevision,page_ids:['hardware-status','embodied-training'],previous_audit_sha256:a.args.audit_sha256}});
   }
-  const b=await artifacts(second,metadata,commit),target=id.replace(/r1$/,`r${targetRevision}`);result=await issuePermit(s,command('page_permit',{publication_request_id:target,...b.args},run));
+  const publicationBase='e'.repeat(40),b=await artifacts(second,metadata,publicationBase),target=id.replace(/r1$/,`r${targetRevision}`);result=await issuePermit(s,command('page_permit',{publication_request_id:target,...b.args},run));
   assert.equal(result.status,'committed',result.code);assert.deepEqual(result.run.permit,originalPermit);assert.equal(JSON.parse(result.page_round.permit).request_id,target);assert.deepEqual(JSON.parse(result.page_round.permit).page_ids,['hardware-status']);
   assert.ok(second.report.page_delivery.pending.some(p=>p.id==='embodied-training'));assert.equal(result.run.charged_seconds,run.charged_seconds);
   const roundPermit=JSON.parse(result.page_round.permit),upload=execute(s,{...command('upload_status',{archive_sha256:b.args.archive_sha256,permit_id:roundPermit.permit_id}),owner_id:null});
@@ -996,9 +996,11 @@ for(const targetRevision of [2,11])test(`real r${targetRevision} page bundle per
    if(step==='complete')break;
    run=execute(s,command('settle',{operation_id:op.operation_id,outcome:'acknowledged',elapsed_seconds:null,archive_sha256:null,file_sha256:null,native_result:{file_id:'FPAGE',source_ts:null,sha256:hash,bytes:b.bytes.length}},run)).run;
   }
-  const stage=message(`!ai-report stage-v2 ${target} ${hash} ${permit}`,'1793491203.000001','FPAGE'),messages=[stage];
-  const slack={historyPage:async({from,to})=>({messages:messages.filter(m=>m.ts>=from&&m.ts<=to),next_cursor:null}),exactPublish:async ts=>messages.find(m=>m.ts===ts),download:async()=>b.bytes};
-  const inbox=new PublisherInbox(s,config);await inbox.scan(slack,now);await advanceSubmission(s,config,slack,()=>assert.fail('successor must not require empty date'),now);
+  const correction=structuredClone(first.report);correction.revision=targetRevision;correction.revision_notice={kind:'correction',summary:'Concurrent correction'};correction.page_delivery={...correction.page_delivery,previous:{request_id:previousId,bundle_sha256:previousHash},added:[]};const correctionFiles=new Map(first.files);correctionFiles.set(rootPath+'report.json',Buffer.from(JSON.stringify(correction)));const correctionBytes=await encodeBundle(correctionFiles,target,publicationBase,'a'.repeat(40));
+  const raced=message(`!ai-report revise ${target} ${digest(correctionBytes)}`,'1793491202.900001','FCORRECTION');
+  const stage=message(`!ai-report stage-v2 ${target} ${hash} ${permit}`,'1793491203.000001','FPAGE'),messages=[raced,stage];
+  const slack={historyPage:async({from,to})=>({messages:messages.filter(m=>m.ts>=from&&m.ts<=to),next_cursor:null}),exactPublish:async ts=>messages.find(m=>m.ts===ts),download:async row=>row.file_id==='FCORRECTION'?correctionBytes:b.bytes};
+  const inbox=new PublisherInbox(s,config);await inbox.scan(slack,now);await advanceSubmission(s,config,slack,()=>assert.fail('No date lookup'),now);assert.equal(s.db.prepare('SELECT phase FROM slack_submission_events WHERE source_ts=?').get(raced.ts).phase,'fenced');assert.equal(s.metadata(target),null);await advanceSubmission(s,config,slack,()=>assert.fail('successor must not require empty date'),now);
   assert.equal(s.db.prepare('SELECT phase FROM research_page_staged WHERE request_id=?').get(target)?.phase,'staged');
   assert.equal(s.db.prepare('SELECT count(*) n FROM slack_staged_bundles').get().n,0);
   run=execute(s,command('status',{offset:0})).run;

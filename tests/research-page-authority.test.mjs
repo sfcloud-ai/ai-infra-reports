@@ -94,3 +94,8 @@ test('begin replay remains idempotent after successor job admission',()=>{
  assert.deepEqual(beginPageRound(db,run,args,999),first);
  assert.throws(()=>authenticatedPrevious(db,run,null),error=>error.researchControlCode==='page_previous_permit');db.close();
 });
+
+test('already queued ordinary revision reserves the slot before page_begin',()=>{
+ const {db,run}=fixture();db.exec('CREATE TABLE slack_submission_events(request_id TEXT,kind TEXT,phase TEXT)');db.prepare('INSERT INTO slack_submission_events VALUES(?,?,?)').run(root.replace(/r1$/,'r2'),'revision','pending');
+ assert.throws(()=>beginPageRound(db,run,{previous_request_id:root,added:[TOPIC_IDS[1]]},123),/page_revision_reserved/);assert.equal(db.prepare('SELECT count(*) n FROM research_page_rounds').get().n,0);db.close();
+});

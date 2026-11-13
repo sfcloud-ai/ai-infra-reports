@@ -61,11 +61,11 @@ export function authenticatedPrevious(db,run,previousId,depth=0){
  const webOnly=!permit&&report.revision_notice?.kind==='maintenance'&&handoff.phase==='skipped'&&receipt.status==='skipped'&&receipt.phase==='skipped'&&receipt.delivery_kind==='web_only'&&receipt.parts_total===0&&receipt.parts_sent===0&&Array.isArray(receipt.images)&&receipt.images.length===0;
  need(webOnly||receipt.status==='sent'&&receipt.phase==='complete'&&Number.isSafeInteger(receipt.parts_total)&&receipt.parts_total>0&&receipt.parts_sent===receipt.parts_total,'page_previous_delivery_incomplete');
  const images=receipt.images;
- need(webOnly||Array.isArray(images)&&(report.revision===1?receipt.parts_total===2&&images.length===1&&images[0].file_id==='scheduled-poster'&&images[0].status==='sent'&&images[0].error===null:receipt.delivery_kind==='revision_update'&&receipt.parts_total===1&&images.length===0),'page_previous_delivery_parts');
+ need(webOnly||Array.isArray(images)&&(report.revision===1?receipt.parts_total===2&&images.length===1&&images[0].file_id==='scheduled-poster'&&images[0].status==='sent'&&images[0].error===null:receipt.delivery_kind===(report.revision_notice?.kind==='page_completion'?'page_completion':'revision_update')&&receipt.parts_total===1&&images.length===0),'page_previous_delivery_parts');
  if(!permit){
   need(['correction','maintenance','material_update'].includes(report.revision_notice?.kind),'page_previous_permit');
   const prior=authenticatedPrevious(db,run,report.page_delivery.previous?.request_id,depth+1);
-  need(report.page_delivery.previous.bundle_sha256===prior.evidence.bundle_sha256&&bundle.expected_base_sha===prior.evidence.report_commit,'page_correction_binding');
+  need(report.page_delivery.previous.bundle_sha256===prior.evidence.bundle_sha256&&/^[a-f0-9]{40}$/.test(bundle.expected_base_sha),'page_correction_binding');
   try{validatePageCorrectionReport(prior.report,report);}catch{fail('page_correction_partition');}
   const research=prior.evidence.research_previous??prior.evidence;
   return {...prior,report,bundle,research_report:prior.research_report??prior.report,
@@ -94,6 +94,8 @@ export function beginPageRound(db,run,args,now){
  const prior=pageRound(db,requestId);
  if(prior){need(equal(JSON.parse(prior.previous_evidence),previous.evidence)&&equal(JSON.parse(prior.added),args.added),'immutable_page_round');return prior;}
  for(const job of db.prepare('SELECT id FROM jobs WHERE id LIKE ?').all(run.request_id.replace(/-r1$/, '-r')+'%'))need(Number(job.id.split('-r').at(-1))<revision,'page_predecessor_must_be_latest');
+ if(db.prepare("SELECT 1 FROM sqlite_master WHERE name='slack_submission_events'").get())need(!db.prepare("SELECT 1 FROM slack_submission_events WHERE request_id=? AND kind='revision' AND phase!='fenced'").get(requestId),'page_revision_reserved');
+ if(db.prepare("SELECT 1 FROM sqlite_master WHERE name='publisher_inbox'").get())need(!db.prepare("SELECT 1 FROM publisher_inbox WHERE request_id=? AND phase!='fenced'").get(requestId),'page_revision_reserved');
  const latest=currentPageRound(db,run.request_id);
  need(!latest||latest.permit&&latest.revision<revision,'page_round_already_open');
  need(!db.prepare('SELECT 1 FROM jobs WHERE id=?').get(requestId)&&!db.prepare('SELECT 1 FROM slack_staged_bundles WHERE request_id=?').get(requestId),'page_existing_publication');
@@ -114,7 +116,7 @@ export function pagePublicationBinding(db,run,bundle){
  need(equal(previous.report.entries??[],(report.entries??[]).filter(e=>oldIds.has(e.article_id))),'page_previous_entries_changed');
  const mutable=new Set([`reports/${run.report_date}/report.json`,`reports/${run.report_date}/${previous.report.poster}`]);
  for(const file of previous.bundle.files){if(mutable.has(file.path))continue;const next=bundle.files.find(f=>f.path===file.path);need(next&&equal(file,next),'page_previous_assets_changed');}
- need(bundle.expected_base_sha===previous.evidence.report_commit,'page_base_commit');
+ need(/^[a-f0-9]{40}$/.test(bundle.expected_base_sha),'page_base_commit'); // Independent immutable publication base; Producer checks the live main before writes.
  // Verify actual old article bytes too, not merely unchanged report metadata.
  for(const old of previous.report.articles){
   const path=`reports/${run.report_date}/articles/${old.id}.md`;

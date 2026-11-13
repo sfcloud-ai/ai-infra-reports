@@ -123,7 +123,7 @@ function readPublicationBytes(db,run,args,cache){
 function publicationEvidence(db,run,plan,args,now,cache,page=false){
  const {bundle,audit,metadata}=readPublicationBytes(db,run,args,cache);
  const pageBinding=page?pagePublicationBinding(db,run,bundle):null;
- need(exact(bundle,'schema_version,request_id,repository,expected_base_sha,prompt_commit_sha,files')&&bundle.schema_version==='1.0'&&bundle.repository===REPOSITORY&&bundle.request_id===(page?args.publication_request_id:run.request_id)&&bundle.expected_base_sha===(page?pageBinding.previous.evidence.report_commit:plan.reports_commit_sha)&&bundle.prompt_commit_sha===plan.prompt_commit_sha,'publication_plan_binding');
+ need(exact(bundle,'schema_version,request_id,repository,expected_base_sha,prompt_commit_sha,files')&&bundle.schema_version==='1.0'&&bundle.repository===REPOSITORY&&bundle.request_id===(page?args.publication_request_id:run.request_id)&&(page?string(bundle.expected_base_sha,SHA):bundle.expected_base_sha===plan.reports_commit_sha)&&bundle.prompt_commit_sha===plan.prompt_commit_sha,'publication_plan_binding');
  // This is the existing trusted researcher's declaration, not a replacement
  // fact-checking engine. Keep its original bytes and explicit selected binding.
  need(audit&&audit.date===run.report_date&&audit.audit_valid===true&&Array.isArray(audit.blockers)&&audit.blockers.length===0&&['ready','partial','zero_items'].includes(audit.readiness),'publication_audit_blocked');
