@@ -152,6 +152,16 @@ export function recordResearchRecoveryOperation(db,record,now){
   const head=readResearchRecoveryHead(db,record.request_id);
   const previous=db.prepare('SELECT * FROM research_recovery_grants WHERE grant_id=?').get(older.grant_id);
   sameAuthority=!!(head&&previous&&head.grant.grant_id===record.grant_id&&previous.request_id===record.request_id&&previous.generation===head.grant.generation&&previous.plan_hash===head.grant.plan_hash);
+  if(head&&head.grant.grant_id===record.grant_id&&older.grant_id==='plan:'+head.grant.plan_hash){
+   // A v4 plan is itself the initial authority. Migration appends a new link;
+   // it does not rewrite the old intent or establish that an unknown dispatch failed.
+   const run=db.prepare('SELECT plan,plan_hash FROM research_control_runs WHERE request_id=?').get(record.request_id);
+   const policy=db.prepare('SELECT binding FROM research_control_policy WHERE id=1').get();
+   const original=run?Buffer.from(run.plan):null;
+   sameAuthority=!!(original&&hash(original)===run.plan_hash&&run.plan_hash===head.grant.plan_hash
+    &&parseGrant(original).schema_version==='research_plan_v4'
+    &&policy&&parseGrant(Buffer.from(policy.binding)).generation===head.grant.generation);
+  }
  }
  need(!older||(older.request_id===record.request_id&&sameAuthority&&older.window_start<record.window_start),'recovery_operation_conflict');
  db.prepare('INSERT INTO research_recovery_operations VALUES(?,?,?,?,?)').run(record.operation_id,record.request_id,record.grant_id,record.window_start,now);

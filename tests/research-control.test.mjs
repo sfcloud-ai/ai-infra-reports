@@ -961,3 +961,44 @@ test('real page bundle permits append to original run and use independent native
 
  }finally{s.close();}
 });
+
+test('inbox dispatch batch checks authority without decoding historical archives per operation',async()=>{
+ const s=setup();try{
+  let run=start(s,layeredPlan());const old=source('https://example.org/dispatch-history');
+  run=execute(s,command('reserve',{operations:[old]},run)).run;
+  const data=Buffer.from(JSON.stringify({request_id:id,operation_id:old.operation_id,url:old.input.url,status:'ok',elapsed_seconds:1}));
+  const head=archive(s,{'result.json':data,'body.txt':Buffer.alloc(8*1024*1024,65)});
+  s.db.prepare("UPDATE research_control_ops SET phase='acknowledged',elapsed_seconds=1,result_archive=?,result_file=? WHERE operation_id=?").run(head,digest(data),old.operation_id);
+  const ops=Array.from({length:8},(_,i)=>source('https://example.org/batch-dispatch/'+i));
+  queue(s,command('reserve',{operations:ops},run));
+  const parse=JSON.parse;let decodes=0,reply;
+  JSON.parse=function(value,...args){if(typeof value==='string'&&value.startsWith('{"schema_version":"research_archive_v1",'))decodes++;return parse(value,...args);};
+  try{
+   await advanceResearchControl(s,config,{controlReceipt:async(_ts,text)=>{reply=parse(text.slice('!ai-research control-receipt '.length));return '1793491209.000001';}},now);
+   assert.equal(reply.dispatch_granted,true);assert.equal(reply.operations.length,8);assert.equal(decodes,1,'only command accounting reads archive, dispatch uses authority/window');
+   const actual=s.db.prepare('SELECT * FROM research_control_runs WHERE request_id=?').get(id);
+   for(const op of ops){const original=s.db.prepare('SELECT * FROM research_control_ops WHERE operation_id=?').get(op.operation_id);assert.equal(researchOperationDispatchValid(s.db,actual,original,now),true);assert.equal(researchOperationDispatchValid(s.db,actual,original,now+3600000),false);}
+   assert.equal(decodes,1,'direct dispatch checks do not classify historic results');
+  }finally{JSON.parse=parse;}
+ }finally{s.close();}
+});
+
+test('v4 original withheld intent survives explicit grant activation with one operation and no refunded charge',()=>{
+ const s=setup();try{
+  let run=start(s,layeredPlan());const op=source('editor','model'),cmd=command('reserve',{operations:[op]},run),result=execute(s,cmd);run=result.run;
+  const original=s.db.prepare('SELECT * FROM research_control_ops').get();
+  const reply='!ai-research control-receipt '+JSON.stringify({...result,dispatch_granted:false,grant_expired:true});
+  s.db.prepare('INSERT INTO research_control_events VALUES(?,?,?,?,?,?,?,?,?,?)').run('1793491201.999999',cmd.command_id,digest(Buffer.from(JSON.stringify(cmd))),Buffer.from(JSON.stringify(cmd)),'sent',1,0,reply,'1793491202.999999',null);
+  const grant={schema_version:'research_recovery_grant_v1',grant_id:randomUUID(),request_id:id,generation:config.research_control.generation,plan_hash:run.plan_hash,previous_sha256:null,authorization_reference:'synthetic owner approval',effective_not_before:nextResearchContinuationAt(now),window_seconds:3600,failed_attempts_consume_success_budget:false,continuation_policy:'hourly_20_until_complete'};
+  const bytes=Buffer.from(JSON.stringify(grant));approveResearchRecoveryGrant(s.db,bytes,grant.authorization_reference,now);
+  run=execute(s,command('recovery_grant',{grant_base64:bytes.toString('base64')},run)).run;
+  const later=grant.effective_not_before;run=execute(s,command('claim',{plan_base64:layeredPlan().toString('base64')},run),later).run;
+  const resumed=execute(s,command('resume',{operation_id:op.operation_id},run),later);
+  assert.equal(resumed.status,'committed');assert.equal(resumed.dispatch_granted,true);assert.equal(resumed.run.charged_seconds,180);
+  assert.deepEqual(s.db.prepare('SELECT * FROM research_control_ops').get(),original);
+  assert.equal(s.db.prepare('SELECT count(*) n FROM research_recovery_operations').get().n,2);
+  const actual=s.db.prepare('SELECT * FROM research_control_runs').get();assert.equal(researchOperationDispatchValid(s.db,actual,original,later),true);
+  s.db.prepare("UPDATE research_control_events SET phase='unknown'").run();
+  assert.equal(execute(s,command('resume',{operation_id:op.operation_id},resumed.run),later).code,'resume_dispatch_not_proven_unstarted');
+ }finally{s.close();}
+});

@@ -231,7 +231,7 @@ function classifyStoredResult(db,run,op,cache){
  if(!outcome||result.elapsed_seconds!==op.elapsed_seconds)return null;
  return {authenticated:true,outcome,archive_sha256:op.result_archive,file_sha256:op.result_file};
 }
-function effectiveResearchBudget(db,run,plan,now,cache){
+function researchContinuationAuthority(db,run,plan,now){
  const installed=!!db.prepare("SELECT 1 FROM sqlite_master WHERE name='research_recovery_grants'").get();
  const head=installed?readResearchRecoveryHead(db,run.request_id):null;
  if(head){const binding=JSON.parse(db.prepare('SELECT binding FROM research_control_policy WHERE id=1').get().binding);need(head.grant.plan_hash===run.plan_hash&&head.grant.request_id===run.request_id&&head.grant.generation===binding.generation,'recovery_binding');}
@@ -239,6 +239,11 @@ function effectiveResearchBudget(db,run,plan,now,cache){
  need(installed,'layered_budget_not_installed');
  const limits=isLayeredResearchPlan(plan)?plan.limits:{max_attempts_per_source:plan.limits.max_attempts_per_source,max_attempts_per_model:plan.limits.max_attempts_per_model,source_attempt_timeout_seconds:plan.limits.operation_timeout_seconds,model_stage_timeout_seconds:plan.limits.total_budget_seconds,total_budget_seconds:plan.limits.total_budget_seconds};
  const window=head?researchRecoveryWindow(head,now):{...continuationWindow(now),active:true};
+ return {policy:LAYERED_BUDGET_POLICY,grant_id:head?.grant.grant_id??'plan:'+run.plan_hash,grant_sha256:head?.sha256??null,limits,window};
+}
+function effectiveResearchBudget(db,run,plan,now,cache){
+ const authority=researchContinuationAuthority(db,run,plan,now);
+ if(!authority)return null;
  const operations=db.prepare('SELECT * FROM research_control_ops WHERE request_id=? ORDER BY rowid').all(run.request_id);
  // Group interleaved operations by immutable archive; retain only small outcomes.
  const groups=new Map();
@@ -248,7 +253,7 @@ function effectiveResearchBudget(db,run,plan,now,cache){
   cache.archive=null;cache.archiveKey=null;
  }
  const accounting=researchRecoveryAccounting(operations,op=>classifiedResult(db,run,op,cache));
- return {policy:LAYERED_BUDGET_POLICY,grant_id:head?.grant.grant_id??'plan:'+run.plan_hash,grant_sha256:head?.sha256??null,limits,window,accounting,operations};
+ return {...authority,accounting,operations};
 }
 function budgetObservation(budget){
  if(!budget)return null;
@@ -258,9 +263,8 @@ function budgetObservation(budget){
  return observation;
 }
 export function researchOperationDispatchValid(db,run,op,now){
- const cache=commandCache();
  if(op.kind==='native')return true;
- const plan=JSON.parse(Buffer.from(run.plan)),budget=effectiveResearchBudget(db,run,plan,now,cache);
+ const plan=JSON.parse(Buffer.from(run.plan)),budget=researchContinuationAuthority(db,run,plan,now);
  const scope=activePageResearch(db,run,plan);
  if(!scope.active||(op.kind==='model'&&!pageModelKeyAllowed(scope,op.operation_key)))return false;
  if(!budget)return now<run.started_at+plan.limits.total_budget_seconds*1000;

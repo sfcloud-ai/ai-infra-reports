@@ -1,3 +1,5 @@
+import {createHash} from 'node:crypto';
+import {RESEARCH_CONTROL_SCHEMA} from '../scripts/research-control.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
@@ -97,4 +99,61 @@ test('immediate approval uses Shanghai midnight, not UTC report date',()=>{
  const other=fixture(),before=at-1;
  assert.throws(()=>approveResearchRecoveryGrant(other,bytes(immediateGrant({effective_not_before:before})),g.authorization_reference,before),/immediate_time/);
  db.close();other.close();
+});
+
+test('implicit v4 authority transitions append-only to approved grant and successor',()=>{
+ const db=fixture(),start=grant().effective_not_before;
+ const original=bytes({schema_version:'research_plan_v4',synthetic:'immutable plan'});
+ const originalHash=createHash('sha256').update(original).digest('hex');
+ for(const name of ['research_control_runs','research_control_policy'])db.exec(RESEARCH_CONTROL_SCHEMA[name]);
+ db.prepare('INSERT INTO research_control_runs(request_id,report_date,plan,plan_hash,owner_id,epoch,revision,lease_until,started_at,charged_seconds) VALUES(?,?,?,?,?,?,?,?,?,?)').run(context.request_id,'2026-11-13',original,originalHash,'owner',1,1,start,start,180);
+ db.prepare('INSERT INTO research_control_policy VALUES(1,?,?)').run(JSON.stringify({generation}),'original activation');
+ const ctx={...context,plan_hash:originalHash},r={operation_id:'33333333-3333-4333-8333-333333333333',request_id:context.request_id,grant_id:'plan:'+originalHash,window_start:start};
+ recordResearchRecoveryOperation(db,r,start);
+ const old=db.prepare('SELECT * FROM research_recovery_operations').get(),run=db.prepare('SELECT * FROM research_control_runs').get();
+ const g=grant({plan_hash:originalHash,effective_not_before:start+3600000});
+ approveResearchRecoveryGrant(db,bytes(g),g.authorization_reference,now);
+ const first=appendResearchRecoveryGrant(db,bytes(g),ctx,{now});
+ assert.throws(()=>recordResearchRecoveryOperation(db,{...r,grant_id:g.grant_id},start),/conflict/);
+ const next={...r,grant_id:g.grant_id,window_start:start+3600000};
+ assert.equal(recordResearchRecoveryOperation(db,next,next.window_start),true);
+ assert.equal(recordResearchRecoveryOperation(db,next,next.window_start+1),false);
+ assert.deepEqual(db.prepare('SELECT * FROM research_recovery_operations ORDER BY rowid LIMIT 1').get(),old);
+ assert.deepEqual(db.prepare('SELECT * FROM research_control_runs').get(),run);
+ const successor=grant({grant_id:'22222222-2222-4222-8222-222222222222',plan_hash:originalHash,previous_sha256:first.sha256,effective_not_before:start+7200000});
+ approveResearchRecoveryGrant(db,bytes(successor),successor.authorization_reference,now);
+ appendResearchRecoveryGrant(db,bytes(successor),ctx,{now:now+1});
+ assert.equal(recordResearchRecoveryOperation(db,{...next,grant_id:successor.grant_id,window_start:start+7200000},start+7200000),true);
+ assert.equal(db.prepare('SELECT count(*) n FROM research_recovery_operations').get().n,3);
+ db.close();
+});
+
+test('implicit to explicit migration rejects v3, wrong plan, generation and request',()=>{
+ for(const failure of ['v3','plan','generation','request']){
+  const db=fixture(),start=grant().effective_not_before;
+  const original=bytes({schema_version:failure==='v3'?'research_plan_v3':'research_plan_v4'});
+  const originalHash=createHash('sha256').update(original).digest('hex');
+  for(const name of ['research_control_runs','research_control_policy'])db.exec(RESEARCH_CONTROL_SCHEMA[name]);
+  db.prepare('INSERT INTO research_control_runs(request_id,report_date,plan,plan_hash,owner_id,epoch,revision,lease_until,started_at,charged_seconds) VALUES(?,?,?,?,?,?,?,?,?,?)').run(context.request_id,'2026-11-13',original,originalHash,'owner',1,1,start,start,180);
+  db.prepare('INSERT INTO research_control_policy VALUES(1,?,?)').run(JSON.stringify({generation:failure==='generation'?'different':generation}),'activation');
+  const r={operation_id:'33333333-3333-4333-8333-333333333333',request_id:failure==='request'?'morning-20261112-r1':context.request_id,grant_id:'plan:'+(failure==='plan'?'b'.repeat(64):originalHash),window_start:start};
+  recordResearchRecoveryOperation(db,r,start);
+  const g=grant({plan_hash:originalHash}),ctx={...context,plan_hash:originalHash};
+  approveResearchRecoveryGrant(db,bytes(g),g.authorization_reference,now);appendResearchRecoveryGrant(db,bytes(g),ctx,{now});
+  const before=db.prepare('SELECT * FROM research_recovery_operations').all();
+  assert.throws(()=>recordResearchRecoveryOperation(db,{...r,request_id:context.request_id,grant_id:g.grant_id,window_start:start+3600000},start+3600000),/conflict/,failure);
+  assert.deepEqual(db.prepare('SELECT * FROM research_recovery_operations').all(),before);
+  db.close();
+ }
+});
+
+test('legacy v3 explicit grants still resume across their approved successor',()=>{
+ const db=fixture(),start=grant().effective_not_before,ctx={...context,plan:{schema_version:'research_plan_v3',limits:{total_budget_seconds:3600}}};
+ const first=approvedAppend(db,bytes(grant()),ctx,{now,authorizationVerified:true});
+ const r={operation_id:'33333333-3333-4333-8333-333333333333',request_id:context.request_id,grant_id:first.grant.grant_id,window_start:start};
+ recordResearchRecoveryOperation(db,r,start);
+ const g=grant({grant_id:'22222222-2222-4222-8222-222222222222',previous_sha256:first.sha256});
+ const second=approvedAppend(db,bytes(g),ctx,{now:now+1,authorizationVerified:true});
+ assert.equal(recordResearchRecoveryOperation(db,{...r,grant_id:second.grant.grant_id,window_start:start+3600000},start+3600000),true);
+ assert.equal(db.prepare('SELECT count(*) n FROM research_recovery_operations').get().n,2);db.close();
 });
