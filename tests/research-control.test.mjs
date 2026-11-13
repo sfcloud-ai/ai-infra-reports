@@ -899,7 +899,7 @@ test('legacy body-bound source results require unique authenticated original met
 import {installPageAuthority,authenticatedPrevious} from '../scripts/research-page-authority.mjs';
 import {PAGE_CHECKS} from '../scripts/research-page-coverage.mjs';
 import {installScheduledTables} from '../scripts/scheduled-delivery-state.mjs';
-for(const targetRevision of [2,11])test(`real r${targetRevision} page bundle permits append to original run and use independent native/staging identity`,async()=>{
+for(const targetRevision of [2,6,11])test(`real r${targetRevision} page bundle permits append to original run and use independent native/staging identity`,async()=>{
  const s=setup();try{
   let run=start(s,layeredPlan());installPageAuthority(s.db);
   const original=JSON.parse([...FILES].find(([p])=>p.endsWith('/report.json'))[1]);
@@ -918,7 +918,7 @@ for(const targetRevision of [2,11])test(`real r${targetRevision} page bundle per
    metadata.inputs={...metadata.inputs,draft_sha256:digest(page.files.get(rootPath+'report.json'))};
    const meta=Buffer.from(JSON.stringify(metadata)),ready=page.report.articles.flatMap(a=>PAGE_CHECKS[a.id]),pending=REQUIRED_RESEARCH_CHECKS.filter(c=>!ready.includes(c));
    const host=execute(s,command('status',{offset:0})).effective_budget.accounting;
-   const audit=auditSummary({schema_version:'1.4',readiness:'partial',coverage_checked:ready,coverage_incomplete:pending,coverage_unchecked:pending,page_scope:metadata.page_scope,evidence_metadata_sha256:digest(meta),budget_policy:metadata.budget_policy,limits,budget_accounting:{successful_attempts:host.successful_attempts,failed_attempts:host.failed_attempts,unknown_attempts:host.unknown_attempts,successful_seconds:host.success_seconds,failed_seconds:host.failed_seconds,reserved_unknown_seconds:host.reserved_seconds,charged_seconds:host.success_seconds+host.reserved_seconds}},page.files);
+   const audit=auditSummary({schema_version:'1.4',readiness:pending.length?'partial':'ready',coverage_checked:ready,coverage_incomplete:pending,coverage_unchecked:pending,page_scope:metadata.page_scope,evidence_metadata_sha256:digest(meta),budget_policy:metadata.budget_policy,limits,budget_accounting:{successful_attempts:host.successful_attempts,failed_attempts:host.failed_attempts,unknown_attempts:host.unknown_attempts,successful_seconds:host.success_seconds,failed_seconds:host.failed_seconds,reserved_unknown_seconds:host.reserved_seconds,charged_seconds:host.success_seconds+host.reserved_seconds}},page.files);
    const bytes=await encodeBundle(page.files,`morning-${DAY.replaceAll('-','')}-r${page.report.revision}`,base,'a'.repeat(40));
    const auditBytes=Buffer.from(JSON.stringify(audit)),archiveHash=archive(s,{'audit.json':meta,'audit-summary.json':auditBytes,'bundle.json':bytes});
    return {bytes,audit,args:{archive_sha256:archiveHash,bundle_sha256:digest(bytes),audit_sha256:digest(auditBytes)}};
@@ -970,7 +970,8 @@ for(const targetRevision of [2,11])test(`real r${targetRevision} page bundle per
    const hash=digest(bytes),ts=`1793491202.${String(100+revision).padStart(6,'0')}`;s.admit({request_id,hash,source_ts:ts},bytes);s.move(request_id,'received','receipt_sent',{commit,proof:{publication_status:'verified',bundle_sha256:hash,commit}});
    const bound={request_id,report_date:DAY,report_commit:commit,bundle_sha256:hash};s.db.prepare('INSERT INTO scheduled_handoffs VALUES(?,?,?,?,0)').run(request_id,JSON.stringify(bound),'complete',JSON.stringify({...bound,status:'sent',phase:'complete',parts_sent:1,parts_total:1,delivery_kind:'revision_update',images:[]}));previousId=request_id;previousHash=hash;
   }
-  result=execute(s,command('page_begin',{previous_request_id:previousId,added:['hardware-status','embodied-training']},run));assert.equal(result.status,'committed',result.code);run=result.run;
+  const completing=targetRevision===6,attemptPages=completing?topicIds.slice(1):['hardware-status','embodied-training'];
+  result=execute(s,command('page_begin',{previous_request_id:previousId,added:attemptPages},run));assert.equal(result.status,'committed',result.code);run=result.run;
   const failedSource=source('https://example.org/embodied-missing');
   run=execute(s,command('reserve',{operations:[failedSource]},run)).run;
   const failure=Buffer.from(JSON.stringify({request_id:id,operation_id:failedSource.operation_id,url:failedSource.input.url,status:'failed',elapsed_seconds:2}));
@@ -978,14 +979,26 @@ for(const targetRevision of [2,11])test(`real r${targetRevision} page bundle per
   run=execute(s,command('settle',{operation_id:failedSource.operation_id,outcome:'acknowledged',elapsed_seconds:2,archive_sha256:failureArchive,file_sha256:digest(failure),native_result:null},run)).run;
   const continued=execute(s,command('status',{offset:0}));assert.equal(continued.effective_budget.accounting.failed_seconds,2);assert.equal(continued.effective_budget.accounting.success_seconds,0);
   const previous=authenticatedPrevious(s.db,s.db.prepare('SELECT * FROM research_control_runs WHERE request_id=?').get(id),previousId);
-  const second=pageBundle(2,{request_id:previousId,bundle_sha256:previousHash});second.report.revision=targetRevision;second.files.set(rootPath+'report.json',Buffer.from(JSON.stringify(second.report)));metadata=structuredClone(metadata);metadata.page_scope={...scope(second.report),previous_evidence:previous.evidence};metadata.checks.hardware={status:'checked'};
+  const second=pageBundle(completing?6:2,{request_id:previousId,bundle_sha256:previousHash});if(completing)second.report.page_delivery.added=topicIds.slice(1);second.report.revision=targetRevision;second.files.set(rootPath+'report.json',Buffer.from(JSON.stringify(second.report)));metadata=structuredClone(metadata);metadata.page_scope={...scope(second.report),previous_evidence:previous.evidence};metadata.checks.hardware={status:'checked'};if(completing)for(const k of REQUIRED_RESEARCH_CHECKS)metadata.checks[k]={status:'checked'};
   metadata.sources.push({id:'embodied-failure',status:'failed',operation_id:failedSource.operation_id,archive_sha256:failureArchive});
   for(const call of metadata.model_calls){
-   call.attempt_records.push({outcome:'success',elapsed_seconds:0,page_round:{revision:targetRevision,page_ids:['hardware-status','embodied-training'],previous_audit_sha256:a.args.audit_sha256}});
+   call.attempt_records.push({outcome:'success',elapsed_seconds:0,page_round:{revision:targetRevision,page_ids:attemptPages,previous_audit_sha256:a.args.audit_sha256}});
   }
-  const publicationBase='e'.repeat(40),b=await artifacts(second,metadata,publicationBase),target=id.replace(/r1$/,`r${targetRevision}`);result=await issuePermit(s,command('page_permit',{publication_request_id:target,...b.args},run));
-  assert.equal(result.status,'committed',result.code);assert.deepEqual(result.run.permit,originalPermit);assert.equal(JSON.parse(result.page_round.permit).request_id,target);assert.deepEqual(JSON.parse(result.page_round.permit).page_ids,['hardware-status']);
-  assert.ok(second.report.page_delivery.pending.some(p=>p.id==='embodied-training'));assert.equal(result.run.charged_seconds,run.charged_seconds);
+  const publicationBase='e'.repeat(40),b=await artifacts(second,metadata,publicationBase),target=id.replace(/r1$/,`r${targetRevision}`);
+  if(completing){
+   assert.deepEqual(second.report.page_delivery.pending,[]);
+   for(const mode of ['no-scope','missing-metadata']){
+    const bad=structuredClone(b.audit);bad.readiness='ready';
+    if(mode==='no-scope')delete bad.page_scope;
+    delete bad.evidence_metadata_sha256;
+    const summary=Buffer.from(JSON.stringify(bad)),head=archive(s,{'bundle.json':b.bytes,'summary.json':summary});
+    const denied=await issuePermit(s,command('page_permit',{publication_request_id:target,archive_sha256:head,bundle_sha256:digest(b.bytes),audit_sha256:digest(summary)},run));
+    assert.equal(denied.status,'rejected');assert.equal(denied.code,mode==='no-scope'?'publication_page_metadata_required':'publication_coverage_contract');assert.equal(denied.page_round?.permit??null,null);
+   }
+  }
+  result=await issuePermit(s,command('page_permit',{publication_request_id:target,...b.args},run));
+  assert.equal(result.status,'committed',result.code);assert.deepEqual(result.run.permit,originalPermit);assert.equal(JSON.parse(result.page_round.permit).request_id,target);assert.deepEqual(JSON.parse(result.page_round.permit).page_ids,completing?topicIds.slice(1):['hardware-status']);
+  if(!completing)assert.ok(second.report.page_delivery.pending.some(p=>p.id==='embodied-training'));assert.equal(result.run.charged_seconds,run.charged_seconds);
   const roundPermit=JSON.parse(result.page_round.permit),upload=execute(s,{...command('upload_status',{archive_sha256:b.args.archive_sha256,permit_id:roundPermit.permit_id}),owner_id:null});
   assert.equal(upload.permit.request_id,target);assert.deepEqual(upload.operations,[]);
   run=result.run;const hash=digest(b.bytes),permit=roundPermit.permit_id;

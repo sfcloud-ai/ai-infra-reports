@@ -135,7 +135,7 @@ function publicationEvidence(db,run,plan,args,now,cache,page=false){
  const reportFiles=bundle.files.filter(f=>f.path.endsWith('/report.json'));
  let publicationReport;try{publicationReport=JSON.parse(Buffer.from(reportFiles[0].base64,'base64'));}catch{refuse('publication_json');}
  if(publicationReport.schema_version==='1.2')need(pageAuthorityInstalled(db),'publication_page_authority_required');
- if(publicationReport.page_delivery?.pending?.length){
+ if(page||publicationReport.page_delivery?.pending?.length){
   need(budget&&pageAuthorityInstalled(db),'publication_page_recovery_required');
   need(audit.page_scope&&resumablePageMetadataValid(audit,metadata),'publication_page_metadata_required');
  }
