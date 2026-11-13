@@ -42,7 +42,7 @@ test('successor binds exact ready metadata and original article bytes',()=>{
  const make=()=>{const result=structuredClone(bundle);result.request_id='morning-20261113-r2';result.expected_base_sha=sha;const bytes=Buffer.from(JSON.stringify(next));result.files[0]={...result.files[0],base64:bytes.toString('base64'),sha256:digest(bytes)};return result;};
  assert.equal(pagePublicationBinding(db,run,make()).round.revision,2);
  const changed=make();changed.files[1].base64=Buffer.from('altered').toString('base64');assert.throws(()=>pagePublicationBinding(db,run,changed),/page_previous_(bytes|assets)_changed/);
- next.articles[0].title='Changed';assert.throws(()=>pagePublicationBinding(db,run,make()),/Already delivered pages/);db.close();
+ next.articles[0].title='Changed';assert.throws(()=>pagePublicationBinding(db,run,make()),/page_progress_invalid/);db.close();
 });
 test('per-round permit is immutable and independently addressable',()=>{
  const {db,run}=fixture();beginPageRound(db,run,{previous_request_id:root,added:[TOPIC_IDS[1]]},123);

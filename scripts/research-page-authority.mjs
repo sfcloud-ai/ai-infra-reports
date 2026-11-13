@@ -36,7 +36,7 @@ function reportFromBundle(bytes,hash){
  need(files.length===1,'page_previous_report');const file=files[0],raw=Buffer.from(file.base64,'base64');
  need(raw.toString('base64')===file.base64&&digest(raw)===file.sha256,'page_previous_report_hash');
  const report=JSON.parse(raw);need(report.schema_version==='1.2','page_previous_partition_missing');
- validatePageDelivery(report.page_delivery,report.articles,report.date,report.revision);
+ try{validatePageDelivery(report.page_delivery,report.articles,report.date,report.revision);}catch{fail('page_partition_invalid');}
  return {bundle,report};
 }
 // Only original host records may authenticate previous_evidence. Client claims,
@@ -92,7 +92,7 @@ export function pagePublicationBinding(db,run,bundle){
  need(equal(previous.evidence,JSON.parse(round.previous_evidence)),'page_previous_evidence_changed');
  const bytes=Buffer.from(JSON.stringify(bundle)),{report}=reportFromBundle(bytes,digest(bytes));
  need(report.revision===round.revision&&equal(report.page_delivery.added,JSON.parse(round.added))&&equal(report.page_delivery.previous,{request_id:previous.evidence.request_id,bundle_sha256:previous.evidence.bundle_sha256}),'page_round_binding');
- validatePageProgressReport(previous.report,report);
+ try{validatePageProgressReport(previous.report,report);}catch{fail('page_progress_invalid');}
  const oldIds=new Set(previous.report.articles.map(a=>a.id));
  need(equal(previous.report.entries??[],(report.entries??[]).filter(e=>oldIds.has(e.article_id))),'page_previous_entries_changed');
  const mutable=new Set([`reports/${run.report_date}/report.json`,`reports/${run.report_date}/${previous.report.poster}`]);
