@@ -1,3 +1,4 @@
+import {initialPageCoverageValid} from './research-page-coverage.mjs';
 import {isLayeredResearchPlan,auditBudget,LAYERED_BUDGET_POLICY} from './research-budget.mjs';
 // The host checks the trusted audit declaration and its exact original inputs.
 // Source semantics and article quality still require independent content review.
@@ -8,8 +9,10 @@ export const REQUIRED_RESEARCH_CHECKS=Object.freeze([
 ]);
 const sameSet=(a,b)=>Array.isArray(a)&&a.every(x=>typeof x==='string')&&new Set(a).size===a.length&&a.length===b.length&&a.every(x=>b.includes(x));
 export function requiredCoverageValid(audit,plan,bundle){
+ const pageScoped=audit?.page_scope!==undefined;
+ if(pageScoped&&!initialPageCoverageValid(audit,bundle))return false;
  if(audit?.schema_version!==(isLayeredResearchPlan(plan)?'1.4':'1.3')||audit.coverage_contract!=='daily_required_v1'||audit.delivery_allowed!==false
-  ||!sameSet(audit.required_checks,REQUIRED_RESEARCH_CHECKS)||!sameSet(audit.coverage_unchecked,[])
+  ||!sameSet(audit.required_checks,REQUIRED_RESEARCH_CHECKS)||(!pageScoped&&!sameSet(audit.coverage_unchecked,[]))
   ||!Array.isArray(audit.coverage_checked)||!Array.isArray(audit.coverage_incomplete)
   ||!sameSet([...audit.coverage_checked,...audit.coverage_incomplete],REQUIRED_RESEARCH_CHECKS))return false;
  const gaps=audit.coverage_incomplete.length;
