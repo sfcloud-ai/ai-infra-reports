@@ -29,3 +29,23 @@ test('permit coverage binds original inputs, draft bytes, and opt-in without wea
  const old=structuredClone(audit);delete old.page_scope;assert.equal(requiredCoverageValid(old,plan,b),false);
  audit.inputs.draft_sha256='d'.repeat(64);assert.equal(requiredCoverageValid(audit,plan,b),false);
 });
+import {pageCoverageValid} from '../scripts/research-page-coverage.mjs';
+function successor(){
+ const first=fixture();const evidence={request_id:'morning-20261113-r1',bundle_sha256:'a'.repeat(64),audit_sha256:'b'.repeat(64),archive_sha256:'c'.repeat(64),report_commit:'d'.repeat(40)};
+ const prior={page_scope:first.audit.page_scope,limits:{run_seconds:3600},started_at:'original',budget_policy:LAYERED_BUDGET_POLICY,inputs:{prompt_commit:'f'.repeat(40),history_commit:'e'.repeat(40),prompt_hashes:{},history_sha256:'a'.repeat(64)},sources:[{id:'original',status:'ok'}],checks:Object.fromEntries(Object.values(PAGE_CHECKS).flat().map(k=>[k,{status:k==='model_serving'?'checked':'not_checked'}])),model_calls:['research','editor'].map(stage=>({stage,attempt_records:[{outcome:'success',elapsed_seconds:20}]}))};
+ const report=structuredClone(first.report);report.revision=2;report.articles.push({id:'hardware-status'});report.entries.push({article_id:'hardware-status'});report.page_delivery={previous:{request_id:evidence.request_id,bundle_sha256:evidence.bundle_sha256},added:['hardware-status'],pending:report.page_delivery.pending.slice(1)};
+ const audit=structuredClone(first.audit);audit.coverage_checked.push('hardware');audit.coverage_unchecked=audit.coverage_unchecked.filter(c=>c!=='hardware');audit.coverage_incomplete=audit.coverage_incomplete.filter(c=>c!=='hardware');audit.evidence_metadata_sha256='f'.repeat(64);audit.page_scope={contract:'verified_pages_v1',page_delivery:report.page_delivery,checked_pages:['hardware-status'],previous_evidence:evidence};
+ const metadata=structuredClone(prior);metadata.page_scope=structuredClone(audit.page_scope);metadata.checks.hardware={status:'checked'};for(const call of metadata.model_calls)call.attempt_records.push({outcome:'success',elapsed_seconds:10,page_round:{revision:2,page_ids:['hardware-status'],previous_audit_sha256:evidence.audit_sha256}});
+ const previous={evidence,report:first.report,audit:{...first.audit,audit_valid:true,delivery_allowed:false,readiness:'partial',blockers:[],evidence_metadata_sha256:'e'.repeat(64)},metadata:prior};return {audit,report,previous,metadata};
+}
+test('successor requires authenticated original metadata and retains original pages and operations',()=>{const f=successor();assert.equal(pageCoverageValid(f.audit,bundle(f.report),f.previous,f.metadata),true);assert.equal(pageCoverageValid(f.audit,bundle(f.report)),false);});
+for(const [name,change] of Object.entries({
+ 'dropped old source':f=>f.metadata.sources=[],
+ 'changed old attempt':f=>f.metadata.model_calls[0].attempt_records[0].elapsed_seconds=0,
+ 'unbound current round':f=>f.metadata.model_calls[0].attempt_records[1].page_round.page_ids=['small-model-status'],
+ 'changed old page':f=>f.report.articles[0].title='replacement',
+ 'changed old check':f=>f.metadata.checks.model_serving={status:'not_checked'},
+ 'reset budget clock':f=>f.metadata.started_at='new',
+ 'unbound previous summary':f=>f.previous.audit.evidence_metadata_sha256=null,
+ 'wrong authenticated receipt':f=>f.previous.evidence.report_commit='e'.repeat(40),
+}))test('successor rejects '+name,()=>{const f=successor();change(f);assert.equal(pageCoverageValid(f.audit,bundle(f.report),f.previous,f.metadata),false);});
