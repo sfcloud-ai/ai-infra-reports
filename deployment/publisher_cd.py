@@ -723,7 +723,18 @@ def revision_runtime_required(database):
         return True
     for (raw,) in database.execute('SELECT bytes FROM jobs'):
         for item in json.loads(raw).get('files', []):
-            if item['path'].endswith('/report.json') and json.loads(base64.b64decode(item['base64'], validate=True)).get('schema_version') == '1.1':
+            if item['path'].endswith('/report.json') and json.loads(base64.b64decode(item['base64'], validate=True)).get('schema_version') in {'1.1', '1.2'}:
+                return True
+    return False
+
+
+def page_runtime_required(database):
+    # Persisted schema, not only optional authority tables, constrains rollback.
+    if database.execute("SELECT 1 FROM sqlite_master WHERE name='research_page_rounds'").fetchone():
+        return True
+    for (raw,) in database.execute('SELECT bytes FROM jobs'):
+        for item in json.loads(raw).get('files', []):
+            if item['path'].endswith('/report.json') and json.loads(base64.b64decode(item['base64'], validate=True)).get('schema_version') == '1.2':
                 return True
     return False
 
@@ -751,7 +762,7 @@ def compatibility(config, release, operation, expected):
     if snapshot(database) != expected:
         raise ValueError("state_changed_during_backup")
     with closing(sqlite3.connect(database)) as isolated:
-        needs_pages = isolated.execute("SELECT 1 FROM sqlite_master WHERE name='research_page_rounds'").fetchone() is not None
+        needs_pages = page_runtime_required(isolated)
         needs_revision = revision_runtime_required(isolated)
         needs_repository_inputs = repository_inputs_runtime_required(isolated)
         needs_layered_budget = isolated.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='research_recovery_installation'").fetchone() is not None

@@ -1062,3 +1062,20 @@ test('v4 original withheld intent survives explicit grant activation with one op
   assert.equal(execute(s,command('resume',{operation_id:op.operation_id},resumed.run),later).code,'resume_dispatch_not_proven_unstarted');
  }finally{s.close();}
 });
+
+test('full ready schema 1.2 still requires installed page decoder authority without changing v3 budget',async()=>{
+ const s=setup();try{
+  const run=start(s),files=new Map([...FILES].map(([p,b])=>[p.replace('/r1/','/'),b]));
+  const path=[...files.keys()].find(p=>p.endsWith('/report.json')),report=JSON.parse(files.get(path));
+  report.schema_version='1.2';report.page_delivery={previous:null,added:report.articles.map(a=>a.id),pending:[]};files.set(path,Buffer.from(JSON.stringify(report)));
+  const bytes=await encodeBundle(files,id,'b'.repeat(40),'a'.repeat(40)),audit=Buffer.from(JSON.stringify(auditSummary({readiness:'ready'},files)));
+  const hash=archive(s,{'bundle.json':bytes,'audit.json':audit}),args={archive_sha256:hash,bundle_sha256:digest(bytes),audit_sha256:digest(audit)};
+  const before=s.db.prepare('SELECT plan FROM research_control_runs WHERE request_id=?').get(id).plan;
+  const result=await issuePermit(s,command('permit',args,run));
+  assert.equal(result.status,'rejected');assert.equal(result.code,'publication_page_authority_required');assert.equal(result.run.permit,null);
+  assert.deepEqual(s.db.prepare('SELECT plan FROM research_control_runs WHERE request_id=?').get(id).plan,before);
+  installPageAuthority(s.db);
+  assert.equal((await issuePermit(s,command('permit',args,result.run))).status,'committed');
+  assert.deepEqual(s.db.prepare('SELECT plan FROM research_control_runs WHERE request_id=?').get(id).plan,before);
+ }finally{s.close();}
+});

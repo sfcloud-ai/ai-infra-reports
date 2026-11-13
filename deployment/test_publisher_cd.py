@@ -42,6 +42,17 @@ class RevisionSettlementTests(unittest.TestCase):
             database.execute("INSERT INTO slack_submission_events VALUES ('revision')")
             self.assertTrue(cd.revision_runtime_required(database))
 
+    def test_full_ready_page_schema_requires_compatible_rollback_without_tables(self):
+        with closing(sqlite3.connect(':memory:')) as database:
+            database.execute('CREATE TABLE jobs(bytes BLOB)')
+            self.assertFalse(cd.page_runtime_required(database))
+            report = dict(schema_version='1.2', revision=1, page_delivery=dict(previous=None, added=[], pending=[]))
+            raw = json.dumps(dict(files=[dict(path='reports/2026-11-13/report.json', base64=base64.b64encode(json.dumps(report).encode()).decode())])).encode()
+            database.execute('INSERT INTO jobs VALUES (?)', (raw,))
+            self.assertTrue(cd.page_runtime_required(database))
+            self.assertTrue(cd.revision_runtime_required(database))
+            self.assertIsNone(database.execute("SELECT 1 FROM sqlite_master WHERE name='research_page_rounds'").fetchone())
+
     def test_skipped_and_superseded_require_bound_terminal_evidence(self):
         with closing(sqlite3.connect(':memory:')) as database:
             database.execute(cd.SCHEDULED_SCHEMA['scheduled_handoffs'])
@@ -849,6 +860,32 @@ class ResearchRecoveryCdTests(unittest.TestCase):
             result = subprocess.run([node,'--input-type=module','-e',arguments[-1]],cwd=release,capture_output=True,text=True)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn('layered_budget_requires_compatible_release', result.stderr)
+            self.assertNotIn('config_opened', result.stderr)
+            self.assertNotIn('state_opened', result.stderr)
+            raise ValueError('candidate_incompatible')
+        with patch.object(cd,'container',side_effect=probe), patch.object(cd,'legacy_dependency_mount',return_value=[]), patch.object(os,'chown'):
+            with self.assertRaisesRegex(ValueError,'candidate_incompatible'):
+                cd.compatibility(config,self.root,operation,before)
+        self.assertEqual(cd.snapshot(self.database),before)
+
+    def test_persisted_full_page_bundle_blocks_old_decoder_before_state_open(self):
+        node = shutil.which('node')
+        if node is None:
+            self.skipTest('Node required')
+        report = dict(schema_version='1.2', revision=1, page_delivery=dict(previous=None, added=[], pending=[]))
+        raw = json.dumps(dict(files=[dict(path='reports/2026-11-13/report.json', base64=base64.b64encode(json.dumps(report).encode()).decode())])).encode()
+        with connection(self.database) as database:
+            database.execute('UPDATE jobs SET bytes=?', (raw,))
+        scripts = self.root / 'scripts'; scripts.mkdir()
+        (scripts/'handoff-state.mjs').write_text("export class HandoffState{constructor(){throw Error('state_opened')}};export const handoffScope=x=>x;")
+        (scripts/'notice-outbox.mjs').write_text("export class NoticeOutbox{};export const notificationScope=x=>x;")
+        (scripts/'run-handoff.mjs').write_text("export const REVISION_NOTICES_VERSION=1;export function validateConfig(){throw Error('config_opened')}")
+        (scripts/'research-page-authority.mjs').write_text('export const PAGE_AUTHORITY_VERSION=0;')
+        config, operation = self.config(); before = cd.snapshot(self.database)
+        def probe(config, release, arguments, **kwargs):
+            result = subprocess.run([node,'--input-type=module','-e',arguments[-1]],cwd=release,capture_output=True,text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('page_authority_requires_compatible_release', result.stderr)
             self.assertNotIn('config_opened', result.stderr)
             self.assertNotIn('state_opened', result.stderr)
             raise ValueError('candidate_incompatible')
