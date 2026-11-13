@@ -130,7 +130,14 @@ function publicationEvidence(db,run,plan,args,now,cache,page=false){
  const budget=effectiveResearchBudget(db,run,plan,now,cache);
  const coveragePlan=budget?{...plan,schema_version:'research_plan_v4',limits:budget.limits}:plan;
  need(requiredCoverageValid(audit,coveragePlan,bundle,pageBinding?.previous,metadata),'publication_coverage_contract');
- if(audit.page_scope?.page_delivery.pending.length)need(resumablePageMetadataValid(audit,metadata),'publication_page_metadata_required');
+ // Derive continuation requirements from authenticated report bytes, not an
+ // optional audit declaration: omitting page_scope must not bypass this gate.
+ const reportFiles=bundle.files.filter(f=>f.path.endsWith('/report.json'));
+ let publicationReport;try{publicationReport=JSON.parse(Buffer.from(reportFiles[0].base64,'base64'));}catch{refuse('publication_json');}
+ if(publicationReport.page_delivery?.pending?.length){
+  need(budget&&pageAuthorityInstalled(db),'publication_page_recovery_required');
+  need(audit.page_scope&&resumablePageMetadataValid(audit,metadata),'publication_page_metadata_required');
+ }
  if(budget){
   need(audit.budget_policy===LAYERED_BUDGET_POLICY,'publication_budget_policy');
   // Every research intent must have an authenticated known outcome before release.

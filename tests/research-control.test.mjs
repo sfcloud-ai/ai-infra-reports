@@ -924,6 +924,25 @@ test('real page bundle permits append to original run and use independent native
    return {bytes,audit,args:{archive_sha256:archiveHash,bundle_sha256:digest(bytes),audit_sha256:digest(auditBytes)}};
   }
   const a=await artifacts(first,metadata,'b'.repeat(40));
+  // A conventional full-coverage audit must not opt a pending report out of
+  // the page metadata/recovery contract by merely omitting page_scope.
+  const unscoped=structuredClone(a.audit);delete unscoped.page_scope;delete unscoped.evidence_metadata_sha256;
+  unscoped.coverage_checked=[...REQUIRED_RESEARCH_CHECKS];unscoped.coverage_incomplete=[];unscoped.coverage_unchecked=[];unscoped.readiness='ready';
+  const unscopedHead=archive(s,{'bundle.json':a.bytes,'audit-summary.json':Buffer.from(JSON.stringify(unscoped))});
+  const unscopedCommand=command('permit',{archive_sha256:unscopedHead,bundle_sha256:digest(a.bytes),audit_sha256:digest(Buffer.from(JSON.stringify(unscoped)))},run);
+  const unscopedResult=await issuePermit(s,unscopedCommand);assert.equal(unscopedResult.status,'rejected');assert.equal(unscopedResult.code,'publication_page_metadata_required');assert.equal(unscopedResult.run.permit,null);
+  assert.equal((await issuePermit(s,unscopedCommand)).replayed,true);
+  // A legacy v3 run lacking an explicit recovery grant must not seal a pending
+  // package even when its ordinary audit otherwise passes the old contract.
+  const legacy=setup();try{
+   const legacyRun=start(legacy);installPageAuthority(legacy.db);
+   const legacyAudit=auditSummary({},first.files);
+   const legacyBytes=Buffer.from(JSON.stringify(legacyAudit));
+   const legacyHead=archive(legacy,{'bundle.json':a.bytes,'audit-summary.json':legacyBytes});
+   const legacyResult=await issuePermit(legacy,command('permit',{archive_sha256:legacyHead,bundle_sha256:digest(a.bytes),audit_sha256:digest(legacyBytes)},legacyRun));
+   assert.equal(legacyResult.status,'rejected');assert.equal(legacyResult.code,'publication_page_recovery_required');assert.equal(legacyResult.run.permit,null);
+  }finally{legacy.close();}
+
   // Missing or structurally unusable metadata must not freeze an unresumable
   // first permit. Each rejection is durable and leaves the original run usable.
   for(const mode of ['missing','null','bad-scope','bad-stages','bad-model']){
