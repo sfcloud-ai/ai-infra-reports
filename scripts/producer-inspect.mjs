@@ -21,7 +21,7 @@ export async function inspectPublisherDay(state,config,command,sourceTs,{now=()=
   if(config.producer_fence)requireThat(!db.prepare('SELECT 1 FROM producer_quarantined_dates WHERE report_date=?').get(command.report_date),'Original unresolved date is quarantined');
   for(const staging of ['slack_staged_bundles','research_page_staged'])if(exists(db,staging)){
    const staged=db.prepare(`SELECT request_id,hash,phase,source_ts FROM ${staging} WHERE report_date=? OR request_id=?`).all(command.report_date,command.request_id);
-   requireThat(staged.every(s=>s.request_id===command.request_id&&s.hash===command.bundle_sha256&&(s.request_id===stagedRequest||s.phase==='admitted'&&db.prepare('SELECT 1 FROM jobs WHERE id=? AND hash=? AND source_ts=?').get(s.request_id,s.hash,s.source_ts))),'Date reserved by original Slack staging');
+   requireThat(staged.every(s=>(s.request_id===command.request_id?s.hash===command.bundle_sha256:canonicalRequestDate(s.request_id)===command.report_date)&&(s.request_id===stagedRequest&&s.request_id===command.request_id||s.phase==='admitted'&&db.prepare('SELECT 1 FROM jobs WHERE id=? AND hash=? AND source_ts=?').get(s.request_id,s.hash,s.source_ts))),'Date reserved by original Slack staging');
   }
   const scope=db.prepare('SELECT value FROM scope WHERE id=1').get()?.value;
   requireThat(scope===scopeDigest(handoffScope(config)),'Publisher inspect scope mismatch');
@@ -40,7 +40,7 @@ export async function inspectPublisherDay(state,config,command,sourceTs,{now=()=
    const detail=JSON.parse(original.detail);
    if(row.id===command.request_id)requireThat(bundle.report.date===command.report_date&&row.hash===command.bundle_sha256,'Publisher request conflicts with query');
    if(bundle.report.date!==command.report_date)continue;
-   requireThat(row.id===command.request_id&&row.hash===command.bundle_sha256||bundle.report.revision_notice&&canonicalRequestDate(row.id)===command.report_date,'Publisher day occupied');
+   requireThat(row.id===command.request_id&&row.hash===command.bundle_sha256||(bundle.report.revision===1||bundle.report.revision_notice)&&canonicalRequestDate(row.id)===command.report_date,'Publisher day occupied');
    requireThat(detail.commit===undefined||SHA.test(detail.commit),'Publisher commit invalid');
    requireThat(detail.intake_file_id===undefined||/^F[A-Z0-9]+$/.test(detail.intake_file_id),'Publisher file identity invalid');
    day.push({request_id:row.id,report_date:bundle.report.date,bundle_sha256:row.hash});

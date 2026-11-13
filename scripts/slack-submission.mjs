@@ -92,7 +92,7 @@ export async function advanceSubmission(state,config,slack,query=queryScheduled,
    const message=await slack.exactPublish(row.source_ts),original=acceptSubmission(message,config,now,{from:config.slack_submission.activation_ts,to:row.source_ts});
    requireThat(original&&['kind','request_id','hash','file_id','target_ts'].every(k=>(original[k]??null)===row[k]),'Original revision command changed');
    const bytes=await slack.download(row),bundle=await decodeBundle(bytes);
-   requireThat(bundle.report.schema_version==='1.1'&&bundle.report.revision>1&&bundle.data.request_id===row.request_id&&bundle.hash===row.hash&&bundle.report.date===date,'Explicit revision bundle binding required');
+   requireThat(['1.1','1.2'].includes(bundle.report.schema_version)&&bundle.report.revision>1&&['correction','material_update','maintenance'].includes(bundle.report.revision_notice?.kind)&&bundle.data.request_id===row.request_id&&bundle.hash===row.hash&&bundle.report.date===date,'Explicit revision bundle binding required');
    db.exec('BEGIN IMMEDIATE');try{
     assertSubmission(db,config);
     const prior=state.metadata(row.request_id);

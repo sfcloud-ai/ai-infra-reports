@@ -439,7 +439,7 @@ function apply(db,c,now,config){
   db.prepare('UPDATE research_control_ops SET phase=?,elapsed_seconds=?,result_archive=?,result_file=?,native_result=? WHERE operation_id=?').run(c.args.outcome,elapsed,c.args.archive_sha256,c.args.file_sha256,c.args.native_result?JSON.stringify(c.args.native_result):null,c.args.operation_id);
   db.prepare('UPDATE research_control_runs SET charged_seconds=charged_seconds-? WHERE request_id=?').run(refund,c.request_id);
  }else if(c.action==='page_permit'){
-  need(exact(c.args,'publication_request_id,archive_sha256,bundle_sha256,audit_sha256')&&/^morning-\d{8}-r[2-6]$/.test(c.args.publication_request_id)&&string(c.args.bundle_sha256,HASH)&&string(c.args.audit_sha256,HASH),'permit_fields');
+  need(exact(c.args,'publication_request_id,archive_sha256,bundle_sha256,audit_sha256')&&/^morning-\d{8}-r(?:[2-9]|[1-9][0-9]+)$/.test(c.args.publication_request_id)&&string(c.args.bundle_sha256,HASH)&&string(c.args.audit_sha256,HASH),'permit_fields');
   need(run.inputs_hash,'publication_bytes_missing');
   const pageProof=publicationEvidence(db,run,plan,c.args,now,cache,true);
   const round=currentPageRound(db,run.request_id);

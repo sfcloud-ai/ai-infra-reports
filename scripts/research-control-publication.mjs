@@ -5,9 +5,9 @@ const UUID='[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}'
 export const controlledDate=(c,id)=>!!c.research_control&&canonicalRequestDate(id)>=c.research_control.first_report_date;
 export function acceptPermitSubmission(message,c,now,window){
  if(!c.research_control)return null;
- const stage=acceptDataCommand(message,c,'!ai-report stage-v2 ',new RegExp('^!ai-report stage-v2 (morning-\\d{8}-r[1-6]) ([a-f0-9]{64}) ('+UUID+')$'),now,window);
+ const stage=acceptDataCommand(message,c,'!ai-report stage-v2 ',new RegExp('^!ai-report stage-v2 (morning-\\d{8}-r[1-9][0-9]*) ([a-f0-9]{64}) ('+UUID+')$'),now,window);
  if(stage)return {...stage,kind:'stage',target_ts:null,permit_id:message.text.split(' ')[4]};
- const submit=acceptReadCommand(message,c,'!ai-report submit-v2 ',new RegExp('^!ai-report submit-v2 (morning-\\d{8}-r[1-6]) ([a-f0-9]{64}) (\\d{10}\\.\\d{6}) ('+UUID+')$'),now,window);
+ const submit=acceptReadCommand(message,c,'!ai-report submit-v2 ',new RegExp('^!ai-report submit-v2 (morning-\\d{8}-r[1-9][0-9]*) ([a-f0-9]{64}) (\\d{10}\\.\\d{6}) ('+UUID+')$'),now,window);
  if(!submit)return null;
  return {kind:'submit',source_ts:submit.source_ts,request_id:submit.match[1],hash:submit.match[2],target_ts:submit.match[3],file_id:null,permit_id:submit.match[4]};
 }

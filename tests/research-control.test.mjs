@@ -899,7 +899,7 @@ test('legacy body-bound source results require unique authenticated original met
 import {installPageAuthority,authenticatedPrevious} from '../scripts/research-page-authority.mjs';
 import {PAGE_CHECKS} from '../scripts/research-page-coverage.mjs';
 import {installScheduledTables} from '../scripts/scheduled-delivery-state.mjs';
-test('real page bundle permits append to original run and use independent native/staging identity',async()=>{
+for(const targetRevision of [2,11])test(`real r${targetRevision} page bundle permits append to original run and use independent native/staging identity`,async()=>{
  const s=setup();try{
   let run=start(s,layeredPlan());installPageAuthority(s.db);
   const original=JSON.parse([...FILES].find(([p])=>p.endsWith('/report.json'))[1]);
@@ -963,20 +963,27 @@ test('real page bundle permits append to original run and use independent native
   installScheduledTables(s.db,['scheduled_handoffs','scheduled_bridge_scope']);
   const binding={request_id:id,report_date:DAY,report_commit:commit,bundle_sha256:job.hash};
   s.db.prepare('INSERT INTO scheduled_handoffs VALUES(?,?,?,?,0)').run(id,JSON.stringify(binding),'complete',JSON.stringify({...binding,status:'sent',phase:'complete',parts_sent:2,parts_total:2,images:[{file_id:'scheduled-poster',status:'sent',error:null}]}));
-  result=execute(s,command('page_begin',{previous_request_id:id,added:['hardware-status','embodied-training']},run));assert.equal(result.status,'committed',result.code);run=result.run;
+  let previousId=id,previousHash=job.hash;
+  for(let revision=2;revision<targetRevision;revision++){
+   const r=structuredClone(first.report);r.revision=revision;r.revision_notice={kind:'correction',summary:'已审核纠错'};r.page_delivery={...r.page_delivery,previous:{request_id:previousId,bundle_sha256:previousHash},added:[]};
+   const files=new Map(first.files);files.set(rootPath+'report.json',Buffer.from(JSON.stringify(r)));const request_id=id.replace(/r1$/,`r${revision}`),bytes=await encodeBundle(files,request_id,commit,'a'.repeat(40));
+   const hash=digest(bytes),ts=`1793491202.${String(100+revision).padStart(6,'0')}`;s.admit({request_id,hash,source_ts:ts},bytes);s.move(request_id,'received','receipt_sent',{commit,proof:{publication_status:'verified',bundle_sha256:hash,commit}});
+   const bound={request_id,report_date:DAY,report_commit:commit,bundle_sha256:hash};s.db.prepare('INSERT INTO scheduled_handoffs VALUES(?,?,?,?,0)').run(request_id,JSON.stringify(bound),'complete',JSON.stringify({...bound,status:'sent',phase:'complete',parts_sent:1,parts_total:1,delivery_kind:'revision_update',images:[]}));previousId=request_id;previousHash=hash;
+  }
+  result=execute(s,command('page_begin',{previous_request_id:previousId,added:['hardware-status','embodied-training']},run));assert.equal(result.status,'committed',result.code);run=result.run;
   const failedSource=source('https://example.org/embodied-missing');
   run=execute(s,command('reserve',{operations:[failedSource]},run)).run;
   const failure=Buffer.from(JSON.stringify({request_id:id,operation_id:failedSource.operation_id,url:failedSource.input.url,status:'failed',elapsed_seconds:2}));
   const failureArchive=archive(s,{'embodied-failure.json':failure});
   run=execute(s,command('settle',{operation_id:failedSource.operation_id,outcome:'acknowledged',elapsed_seconds:2,archive_sha256:failureArchive,file_sha256:digest(failure),native_result:null},run)).run;
   const continued=execute(s,command('status',{offset:0}));assert.equal(continued.effective_budget.accounting.failed_seconds,2);assert.equal(continued.effective_budget.accounting.success_seconds,0);
-  const previous=authenticatedPrevious(s.db,s.db.prepare('SELECT * FROM research_control_runs WHERE request_id=?').get(id),id);
-  const second=pageBundle(2,{request_id:id,bundle_sha256:job.hash});metadata=structuredClone(metadata);metadata.page_scope={...scope(second.report),previous_evidence:previous.evidence};metadata.checks.hardware={status:'checked'};
+  const previous=authenticatedPrevious(s.db,s.db.prepare('SELECT * FROM research_control_runs WHERE request_id=?').get(id),previousId);
+  const second=pageBundle(2,{request_id:previousId,bundle_sha256:previousHash});second.report.revision=targetRevision;second.files.set(rootPath+'report.json',Buffer.from(JSON.stringify(second.report)));metadata=structuredClone(metadata);metadata.page_scope={...scope(second.report),previous_evidence:previous.evidence};metadata.checks.hardware={status:'checked'};
   metadata.sources.push({id:'embodied-failure',status:'failed',operation_id:failedSource.operation_id,archive_sha256:failureArchive});
   for(const call of metadata.model_calls){
-   call.attempt_records.push({outcome:'success',elapsed_seconds:0,page_round:{revision:2,page_ids:['hardware-status','embodied-training'],previous_audit_sha256:a.args.audit_sha256}});
+   call.attempt_records.push({outcome:'success',elapsed_seconds:0,page_round:{revision:targetRevision,page_ids:['hardware-status','embodied-training'],previous_audit_sha256:a.args.audit_sha256}});
   }
-  const b=await artifacts(second,metadata,commit),target=id.replace(/r1$/,'r2');result=await issuePermit(s,command('page_permit',{publication_request_id:target,...b.args},run));
+  const b=await artifacts(second,metadata,commit),target=id.replace(/r1$/,`r${targetRevision}`);result=await issuePermit(s,command('page_permit',{publication_request_id:target,...b.args},run));
   assert.equal(result.status,'committed',result.code);assert.deepEqual(result.run.permit,originalPermit);assert.equal(JSON.parse(result.page_round.permit).request_id,target);assert.deepEqual(JSON.parse(result.page_round.permit).page_ids,['hardware-status']);
   assert.ok(second.report.page_delivery.pending.some(p=>p.id==='embodied-training'));assert.equal(result.run.charged_seconds,run.charged_seconds);
   const roundPermit=JSON.parse(result.page_round.permit),upload=execute(s,{...command('upload_status',{archive_sha256:b.args.archive_sha256,permit_id:roundPermit.permit_id}),owner_id:null});
@@ -1000,9 +1007,15 @@ test('real page bundle permits append to original run and use independent native
   assert.equal(execute(s,command('reserve',{operations:[op]},run)).dispatch_granted,true);
   messages.push(message(`!ai-report submit-v2 ${target} ${hash} ${stage.ts} ${permit}`,'1793491211.000001'));
   await inbox.scan(slack,now+2000);await advanceSubmission(s,config,slack,()=>assert.fail('successor must not require empty date'),now+2000);
-  assert.equal(s.metadata(target)?.hash,hash);assert.equal(s.db.prepare('SELECT count(*) n FROM jobs').get().n,2);
+  assert.equal(s.metadata(target)?.hash,hash);assert.equal(s.db.prepare('SELECT count(*) n FROM jobs').get().n,targetRevision);
   assert.equal(s.db.prepare('SELECT phase FROM research_page_staged WHERE request_id=?').get(target).phase,'admitted');
   assert.equal(s.db.prepare('SELECT count(*) n FROM research_control_runs').get().n,1);
+  const {inspectPublisherDay}=await import('../scripts/producer-inspect.mjs');
+  for(const [request_id,bundle_sha256] of [[id,job.hash],[target,hash]]){
+   const inspect={kind:'inspect',request_id,report_date:DAY,bundle_sha256,query_id:randomUUID()};const result=await inspectPublisherDay(s,config,inspect,'1793491212.000001');assert.equal(result.publisher.request_id,request_id);assert.equal(result.publisher_day.length,targetRevision);
+  }
+  s.db.prepare("UPDATE research_page_staged SET phase='staged' WHERE request_id=?").run(target);
+  await assert.rejects(inspectPublisherDay(s,config,{kind:'inspect',request_id:id,report_date:DAY,bundle_sha256:job.hash,query_id:randomUUID()},'1793491213.000001'),/Date reserved/);
 
  }finally{s.close();}
 });

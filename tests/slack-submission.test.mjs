@@ -37,11 +37,16 @@ const slackFor=(messages=[stage,submit],download=async()=>bytes)=>({history:asyn
 async function scan(state,messages=[stage,submit]){const inbox=new PublisherInbox(state,config);await inbox.scan(slackFor(messages),Math.ceil(Math.max(...messages.map(m=>Number(m.ts)))*1000));return inbox;}
 async function stageOnly(state){await scan(state,[stage]);assert.equal(await advanceSubmission(state,config,slackFor([stage]),remote,now),undefined);}
 
-test('native revision upload enters durable submission and existing report flow without replacing daily staging',async()=>{
+for(const paged of [false,true])test(`native ${paged?'paged':'ordinary'} revision upload enters durable submission and existing report flow without replacing daily staging`,async()=>{
  const files=new Map(FILES),meta=[...files.keys()].find(p=>p.endsWith('/report.json'));
  const report=JSON.parse(files.get(meta));Object.assign(report,{schema_version:'1.1',revision:2,revision_notice:{kind:'correction',summary:'更正实验条件。'}});
- const revised=new Map([...files].map(([p,b])=>[p.replace('/r1/','/r2/'),p===meta?Buffer.from(JSON.stringify(report)):b]));
+ if(paged){report.schema_version='1.2';const topics=['model-serving-gpu','hardware-status','model-architecture-status','embodied-training','small-model-status','inference-engines'];report.page_delivery={previous:{request_id:id,bundle_sha256:digest(bytes)},added:[],pending:topics.filter(id=>!report.articles.some(a=>a.id===id)).map(id=>({id,reason:'待核验'}))};}
+ const revised=new Map([...files].map(([p,b])=>[p.replace('/r1/',paged?'/':'/r2/'),p===meta?Buffer.from(JSON.stringify(report)):b]));
  const rid='morning-20261101-r2',raw=await encodeBundle(revised,rid,'a'.repeat(40),'b'.repeat(40)),hash=digest(raw);
+ if(paged){
+  const bypass=structuredClone(report);bypass.revision_notice.kind='page_completion';bypass.page_delivery.added=[bypass.articles[0].id];const badFiles=new Map(revised);badFiles.set(meta.replace('/r1/','/'),Buffer.from(JSON.stringify(bypass)));const bad=await encodeBundle(badFiles,rid,'a'.repeat(40),'b'.repeat(40));
+  await assert.rejects(stageFile(bad,'C123',()=>assert.fail('No native upload before permit'),{revision:true}),/Explicit revision notice required/);
+ }
  const ticket={file_id:'FREVISION',upload_url:'https://files.slack.com/upload/v1/synthetic-revision'};let native;
  const result=await stageFile(raw,'C123',async(tool,args)=>{
   if(tool===PRODUCER_TOOLS.ticket)return ticket;
