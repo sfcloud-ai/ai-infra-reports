@@ -1,6 +1,7 @@
+import {isRepositoryResearchPlan,isLayeredResearchPlan,operationBudget} from './research-budget.mjs';
 import {acceptReadCommand,canonicalRequestDate,requireThat} from './report-handoff.mjs';
 import {digest} from './archive.mjs';
-import {assertResearchControl,decodeResearchControl,executeResearchControl,preparePublicationCheck} from './research-control.mjs';
+import {assertResearchControl,decodeResearchControl,executeResearchControl,preparePublicationCheck,researchOperationDispatchValid} from './research-control.mjs';
 import {safeDiagnostic,recoveryDelay,isSlackWriteUnexecuted} from './handoff-recovery.mjs';
 export function acceptResearchControl(message,config,now,window){
  if(!config.research_control)return null;
@@ -58,10 +59,10 @@ export async function advanceResearchControl(state,config,slack,now=Date.now()){
   const result=JSON.parse(text.slice('!ai-research control-receipt '.length));
   // A cooldown or delayed response cannot resurrect an expired dispatch grant.
   if(result.dispatch_granted){
-   const run=db.prepare('SELECT owner_id,epoch,lease_until,permit,started_at,plan FROM research_control_runs WHERE request_id=?').get(result.request_id);
-   const live=run&&JSON.parse(Buffer.from(run.plan)).schema_version==='research_plan_v3'&&run.owner_id===result.run.owner_id&&run.epoch===result.run.epoch&&run.lease_until>now&&result.run.lease_until>now&&result.operations.every(op=>{
-    const original=db.prepare('SELECT phase,owner_id,epoch,kind FROM research_control_ops WHERE operation_id=?').get(op.operation_id);
-    return original?.phase==='intent'&&(original.kind==='native'||run.permit===null&&now<run.started_at+JSON.parse(Buffer.from(run.plan)).limits.total_budget_seconds*1000);
+   const run=db.prepare('SELECT * FROM research_control_runs WHERE request_id=?').get(result.request_id);
+   const live=run&&isRepositoryResearchPlan(JSON.parse(Buffer.from(run.plan)))&&run.owner_id===result.run.owner_id&&run.epoch===result.run.epoch&&run.lease_until>now&&result.run.lease_until>now&&result.operations.every(op=>{
+    const original=db.prepare('SELECT * FROM research_control_ops WHERE operation_id=?').get(op.operation_id);
+    return original?.phase==='intent'&&researchOperationDispatchValid(db,run,original,now);
    });
    if(!live){text='!ai-research control-receipt '+JSON.stringify({...result,dispatch_granted:false,grant_expired:true});db.prepare('UPDATE research_control_events SET reply_text=? WHERE source_ts=?').run(text,row.source_ts);}
   }

@@ -1,3 +1,4 @@
+import {isRepositoryResearchPlan,isLayeredResearchPlan,operationBudget} from './research-budget.mjs';
 // Public, commit-pinned inputs are recovered from Git; they are not private checkpoints.
 import {digest} from './archive.mjs';
 import {requireThat} from './report-handoff.mjs';
@@ -11,7 +12,7 @@ export const REPOSITORY_INPUT_PATHS=Object.freeze([
  'reports/index.json'
 ]);
 export function repositoryResearchInputs(plan){
- requireThat(plan?.schema_version==='research_plan_v3'&&SHA.test(plan.prompt_commit_sha)&&SHA.test(plan.reports_commit_sha),'Pinned repository input plan required');
+ requireThat(isRepositoryResearchPlan(plan)&&SHA.test(plan.prompt_commit_sha)&&SHA.test(plan.reports_commit_sha),'Pinned repository input plan required');
  requireThat(plan.files&&Object.keys(plan.files).sort().join()===REPOSITORY_INPUT_PATHS.slice().sort().join()&&Object.values(plan.files).every(hash=>typeof hash==='string'&&HASH.test(hash)),'Exact public repository input paths and hashes required');
  return REPOSITORY_INPUT_PATHS.map(path=>{
   const prompt=path.startsWith('ai_brief/'),repository=prompt?'sfcloud-ai/ai-infra-brief':'sfcloud-ai/ai-infra-reports';
