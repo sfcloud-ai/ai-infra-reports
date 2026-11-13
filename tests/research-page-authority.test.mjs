@@ -74,3 +74,23 @@ test('client reserves successor upload under root run and never replays unknown 
  await client.before('ticket',null,bytes);assert.equal(client.publication_request_id,child);const op=commands.at(-1).args.operations[0];ops=[{...op,operation_key:op.key,input_hash:op.input_sha256,phase:'unknown'}];
  await assert.rejects(client.before('ticket',null,bytes),/requires reconciliation/);assert.equal(commands.filter(c=>c.action==='reserve').length,1);
 });
+test('correction chain binds latest publication separately from research, including revision ten',()=>{
+ const {db,run,report,bundle}=fixture();let prior=authenticatedPrevious(db,run,root),latest=structuredClone(report);
+ for(let revision=2;revision<=10;revision++){
+  latest=structuredClone(latest);latest.revision=revision;latest.revision_notice={kind:revision%2?'maintenance':'correction',summary:'Verified correction'};latest.articles[0].title='Corrected '+revision;latest.page_delivery={...latest.page_delivery,added:[],previous:{request_id:prior.evidence.request_id,bundle_sha256:prior.evidence.bundle_sha256}};
+  const rid=`morning-20261113-r${revision}`,b=structuredClone(bundle);b.request_id=rid;b.expected_base_sha=prior.evidence.report_commit;const raw=Buffer.from(JSON.stringify(latest));b.files[0]={...b.files[0],base64:raw.toString('base64'),sha256:digest(raw)};
+  const bytes=Buffer.from(JSON.stringify(b)),hash=digest(bytes),commit=String(revision%10).repeat(40);db.prepare('INSERT INTO jobs VALUES(?,?,?,?)').run(rid,hash,bytes,JSON.stringify({commit,proof:{publication_status:'verified',bundle_sha256:hash,commit}}));
+  const binding={request_id:rid,report_date:run.report_date,report_commit:commit,bundle_sha256:hash},skip=revision%2;
+  const receipt={...binding,status:skip?'skipped':'sent',phase:skip?'skipped':'complete',parts_sent:skip?0:1,parts_total:skip?0:1,delivery_kind:skip?'web_only':'revision_update',images:[]};db.prepare('INSERT INTO scheduled_handoffs VALUES(?,?,?,?)').run(rid,receipt.phase,JSON.stringify(binding),JSON.stringify(receipt));prior=authenticatedPrevious(db,run,rid);
+ }
+ assert.equal(prior.evidence.request_id,'morning-20261113-r10');assert.equal(prior.evidence.research_previous.request_id,root);assert.equal(prior.research_report.revision,1);assert.equal(prior.report.revision,10);assert.equal(prior.corrections.length,9);
+ assert.equal(beginPageRound(db,run,{previous_request_id:prior.evidence.request_id,added:[TOPIC_IDS[1]]},123).request_id,'morning-20261113-r11');
+ const row=db.prepare('SELECT result FROM scheduled_handoffs WHERE request_id=?').get('morning-20261113-r5');const bad=JSON.parse(row.result);bad.status='unknown';db.prepare('UPDATE scheduled_handoffs SET result=? WHERE request_id=?').run(JSON.stringify(bad),'morning-20261113-r5');assert.throws(()=>authenticatedPrevious(db,run,'morning-20261113-r10'),/page_previous_delivery/);db.close();
+});
+
+test('begin replay remains idempotent after successor job admission',()=>{
+ const {db,run}=fixture(),args={previous_request_id:root,added:[TOPIC_IDS[1]]};const first=beginPageRound(db,run,args,123);
+ db.prepare('INSERT INTO jobs VALUES(?,?,?,?)').run(first.request_id,'a'.repeat(64),Buffer.from('{}'),'{}');
+ assert.deepEqual(beginPageRound(db,run,args,999),first);
+ assert.throws(()=>authenticatedPrevious(db,run,null),error=>error.researchControlCode==='page_previous_permit');db.close();
+});

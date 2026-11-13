@@ -40,13 +40,13 @@ export function pageCoverageValid(audit,bundle,previous=null,metadata=null){
 
 function successorEvidenceValid(audit,report,previous,metadata){
  const {evidence,report:old,audit:summary,metadata:prior}=previous;
- if(!exact(evidence,['request_id','bundle_sha256','audit_sha256','archive_sha256','report_commit'])||!equal(audit.page_scope.previous_evidence,evidence)
+ if(!exact(evidence,['request_id','bundle_sha256','audit_sha256','archive_sha256','report_commit',...(evidence.research_previous?['research_previous']:[])])||!equal(audit.page_scope.previous_evidence,evidence)
   ||!equal(report.page_delivery.previous,{request_id:evidence.request_id,bundle_sha256:evidence.bundle_sha256}))return false;
  if(!summary||summary.audit_valid!==true||summary.delivery_allowed!==false||!equal(summary.blockers,[])||!['ready','partial','zero_items'].includes(summary.readiness)
   ||!prior||!equal(prior.page_scope,summary.page_scope)||prior.page_scope?.contract!=='verified_pages_v1'||!equal(metadata.page_scope,audit.page_scope))return false;
  if(!/^[a-f0-9]{64}$/.test(audit.evidence_metadata_sha256??'')||!/^[a-f0-9]{64}$/.test(summary.evidence_metadata_sha256??''))return false;
  if(report.date!==old.date||report.revision!==old.revision+1||evidence.request_id!==`morning-${report.date.replaceAll('-','')}-r${old.revision}`)return false;
- if(!equal(old.page_delivery,prior.page_scope.page_delivery)||!equal(metadata.limits,prior.limits)||metadata.started_at!==prior.started_at||metadata.budget_policy!==prior.budget_policy)return false;
+ if(!equal((previous.research_report??old).page_delivery,prior.page_scope.page_delivery)||!equal(metadata.limits,prior.limits)||metadata.started_at!==prior.started_at||metadata.budget_policy!==prior.budget_policy)return false;
  for(const key of ['prompt_commit','history_commit','prompt_hashes','history_sha256'])if(!equal(metadata.inputs?.[key],prior.inputs?.[key]))return false;
  if(!Array.isArray(metadata.sources)||!Array.isArray(prior.sources)||!equal(metadata.sources.slice(0,prior.sources.length),prior.sources))return false;
  const added=report.page_delivery.added,oldReady=old.articles.map(a=>a.id),oldPending=old.page_delivery.pending.map(p=>p.id);

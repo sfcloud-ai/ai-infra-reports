@@ -3,7 +3,7 @@
 import {isDeepStrictEqual as equal} from 'node:util';
 import {decodeResearchArchive} from './research-archive.mjs';
 import {digest} from './archive.mjs';
-import {validatePageDelivery,validatePageProgressReport,TOPIC_IDS} from './page-delivery.mjs';
+import {validatePageDelivery,validatePageProgressReport,validatePageCorrectionReport,TOPIC_IDS} from './page-delivery.mjs';
 const fail=code=>{throw Object.assign(Error(code),{researchControlCode:code});};
 const need=(ok,code)=>{if(!ok)fail(code);};
 export const PAGE_AUTHORITY_VERSION=1;
@@ -41,23 +41,37 @@ function reportFromBundle(bytes,hash){
 }
 // Only original host records may authenticate previous_evidence. Client claims,
 // Slack acknowledgments, a published URL, or an unknown send cannot do so.
-export function authenticatedPrevious(db,run,previousId){
+export function authenticatedPrevious(db,run,previousId,depth=0){
+ need(typeof previousId==='string','page_previous_permit');
+ need(depth<100,'page_correction_chain_limit');
+ need(previousId===`morning-${run.report_date.replaceAll('-','')}-r${Number(previousId.split('-r').at(-1))}`&&originalRunId(previousId)===run.request_id,'page_previous_permit');
  const round=pageRound(db,previousId);
  const permit=previousId===run.request_id?(run.permit?JSON.parse(run.permit):null):(round?.run_id===run.request_id&&round.permit?JSON.parse(round.permit):null);
- need(permit?.request_id===previousId,'page_previous_permit');
+ if(permit)need(permit.request_id===previousId,'page_previous_permit');
  const job=db.prepare('SELECT * FROM jobs WHERE id=?').get(previousId);
- need(job&&job.hash===permit.bundle_sha256,'page_previous_job');
+ need(job&&(!permit||job.hash===permit.bundle_sha256),'page_previous_job');
  const {bundle,report}=reportFromBundle(Buffer.from(job.bytes),job.hash),detail=JSON.parse(job.detail);
  need(bundle.request_id===previousId&&report.date===run.report_date&&detail.proof?.publication_status==='verified'&&detail.proof.bundle_sha256===job.hash&&detail.proof.commit===detail.commit,'page_previous_publication');
  const table=db.prepare("SELECT 1 FROM sqlite_master WHERE name='scheduled_handoffs'").get();
  const handoff=table&&db.prepare('SELECT * FROM scheduled_handoffs WHERE request_id=?').get(previousId);
- need(handoff?.phase==='complete','page_previous_delivery_incomplete');
+ need(['complete','skipped'].includes(handoff?.phase),'page_previous_delivery_incomplete');
  const receipt=JSON.parse(handoff.result),binding=JSON.parse(handoff.binding);
  const expected={request_id:previousId,report_date:run.report_date,report_commit:detail.commit,bundle_sha256:job.hash};
  need(equal(binding,expected)&&Object.entries(expected).every(([k,v])=>receipt[k]===v),'page_previous_delivery_binding');
- need(receipt.status==='sent'&&receipt.phase==='complete'&&Number.isSafeInteger(receipt.parts_total)&&receipt.parts_total>0&&receipt.parts_sent===receipt.parts_total,'page_previous_delivery_incomplete');
+ const webOnly=!permit&&report.revision_notice?.kind==='maintenance'&&handoff.phase==='skipped'&&receipt.status==='skipped'&&receipt.phase==='skipped'&&receipt.delivery_kind==='web_only'&&receipt.parts_total===0&&receipt.parts_sent===0&&Array.isArray(receipt.images)&&receipt.images.length===0;
+ need(webOnly||receipt.status==='sent'&&receipt.phase==='complete'&&Number.isSafeInteger(receipt.parts_total)&&receipt.parts_total>0&&receipt.parts_sent===receipt.parts_total,'page_previous_delivery_incomplete');
  const images=receipt.images;
- need(Array.isArray(images)&&(report.revision===1?receipt.parts_total===2&&images.length===1&&images[0].file_id==='scheduled-poster'&&images[0].status==='sent'&&images[0].error===null:receipt.delivery_kind==='revision_update'&&receipt.parts_total===1&&images.length===0),'page_previous_delivery_parts');
+ need(webOnly||Array.isArray(images)&&(report.revision===1?receipt.parts_total===2&&images.length===1&&images[0].file_id==='scheduled-poster'&&images[0].status==='sent'&&images[0].error===null:receipt.delivery_kind==='revision_update'&&receipt.parts_total===1&&images.length===0),'page_previous_delivery_parts');
+ if(!permit){
+  need(['correction','maintenance','material_update'].includes(report.revision_notice?.kind),'page_previous_permit');
+  const prior=authenticatedPrevious(db,run,report.page_delivery.previous?.request_id,depth+1);
+  need(report.page_delivery.previous.bundle_sha256===prior.evidence.bundle_sha256&&bundle.expected_base_sha===prior.evidence.report_commit,'page_correction_binding');
+  try{validatePageCorrectionReport(prior.report,report);}catch{fail('page_correction_partition');}
+  const research=prior.evidence.research_previous??prior.evidence;
+  return {...prior,report,bundle,research_report:prior.research_report??prior.report,
+   corrections:[...(prior.corrections??[]),{bundle_base64:Buffer.from(job.bytes).toString('base64'),report_commit:detail.commit}],
+   evidence:{request_id:previousId,bundle_sha256:job.hash,audit_sha256:research.audit_sha256,archive_sha256:research.archive_sha256,report_commit:detail.commit,research_previous:research}};
+ }
  const stored=db.prepare('SELECT bytes FROM research_archives WHERE request_id=? AND hash=?').get(run.request_id,permit.archive_sha256);
  need(stored&&digest(Buffer.from(stored.bytes))===permit.archive_sha256,'page_previous_archive');
  const saved=decodeResearchArchive(Buffer.from(stored.bytes));
@@ -73,14 +87,15 @@ export function beginPageRound(db,run,args,now){
  need(pageAuthorityInstalled(db),'page_authority_not_installed');
  need(args&&Object.keys(args).sort().join()==='added,previous_request_id','page_begin_fields');
  const previous=authenticatedPrevious(db,run,args.previous_request_id),revision=previous.report.revision+1;
- need(revision<=6,'page_revision_limit');
- const requestId=`${run.request_id.slice(0,-1)}${revision}`;
+ need(Number.isSafeInteger(revision)&&revision>1,'page_revision_limit');
+ const requestId=`${run.request_id.replace(/-r1$/, '-r')}${revision}`;
  const pending=new Set(previous.report.page_delivery.pending.map(p=>p.id));
  need(Array.isArray(args.added)&&args.added.length>0&&equal(args.added,TOPIC_IDS.filter(id=>args.added.includes(id)))&&args.added.every(id=>pending.has(id)),'page_added_scope');
  const prior=pageRound(db,requestId);
  if(prior){need(equal(JSON.parse(prior.previous_evidence),previous.evidence)&&equal(JSON.parse(prior.added),args.added),'immutable_page_round');return prior;}
+ for(const job of db.prepare('SELECT id FROM jobs WHERE id LIKE ?').all(run.request_id.replace(/-r1$/, '-r')+'%'))need(Number(job.id.split('-r').at(-1))<revision,'page_predecessor_must_be_latest');
  const latest=currentPageRound(db,run.request_id);
- need(!latest||latest.request_id===args.previous_request_id,'page_round_already_open');
+ need(!latest||latest.permit&&latest.revision<revision,'page_round_already_open');
  need(!db.prepare('SELECT 1 FROM jobs WHERE id=?').get(requestId)&&!db.prepare('SELECT 1 FROM slack_staged_bundles WHERE request_id=?').get(requestId),'page_existing_publication');
  db.prepare('INSERT INTO research_page_rounds VALUES(?,?,?,?,?,?,NULL)').run(requestId,run.request_id,revision,JSON.stringify(previous.evidence),JSON.stringify(args.added),now);
  return pageRound(db,requestId);
@@ -120,7 +135,7 @@ export function stagingTable(db,id){
 }
 export function assertPageAdmission(db,run,bundle){
  const proof=pagePublicationBinding(db,run,bundle);
- for(const job of db.prepare('SELECT id FROM jobs WHERE id LIKE ?').all(run.request_id.slice(0,-1)+'%')){
+ for(const job of db.prepare('SELECT id FROM jobs WHERE id LIKE ?').all(run.request_id.replace(/-r1$/, '-r')+'%')){
   const revision=Number(job.id.split('-r').at(-1));
   need(Number.isSafeInteger(revision)&&revision<proof.round.revision||job.id===bundle.request_id,'page_competing_publication');
  }
