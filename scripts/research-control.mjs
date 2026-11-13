@@ -1,3 +1,5 @@
+import {activePageResearch,pageModelKeyAllowed} from './research-page-budget.mjs';
+import {beginPageRound,currentPageRound,publicationPermit,pagePublicationBinding,appendPagePermit} from './research-page-authority.mjs';
 import {readResearchRecoveryHead,researchRecoveryWindow,researchRecoveryAccounting,recordResearchRecoveryOperation,appendResearchRecoveryGrant,assertResearchRecovery} from './research-recovery.mjs';
 import {isRepositoryResearchPlan,isLayeredResearchPlan,operationBudget,continuationWindow,LAYERED_BUDGET_POLICY,researchSecondsWithin,RESEARCH_SECONDS_EPSILON} from './research-budget.mjs';
 // Host authority for a disposable research client. Replies are observations;
@@ -25,7 +27,7 @@ const publicationChecks=new WeakMap();
 export async function preparePublicationCheck(db,bytes){
  const c=decodeResearchControl(bytes),witness={};let code=null;
  try{
-  need(c.action==='permit'&&string(c.args.archive_sha256,HASH)&&string(c.args.bundle_sha256,HASH),'permit_fields');
+  need(['permit','page_permit'].includes(c.action)&&string(c.args.archive_sha256,HASH)&&string(c.args.bundle_sha256,HASH),'permit_fields');
   const row=db.prepare('SELECT bytes FROM research_archives WHERE request_id=? AND hash=?').get(c.request_id,c.args.archive_sha256);
   need(row,'archive_not_stored');const archive=decodeResearchArchive(Buffer.from(row.bytes));
   const file=archive.files.find(f=>f.sha256===c.args.bundle_sha256);need(file,'publication_bytes_missing');
@@ -86,7 +88,7 @@ export function migrateResearchControl(db,c,reference){
 export function decodeResearchControl(bytes){
  need(Buffer.isBuffer(bytes)&&bytes.length>0&&'!ai-research control v2 '.length+bytes.toString('base64').length<=5000,'control_wire_limit_split_reservations_or_reduce_plan');
  let c;try{c=JSON.parse(new TextDecoder('utf8',{fatal:true}).decode(bytes));}catch{refuse('control_json');}
- need(exact(c,'schema_version,command_id,request_id,action,owner_id,epoch,expected_revision,args')&&c.schema_version==='research_control_v2'&&string(c.command_id,UUID)&&typeof c.request_id==='string'&&/^morning-\d{8}-r1$/.test(c.request_id)&&['claim','renew','inputs','checkpoint','reserve','resume','settle','permit','recovery_grant','status','upload_status','receipt'].includes(c.action)&&integer(c.epoch,0,1000000)&&integer(c.expected_revision,0,10000000)&&c.args&&typeof c.args==='object'&&!Array.isArray(c.args),'control_identity');
+ need(exact(c,'schema_version,command_id,request_id,action,owner_id,epoch,expected_revision,args')&&c.schema_version==='research_control_v2'&&string(c.command_id,UUID)&&typeof c.request_id==='string'&&/^morning-\d{8}-r1$/.test(c.request_id)&&['claim','renew','inputs','checkpoint','reserve','resume','settle','permit','page_begin','page_permit','recovery_grant','status','upload_status','receipt'].includes(c.action)&&integer(c.epoch,0,1000000)&&integer(c.expected_revision,0,10000000)&&c.args&&typeof c.args==='object'&&!Array.isArray(c.args),'control_identity');
  canonicalRequestDate(c.request_id);
  need(['status','upload_status','receipt'].includes(c.action)?c.owner_id===null:string(c.owner_id,UUID),'control_owner');return c;
 }
@@ -112,18 +114,20 @@ function readPublicationBytes(db,run,args,cache){
  need(decoded,'archive_not_stored');const {files}=decoded;
  const read=hash=>{const file=files.find(f=>f.sha256===hash);need(file,'publication_bytes_missing');try{return JSON.parse(new TextDecoder('utf8',{fatal:true}).decode(file.data));}catch{refuse('publication_json');}};
  const bundle=read(args.bundle_sha256),audit=read(args.audit_sha256);
+ const metadata=audit.evidence_metadata_sha256?read(audit.evidence_metadata_sha256):null;
  cache.archive=null;cache.archiveKey=null;
- return {bundle,audit};
+ return {bundle,audit,metadata};
 }
-function publicationEvidence(db,run,plan,args,now,cache){
- const {bundle,audit}=readPublicationBytes(db,run,args,cache);
- need(exact(bundle,'schema_version,request_id,repository,expected_base_sha,prompt_commit_sha,files')&&bundle.schema_version==='1.0'&&bundle.repository===REPOSITORY&&bundle.request_id===run.request_id&&bundle.expected_base_sha===plan.reports_commit_sha&&bundle.prompt_commit_sha===plan.prompt_commit_sha,'publication_plan_binding');
+function publicationEvidence(db,run,plan,args,now,cache,page=false){
+ const {bundle,audit,metadata}=readPublicationBytes(db,run,args,cache);
+ const pageBinding=page?pagePublicationBinding(db,run,bundle):null;
+ need(exact(bundle,'schema_version,request_id,repository,expected_base_sha,prompt_commit_sha,files')&&bundle.schema_version==='1.0'&&bundle.repository===REPOSITORY&&bundle.request_id===(page?args.publication_request_id:run.request_id)&&bundle.expected_base_sha===(page?pageBinding.previous.evidence.report_commit:plan.reports_commit_sha)&&bundle.prompt_commit_sha===plan.prompt_commit_sha,'publication_plan_binding');
  // This is the existing trusted researcher's declaration, not a replacement
  // fact-checking engine. Keep its original bytes and explicit selected binding.
  need(audit&&audit.date===run.report_date&&audit.audit_valid===true&&Array.isArray(audit.blockers)&&audit.blockers.length===0&&['ready','partial','zero_items'].includes(audit.readiness),'publication_audit_blocked');
  const budget=effectiveResearchBudget(db,run,plan,now,cache);
  const coveragePlan=budget?{...plan,schema_version:'research_plan_v4',limits:budget.limits}:plan;
- need(requiredCoverageValid(audit,coveragePlan,bundle),'publication_coverage_contract');
+ need(requiredCoverageValid(audit,coveragePlan,bundle,pageBinding?.previous,metadata),'publication_coverage_contract');
  if(budget){
   need(audit.budget_policy===LAYERED_BUDGET_POLICY,'publication_budget_policy');
   // Every research intent must have an authenticated known outcome before release.
@@ -151,15 +155,15 @@ export function researchSourceIdentity(input){
  need(['https:','http:'].includes(url.protocol)&&!url.username&&!url.password&&!url.hash,'source_url');
  url.searchParams.sort();const value={method:'GET',url:url.href};return {value,hash:digest(Buffer.from(JSON.stringify(value)))};
 }
-function nativeScope(run,input){
+function nativeScope(db,run,input){
  if(input.permit_id!==null){
-  const permit=run.permit?JSON.parse(run.permit):null;
+  const permit=publicationPermit(db,run,input.permit_id);
   need(permit&&input.permit_id===permit.permit_id&&input.sha256===permit.bundle_sha256&&input.archive_sha256===permit.archive_sha256,'native_permit_binding');return 'permit:'+permit.permit_id;
  }
  need(string(input.archive_sha256,HASH)&&input.sha256===input.archive_sha256,'native_archive_binding');need(input.step!=='submit','archive_has_no_submit');return 'archive:'+input.archive_sha256;
 }
 function nativePredecessor(db,run,op){
- const scope=nativeScope(run,op.input);need(op.key===scope+':'+op.input.step,'native_operation_key');
+ const scope=nativeScope(db,run,op.input);need(op.key===scope+':'+op.input.step,'native_operation_key');
  const steps=['ticket','post','complete','submit'],index=steps.indexOf(op.input.step);
  if(index===0)need(op.input.file_id===null&&op.input.source_ts===null,'ticket_has_no_file');
  else{
@@ -256,8 +260,9 @@ function budgetObservation(budget){
 export function researchOperationDispatchValid(db,run,op,now){
  const cache=commandCache();
  if(op.kind==='native')return true;
- if(run.permit!==null)return false;
  const plan=JSON.parse(Buffer.from(run.plan)),budget=effectiveResearchBudget(db,run,plan,now,cache);
+ const scope=activePageResearch(db,run,plan);
+ if(!scope.active||(op.kind==='model'&&!pageModelKeyAllowed(scope,op.operation_key)))return false;
  if(!budget)return now<run.started_at+plan.limits.total_budget_seconds*1000;
  const link=db.prepare('SELECT * FROM research_recovery_operations WHERE operation_id=? ORDER BY window_start DESC LIMIT 1').get(op.operation_id);
  return !!link&&link.request_id===run.request_id&&link.grant_id===budget.grant_id&&budget.window.active&&link.window_start===(budget.window.start??budget.window.window_start??budget.window.not_before)&&now>=link.window_start&&now<budget.window.deadline;
@@ -272,9 +277,9 @@ function apply(db,c,now,config){
   need(exact(c.args,'archive_sha256,permit_id')&&string(c.args.archive_sha256,HASH)&&(c.args.permit_id===null||string(c.args.permit_id,UUID)),'upload_status_fields');
   if(!run)return {status:'not_found',run:null};
   const scope=c.args.permit_id?'permit:'+c.args.permit_id:'archive:'+c.args.archive_sha256;
-  if(c.args.permit_id){const permit=run.permit?JSON.parse(run.permit):null;need(permit?.permit_id===c.args.permit_id&&permit.archive_sha256===c.args.archive_sha256,'upload_status_permit');}
+  if(c.args.permit_id){const permit=publicationPermit(db,run,c.args.permit_id);need(permit?.permit_id===c.args.permit_id&&permit.archive_sha256===c.args.archive_sha256,'upload_status_permit');}
   const ops=db.prepare("SELECT * FROM research_control_ops WHERE request_id=? AND kind='native' AND operation_key IN (?,?,?,?) ORDER BY rowid").all(c.request_id,...['ticket','post','complete','submit'].map(step=>scope+':'+step));
-  return {status:'observed',run:view(run),operations:ops.map(op=>({...op,input:JSON.parse(op.input),native_result:op.native_result?JSON.parse(op.native_result):null}))};
+  return {status:'observed',run:view(run),permit:publicationPermit(db,run,c.args.permit_id),operations:ops.map(op=>({...op,input:JSON.parse(op.input),native_result:op.native_result?JSON.parse(op.native_result):null}))};
  }
  if(c.action==='status'){
   need(exact(c.args,'offset')&&integer(c.args.offset,0,100000),'status_offset');
@@ -282,7 +287,7 @@ function apply(db,c,now,config){
   if(!run)return {status:'not_found',run:null,...capabilities};
   const ops=db.prepare('SELECT * FROM research_control_ops WHERE request_id=? ORDER BY rowid LIMIT 2 OFFSET ?').all(c.request_id,c.args.offset);
   const budget=effectiveResearchBudget(db,run,JSON.parse(Buffer.from(run.plan)),now,cache);
-  return {status:'observed',run:view(run),...capabilities,...(budget?{effective_budget:budgetObservation(budget)}:{}),plan_base64:Buffer.from(run.plan).toString('base64'),operations:ops.slice(0,1).map(op=>({...op,input:JSON.parse(op.input),native_result:op.native_result?JSON.parse(op.native_result):null})),next_offset:ops.length>1?c.args.offset+1:null};
+  return {status:'observed',run:view(run),page_round:currentPageRound(db,c.request_id),...capabilities,...(budget?{effective_budget:budgetObservation(budget)}:{}),plan_base64:Buffer.from(run.plan).toString('base64'),operations:ops.slice(0,1).map(op=>({...op,input:JSON.parse(op.input),native_result:op.native_result?JSON.parse(op.native_result):null})),next_offset:ops.length>1?c.args.offset+1:null};
  }
  if(c.action==='receipt'){
   need(exact(c.args,'command_id')&&string(c.args.command_id,UUID),'receipt_identity');
@@ -316,7 +321,10 @@ function apply(db,c,now,config){
   if(!(original&&original.owner_id===c.owner_id&&original.epoch===c.epoch)&&!resumed)owner(run,c,now);
  }else owner(run,c,now);
  const plan=JSON.parse(Buffer.from(run.plan));const budget=effectiveResearchBudget(db,run,plan,now,cache);let grants=[];
- if(c.action==='recovery_grant'){
+ if(c.action==='page_begin'){
+  need(budget?.window.active,'research_continuation_not_due');
+  beginPageRound(db,run,c.args,now);
+ }else if(c.action==='recovery_grant'){
   need(exact(c.args,'grant_base64')&&typeof c.args.grant_base64==='string','recovery_fields');
   const bytes=Buffer.from(c.args.grant_base64,'base64');need(bytes.toString('base64')===c.args.grant_base64,'recovery_encoding');
   appendResearchRecoveryGrant(db,bytes,{request_id:run.request_id,generation:config.research_control.generation,plan_hash:run.plan_hash,plan},{now});
@@ -342,7 +350,7 @@ function apply(db,c,now,config){
     need(digest(Buffer.from(JSON.stringify(op.input)))===op.input_sha256,'native_input_hash');
     nativePredecessor(db,run,op);
    }else{
-    need(run.inputs_hash!==null&&run.permit===null,'research_inputs_or_phase');need(op.max_seconds>0,'research_operation_input');
+    need(run.inputs_hash!==null&&activePageResearch(db,run,plan).active&&(run.permit===null||budget),'research_inputs_or_phase');need(op.max_seconds>0,'research_operation_input');
     if(op.kind==='source'){const source=researchSourceIdentity(op.input);need(op.key===source.hash&&op.input_sha256===source.hash,'source_identity_hash');}
     else if(budget&&used>0){
      need(exact(op.input,'previous_operation_id,checkpoint_archive_sha256,checkpoint_file_sha256')&&string(op.input.previous_operation_id,UUID)&&string(op.input.checkpoint_archive_sha256,HASH)&&string(op.input.checkpoint_file_sha256,HASH),'model_recovery_checkpoint');
@@ -357,7 +365,7 @@ function apply(db,c,now,config){
      const key=JSON.stringify([op.kind,op.key]),successes=budget.accounting.successful_attempts[key]??0;
      const unresolved=budget.operations.some(item=>item.kind===op.kind&&item.operation_key===op.key&&(!classifiedResult(db,run,item,cache)||item.elapsed_seconds===null));
      need(!unresolved,'research_original_result_unknown');
-     need(op.kind==='source'?string(op.key,HASH)&&successes<budget.limits.max_attempts_per_source:plan.model_stages.includes(op.key)&&successes<budget.limits.max_attempts_per_model,'attempt_budget');
+     need(op.kind==='source'?string(op.key,HASH)&&successes<budget.limits.max_attempts_per_source:pageModelKeyAllowed(activePageResearch(db,run,plan),op.key)&&successes<budget.limits.max_attempts_per_model,'attempt_budget');
      need(researchSecondsWithin(budget.accounting.success_seconds+budget.accounting.reserved_seconds+op.max_seconds,budget.limits.total_budget_seconds),'time_budget');
      // Reserve against the same accounting snapshot for every member of a batch.
      budget.accounting.reserved_seconds+=op.max_seconds;
@@ -366,7 +374,7 @@ function apply(db,c,now,config){
      need(count<2,'research_window_attempts_exhausted');
     }else{
      need(now<run.started_at+plan.limits.total_budget_seconds*1000,'research_deadline');
-     need(op.kind==='source'?string(op.key,HASH)&&used<plan.limits.max_attempts_per_source:plan.model_stages.includes(op.key)&&used<plan.limits.max_attempts_per_model,'attempt_budget');
+     need(op.kind==='source'?string(op.key,HASH)&&used<plan.limits.max_attempts_per_source:pageModelKeyAllowed(activePageResearch(db,run,plan),op.key)&&used<plan.limits.max_attempts_per_model,'attempt_budget');
      need(run.charged_seconds+op.max_seconds<=plan.limits.total_budget_seconds,'time_budget');
     }
     run.charged_seconds+=op.max_seconds;
@@ -392,7 +400,8 @@ function apply(db,c,now,config){
   }
   need(events.length>0&&events.every(event=>event.phase==='ready'||event.phase==='superseded'||event.phase==='sent'&&event.dispatch_granted===false),'resume_dispatch_not_proven_unstarted');
   if(budget&&op.kind!=='native'){
-   need(budget.window.active&&run.permit===null,'research_continuation_not_due');
+   const scope=activePageResearch(db,run,plan);
+   need(budget.window.active&&scope.active&&(op.kind!=='model'||pageModelKeyAllowed(scope,op.operation_key)),'research_continuation_not_due');
    const windowStart=budget.window.start??budget.window.window_start??budget.window.not_before;
    const count=db.prepare('SELECT count(DISTINCT x.operation_id) AS n FROM research_recovery_operations x JOIN research_control_ops o ON o.operation_id=x.operation_id WHERE x.request_id=? AND x.window_start=? AND o.kind=? AND o.operation_key=? AND o.operation_id!=?').get(c.request_id,windowStart,op.kind,op.operation_key,op.operation_id).n;
    need(count<2,'research_window_attempts_exhausted');
@@ -415,6 +424,16 @@ function apply(db,c,now,config){
   const refund=op.elapsed_seconds===null&&elapsed!==null?op.reserved_seconds-elapsed:0;
   db.prepare('UPDATE research_control_ops SET phase=?,elapsed_seconds=?,result_archive=?,result_file=?,native_result=? WHERE operation_id=?').run(c.args.outcome,elapsed,c.args.archive_sha256,c.args.file_sha256,c.args.native_result?JSON.stringify(c.args.native_result):null,c.args.operation_id);
   db.prepare('UPDATE research_control_runs SET charged_seconds=charged_seconds-? WHERE request_id=?').run(refund,c.request_id);
+ }else if(c.action==='page_permit'){
+  need(exact(c.args,'publication_request_id,archive_sha256,bundle_sha256,audit_sha256')&&/^morning-\d{8}-r[2-6]$/.test(c.args.publication_request_id)&&string(c.args.bundle_sha256,HASH)&&string(c.args.audit_sha256,HASH),'permit_fields');
+  need(run.inputs_hash,'publication_bytes_missing');
+  publicationEvidence(db,run,plan,c.args,now,cache,true);
+  const round=currentPageRound(db,run.request_id);
+  need(round?.request_id===c.args.publication_request_id,'page_current_round');
+  const {publication_request_id,...binding}=c.args;
+  const prior=round.permit?JSON.parse(round.permit):null;
+  const permit={permit_id:prior?.permit_id??randomUUID(),request_id:publication_request_id,report_date:run.report_date,prompt_commit_sha:plan.prompt_commit_sha,publisher_scope_sha256:db.prepare('SELECT value FROM scope WHERE id=1').get().value,...binding};
+  appendPagePermit(db,run,permit);
  }else if(c.action==='permit'){
   need(exact(c.args,'archive_sha256,bundle_sha256,audit_sha256')&&string(c.args.bundle_sha256,HASH)&&string(c.args.audit_sha256,HASH),'permit_fields');
   const files=archive(db,c.request_id,c.args.archive_sha256);need(run.inputs_hash&&files.some(f=>f.sha256===c.args.bundle_sha256)&&files.some(f=>f.sha256===c.args.audit_sha256),'publication_bytes_missing');
@@ -427,7 +446,7 @@ function apply(db,c,now,config){
  }
  const lease=run.owner_id===c.owner_id&&run.epoch===c.epoch&&run.lease_until>now?now+LEASE_MS:run.lease_until;
  db.prepare('UPDATE research_control_runs SET revision=revision+1,lease_until=? WHERE request_id=?').run(lease,c.request_id);
- return {status:'committed',run:view(load(db,c.request_id)),dispatch_granted:grants.length>0,operations:grants};
+ return {status:'committed',run:view(load(db,c.request_id)),page_round:currentPageRound(db,c.request_id),dispatch_granted:grants.length>0,operations:grants};
 }
 export function executeResearchControl(db,config,bytes,now=Date.now(),{onResult=()=>{},publicationCheck=null}={}){
  need(assertResearchControl(db,config),'authority_disabled');const c=decodeResearchControl(bytes),hash=digest(bytes);
@@ -438,7 +457,7 @@ export function executeResearchControl(db,config,bytes,now=Date.now(),{onResult=
   let result;db.exec('SAVEPOINT command');
   try{
    need(config.research_control.protocol==='repository_inputs_v1'||['status','upload_status','receipt'].includes(c.action),'authority_migration_required');
-   if(c.action==='permit'){const check=publicationChecks.get(publicationCheck);need(check?.command_hash===hash,'publication_validation_required');need(!check.code,check.code);}
+   if(['permit','page_permit'].includes(c.action)){const check=publicationChecks.get(publicationCheck);need(check?.command_hash===hash,'publication_validation_required');need(!check.code,check.code);}
    result=apply(db,c,now,config);db.exec('RELEASE command');
   }catch(e){if(!e.researchControlCode)throw e;db.exec('ROLLBACK TO command; RELEASE command');result={status:'rejected',code:e.researchControlCode,run:view(load(db,c.request_id)),dispatch_granted:false};}
   result={command_id:c.command_id,command_sha256:hash,request_id:c.request_id,...result};

@@ -33,12 +33,12 @@ export function controlCommand(request_id,action,args,owner_id=null,run=null){
 }
 export function nativeResearchAuthority({request_id,owner_id,permit_id=null,archive_sha256},control,now=Date.now){
  requireThat(UUID.test(owner_id)&&(permit_id===null||UUID.test(permit_id))&&/^[a-f0-9]{64}$/.test(archive_sha256),'Original research upload binding required');
- let currentOperation=null;
+ let currentOperation=null,publicationRequestId=request_id;
  const current=async()=>{
   const observed=await control(controlCommand(request_id,'upload_status',{archive_sha256,permit_id}));
   requireThat(observed.status==='observed'&&observed.run?.owner_id===owner_id&&observed.run.lease_until>now(),'Read and claim the original host run first');return observed;
  };
- return {permit_id,
+ return {permit_id,get publication_request_id(){return publicationRequestId;},
   async validateArchive(archive){
    const observed=await control(controlCommand(request_id,'status',{offset:0}));
    requireThat(observed.status==='observed'&&observed.run?.owner_id===owner_id&&observed.run.lease_until>now(),'Read and claim the original host run first');
@@ -57,7 +57,7 @@ export function nativeResearchAuthority({request_id,owner_id,permit_id=null,arch
   },
   async before(step,file_id,bytes,source_ts=null){
    const observed=await current(),run=observed.run,hash=digest(bytes),input={archive_sha256,permit_id,step,file_id,source_ts,bytes:bytes.length,sha256:hash};
-   if(permit_id)requireThat(run.permit?.permit_id===permit_id&&run.permit.bundle_sha256===hash&&run.permit.archive_sha256===archive_sha256,'Original publication permit required');
+   if(permit_id){const permit=observed.permit??run.permit;requireThat(permit?.permit_id===permit_id&&permit.bundle_sha256===hash&&permit.archive_sha256===archive_sha256,'Original publication permit required');publicationRequestId=permit.request_id;}
    else requireThat(hash===archive_sha256,'Original checkpoint bytes required');
    const op={operation_id:randomUUID(),kind:'native',key:(permit_id?'permit:'+permit_id:'archive:'+archive_sha256)+':'+step,input_sha256:digest(Buffer.from(JSON.stringify(input))),input,max_seconds:0};
    const original=observed.operations.find(old=>old.operation_key===op.key);

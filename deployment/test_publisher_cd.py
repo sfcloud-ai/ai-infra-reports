@@ -795,6 +795,22 @@ class ResearchRecoveryCdTests(unittest.TestCase):
         operation = self.root / 'operation'; operation.mkdir(exist_ok=True)
         return {'state':str(self.root),'publisher_config':str(path),'uid':996,'gid':996}, operation
 
+    def test_page_schema_is_additive_snapshotted_and_rejects_partial_install(self):
+        self.install()
+        before = cd.snapshot(self.database)
+        with connection(self.database) as database:
+            for sql in cd.RESEARCH_PAGE_SCHEMA.values():
+                database.execute(sql)
+            database.execute('INSERT INTO research_page_rounds VALUES(?,?,?,?,?,?,?)',
+                             ('morning-20261113-r2', 'morning-20261113-r1', 2, '{}', '["hardware-status"]', 1, None))
+        after = cd.snapshot(self.database)
+        self.assertNotEqual(before, after)
+        self.assertEqual(after, cd.snapshot(self.database))
+        with connection(self.database) as database:
+            database.execute('DROP TABLE research_page_staged')
+        with self.assertRaisesRegex(ValueError, 'unsupported_research_page_schema'):
+            cd.snapshot(self.database)
+
     def test_complete_recovery_schema_rows_and_indexes_are_fingerprinted(self):
         self.install()
         before = cd.snapshot(self.database)

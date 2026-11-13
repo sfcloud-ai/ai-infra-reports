@@ -895,3 +895,69 @@ test('legacy body-bound source results require unique authenticated original met
  }finally{s.close();}
  }
 });
+
+import {installPageAuthority,authenticatedPrevious} from '../scripts/research-page-authority.mjs';
+import {PAGE_CHECKS} from '../scripts/research-page-coverage.mjs';
+import {installScheduledTables} from '../scripts/scheduled-delivery-state.mjs';
+test('real page bundle permits append to original run and use independent native/staging identity',async()=>{
+ const s=setup();try{
+  let run=start(s,layeredPlan());installPageAuthority(s.db);
+  const original=JSON.parse([...FILES].find(([p])=>p.endsWith('/report.json'))[1]);
+  const topicIds=Object.keys(PAGE_CHECKS),rootPath=`reports/${DAY}/`;
+  function pageBundle(revision,previous=null){
+   const report={...structuredClone(original),schema_version:'1.2',revision,articles:original.articles.slice(0,revision),entries:original.entries.filter(e=>topicIds.slice(0,revision).includes(e.article_id))};
+   report.page_delivery={previous,added:[topicIds[revision-1]],pending:topicIds.slice(revision).map(id=>({id,reason:'等待原始来源核验'}))};
+   if(revision>1)report.revision_notice={kind:'page_completion',summary:'补齐硬件页'};
+   const files=new Map([...FILES].filter(([p])=>!p.includes('/articles/')||topicIds.slice(0,revision).some(id=>p.endsWith('/'+id+'.md'))).map(([p,b])=>[p.replace('/r1/','/'),b]));
+   files.set(rootPath+'report.json',Buffer.from(JSON.stringify(report)));return {report,files};
+  }
+  const first=pageBundle(1),scope=report=>({contract:'verified_pages_v1',page_delivery:report.page_delivery,checked_pages:report.page_delivery.added,previous_evidence:null});
+  const limits={source_attempts:2,model_attempts:2,source_attempt_seconds:180,model_stage_seconds:1200,run_seconds:3600};
+  let metadata={page_scope:scope(first.report),limits,started_at:'original',budget_policy:'successful_work_hourly_continuation_v1',inputs:auditSummary().inputs,sources:[],checks:Object.fromEntries(REQUIRED_RESEARCH_CHECKS.map(k=>[k,{status:k==='model_serving'?'checked':'not_checked'}])),model_calls:['research','editor'].map(stage=>({stage,attempt_records:[]}))};
+  async function artifacts(page,metadata,base){
+   const meta=Buffer.from(JSON.stringify(metadata)),ready=page.report.articles.flatMap(a=>PAGE_CHECKS[a.id]),pending=REQUIRED_RESEARCH_CHECKS.filter(c=>!ready.includes(c));
+   const audit=auditSummary({schema_version:'1.4',readiness:'partial',coverage_checked:ready,coverage_incomplete:pending,coverage_unchecked:pending,page_scope:metadata.page_scope,evidence_metadata_sha256:digest(meta),budget_policy:metadata.budget_policy,limits,budget_accounting:{successful_attempts:{source:0,model:0},failed_attempts:{source:0,model:0},unknown_attempts:{source:0,model:0},successful_seconds:0,failed_seconds:0,reserved_unknown_seconds:0,charged_seconds:0}},page.files);
+   const bytes=await encodeBundle(page.files,`morning-${DAY.replaceAll('-','')}-r${page.report.revision}`,base,'a'.repeat(40));
+   const auditBytes=Buffer.from(JSON.stringify(audit)),archiveHash=archive(s,{'audit.json':meta,'audit-summary.json':auditBytes,'bundle.json':bytes});
+   return {bytes,audit,args:{archive_sha256:archiveHash,bundle_sha256:digest(bytes),audit_sha256:digest(auditBytes)}};
+  }
+  const a=await artifacts(first,metadata,'b'.repeat(40));
+  let result=await issuePermit(s,command('permit',a.args,run));assert.equal(result.status,'committed',result.code);run=result.run;const originalPermit=run.permit;
+  const commit='c'.repeat(40),job=s.admit({request_id:id,hash:digest(a.bytes),source_ts:'1793491202.000031'},a.bytes);
+  s.move(id,'received','receipt_sent',{commit,proof:{publication_status:'verified',bundle_sha256:job.hash,commit}});
+  installScheduledTables(s.db,['scheduled_handoffs','scheduled_bridge_scope']);
+  const binding={request_id:id,report_date:DAY,report_commit:commit,bundle_sha256:job.hash};
+  s.db.prepare('INSERT INTO scheduled_handoffs VALUES(?,?,?,?,0)').run(id,JSON.stringify(binding),'complete',JSON.stringify({...binding,status:'sent',phase:'complete',parts_sent:2,parts_total:2,images:[{file_id:'scheduled-poster',status:'sent',error:null}]}));
+  result=execute(s,command('page_begin',{previous_request_id:id,added:['hardware-status']},run));assert.equal(result.status,'committed',result.code);run=result.run;
+  const previous=authenticatedPrevious(s.db,s.db.prepare('SELECT * FROM research_control_runs WHERE request_id=?').get(id),id);
+  const second=pageBundle(2,{request_id:id,bundle_sha256:job.hash});metadata=structuredClone(metadata);metadata.page_scope={...scope(second.report),previous_evidence:previous.evidence};metadata.checks.hardware={status:'checked'};
+  for(const call of metadata.model_calls)call.attempt_records.push({outcome:'success',elapsed_seconds:0,page_round:{revision:2,page_ids:['hardware-status'],previous_audit_sha256:a.args.audit_sha256}});
+  const b=await artifacts(second,metadata,commit),target=id.replace(/r1$/,'r2');result=await issuePermit(s,command('page_permit',{publication_request_id:target,...b.args},run));
+  assert.equal(result.status,'committed',result.code);assert.deepEqual(result.run.permit,originalPermit);assert.equal(JSON.parse(result.page_round.permit).request_id,target);
+  const roundPermit=JSON.parse(result.page_round.permit),upload=execute(s,{...command('upload_status',{archive_sha256:b.args.archive_sha256,permit_id:roundPermit.permit_id}),owner_id:null});
+  assert.equal(upload.permit.request_id,target);assert.deepEqual(upload.operations,[]);
+  run=result.run;const hash=digest(b.bytes),permit=roundPermit.permit_id;
+  for(const step of ['ticket','post','complete']){
+   const input={archive_sha256:b.args.archive_sha256,permit_id:permit,step,file_id:step==='ticket'?null:'FPAGE',source_ts:null,bytes:b.bytes.length,sha256:hash};
+   const op={operation_id:randomUUID(),kind:'native',key:'permit:'+permit+':'+step,input_sha256:digest(Buffer.from(JSON.stringify(input))),input,max_seconds:0};
+   result=execute(s,command('reserve',{operations:[op]},run));assert.equal(result.dispatch_granted,true,result.code);run=result.run;
+   if(step==='complete')break;
+   run=execute(s,command('settle',{operation_id:op.operation_id,outcome:'acknowledged',elapsed_seconds:null,archive_sha256:null,file_sha256:null,native_result:{file_id:'FPAGE',source_ts:null,sha256:hash,bytes:b.bytes.length}},run)).run;
+  }
+  const stage=message(`!ai-report stage-v2 ${target} ${hash} ${permit}`,'1793491203.000001','FPAGE'),messages=[stage];
+  const slack={historyPage:async({from,to})=>({messages:messages.filter(m=>m.ts>=from&&m.ts<=to),next_cursor:null}),exactPublish:async ts=>messages.find(m=>m.ts===ts),download:async()=>b.bytes};
+  const inbox=new PublisherInbox(s,config);await inbox.scan(slack,now);await advanceSubmission(s,config,slack,()=>assert.fail('successor must not require empty date'),now);
+  assert.equal(s.db.prepare('SELECT phase FROM research_page_staged WHERE request_id=?').get(target)?.phase,'staged');
+  assert.equal(s.db.prepare('SELECT count(*) n FROM slack_staged_bundles').get().n,0);
+  run=execute(s,command('status',{offset:0})).run;
+  const input={archive_sha256:b.args.archive_sha256,permit_id:permit,step:'submit',file_id:'FPAGE',source_ts:stage.ts,bytes:b.bytes.length,sha256:hash};
+  const op={operation_id:randomUUID(),kind:'native',key:'permit:'+permit+':submit',input_sha256:digest(Buffer.from(JSON.stringify(input))),input,max_seconds:0};
+  assert.equal(execute(s,command('reserve',{operations:[op]},run)).dispatch_granted,true);
+  messages.push(message(`!ai-report submit-v2 ${target} ${hash} ${stage.ts} ${permit}`,'1793491211.000001'));
+  await inbox.scan(slack,now+2000);await advanceSubmission(s,config,slack,()=>assert.fail('successor must not require empty date'),now+2000);
+  assert.equal(s.metadata(target)?.hash,hash);assert.equal(s.db.prepare('SELECT count(*) n FROM jobs').get().n,2);
+  assert.equal(s.db.prepare('SELECT phase FROM research_page_staged WHERE request_id=?').get(target).phase,'admitted');
+  assert.equal(s.db.prepare('SELECT count(*) n FROM research_control_runs').get().n,1);
+
+ }finally{s.close();}
+});

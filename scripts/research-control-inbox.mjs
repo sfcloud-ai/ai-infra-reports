@@ -51,7 +51,7 @@ export async function advanceResearchControl(state,config,slack,now=Date.now()){
     db.prepare("UPDATE research_control_events SET phase='ready',reply_text=?,diagnostic=NULL WHERE source_ts=?").run(text,row.source_ts);
    };
    try{
-    const bytes=Buffer.from(row.bytes),command=decodeResearchControl(bytes),publicationCheck=command.action==='permit'?await preparePublicationCheck(db,bytes):null;
+    const bytes=Buffer.from(row.bytes),command=decodeResearchControl(bytes),publicationCheck=['permit','page_permit'].includes(command.action)?await preparePublicationCheck(db,bytes):null;
     executeResearchControl(db,config,bytes,now,{onResult:prepare,publicationCheck});
    }catch(error){if(!error.researchControlCode)throw error;prepare({command_id:row.command_id,command_sha256:row.hash,status:'rejected',code:error.researchControlCode,dispatch_granted:false});}
   }
