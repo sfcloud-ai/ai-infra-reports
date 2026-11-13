@@ -39,6 +39,62 @@ async function ingest(state,bytes=packet(),source=ts,receipt){
 }
 const query=(action='head',hash='head',offset=0)=>({query_id:uuid,action,hash,offset});
 
+// Exercise the real receipt adapter against Slack's documented long-message
+// split behavior. The returned first message cannot authenticate the full JSON.
+async function wireRead(state,action,hash,offset,sequence){
+ const source=`${1793491300+sequence}.000001`;let wire;
+ const native=new SlackHandoff(config,'synthetic-token',async(url,options)=>{
+  assert.equal(new URL(url).pathname,'/api/chat.postMessage');
+  const input=JSON.parse(options.body);wire=input.text;
+  return Response.json({ok:true,channel:config.channel_id,ts:'1793491400.000001',message:{thread_ts:source,bot_id:config.bot_id,user:config.bot_user_id,text:wire.slice(0,4000)}});
+ });
+ const msg=message(`!ai-research read ${id} ${uuid} ${action} ${hash} ${offset}`,source);
+ const slack=slackFor([msg],null,native.controlReceipt.bind(native));
+ const clock=Math.ceil(Number(source)*1000);
+ await new PublisherInbox(state,config).scan(slack,clock);
+ await advanceResearchArchive(state,config,slack,clock);
+ const event=state.db.prepare('SELECT phase,reply_ts FROM research_archive_events WHERE source_ts=?').get(source);
+ assert.equal(event.phase,'sent');assert.equal(event.reply_ts,'1793491400.000001');
+ assert(Buffer.byteLength(wire)<=4000);return JSON.parse(wire.slice('!ai-research receipt '.length));
+}
+
+test('file readback survives the single-message transport limit with complete original bytes',async()=>{
+ for(const size of [3208,20010]){
+  const state=setup(),data=Buffer.alloc(size,0x9b),bytes=packet({data});try{
+   await ingest(state,bytes);const chunks=[];let offset=0,sequence=1;
+   do{
+    const result=await wireRead(state,'file',digest(data),offset,sequence++);
+    const chunk=Buffer.from(result.content_base64,'base64');
+    assert.equal(result.offset,offset);assert.equal(result.total_bytes,size);
+    assert.equal(result.sha256,digest(data));assert.equal(result.chunk_sha256,digest(chunk));
+    chunks.push(chunk);offset=result.next_offset;
+   }while(offset!==null);
+   assert.deepEqual(Buffer.concat(chunks),data);
+   assert.deepEqual(Buffer.from(state.db.prepare('SELECT bytes FROM research_archives').get().bytes),bytes);
+  }finally{state.close();}
+ }
+});
+
+test('long manifest pages fit one authenticated receipt without dropping or repeating files',async()=>{
+ const state=setup(),value=JSON.parse(packet());
+ value.files=Array.from({length:128},(_,i)=>{
+  const data=Buffer.from(`source-${i}`);
+  return {path:`sources/${String(i).padStart(3,'0')}-${'x'.repeat(184)}.txt`,sha256:digest(data),content_base64:data.toString('base64')};
+ });
+ const bytes=Buffer.from(JSON.stringify(value));try{
+  await ingest(state,bytes);const files=[];let offset=0,sequence=1;
+  do{
+   const result=await wireRead(state,'manifest',digest(bytes),offset,sequence++);
+   assert.equal(result.archive_sha256,digest(bytes));assert.equal(result.archive_source_ts,ts);
+   assert(result.files.length>0&&result.files.length<=32);files.push(...result.files);
+   if(result.next_offset!==null)assert.equal(result.next_offset,offset+result.files.length);
+   offset=result.next_offset;
+  }while(offset!==null);
+  assert.deepEqual(files,decodeResearchArchive(bytes).files.map(({data,...file})=>file));
+  assert.equal(state.db.prepare('SELECT count(*) n FROM research_archives').get().n,1);
+ }finally{state.close();}
+});
+
 test('archive requires explicit original policy and leaves report scope unchanged',()=>{
  const state=setup();try{
   assert.equal(validateConfig(config),config);assert.equal(assertResearchArchive(state.db,config),true);

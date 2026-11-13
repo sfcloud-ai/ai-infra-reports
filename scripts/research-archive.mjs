@@ -10,7 +10,12 @@ import {assertResearchOutputFiles} from './repository-research-inputs.mjs';
 
 const HASH=/^[a-f0-9]{64}$/, UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const TS=/^\d{10}\.\d{6}$/;
-export const ARCHIVE_LIMIT=16*1024*1024, ARCHIVE_CHUNK=8192;
+export const ARCHIVE_LIMIT=16*1024*1024, ARCHIVE_CHUNK=2048;
+// Slack can split longer text into separate messages, breaking the authenticated
+// JSON receipt. Include the envelope and base64 expansion in the wire bound.
+const RECEIPT_LIMIT=4000;
+const receiptText=(source_ts,result)=>'!ai-research receipt '+JSON.stringify({source_ts,...result});
+const receiptFits=result=>Buffer.byteLength(receiptText('0000000000.000000',result))<=RECEIPT_LIMIT;
 export const ARCHIVE_SCHEMA={
  research_archive_policy:'CREATE TABLE research_archive_policy(id INTEGER PRIMARY KEY CHECK(id=1),binding TEXT NOT NULL,evidence_reference TEXT NOT NULL)',
  research_archive_events:"CREATE TABLE research_archive_events(source_ts TEXT PRIMARY KEY,kind TEXT NOT NULL,request_id TEXT NOT NULL,hash TEXT NOT NULL,file_id TEXT,query TEXT,phase TEXT NOT NULL DEFAULT 'pending',attempts INTEGER NOT NULL DEFAULT 0,next_at INTEGER NOT NULL DEFAULT 0,last_attempt INTEGER NOT NULL DEFAULT 0,diagnostic TEXT,reply_text TEXT,reply_ts TEXT)",
@@ -135,7 +140,14 @@ export function readResearchArchive(db,id,q){
   if(!row)return {...common,archive_sha256:hash,status:'not_found'};
   const files=JSON.parse(row.manifest);
   if(q.offset>files.length)return {...common,archive_sha256:hash,status:'rejected',code:'invalid_manifest_offset'};
-  return {...common,archive_sha256:hash,command_id:row.command_id,previous_sha256:row.previous_hash,archive_source_ts:row.source_ts,file_id:row.file_id,files:files.slice(q.offset,q.offset+32),next_offset:q.offset+32<files.length?q.offset+32:null};
+  const result={...common,archive_sha256:hash,command_id:row.command_id,previous_sha256:row.previous_hash,archive_source_ts:row.source_ts,file_id:row.file_id,files:[],next_offset:null};
+  for(let index=q.offset;index<Math.min(files.length,q.offset+32);index++){
+   const page={...result,files:[...result.files,files[index]],next_offset:index+1<files.length?index+1:null};
+   if(!receiptFits(page))break;
+   result.files=page.files;result.next_offset=page.next_offset;
+  }
+  requireThat(q.offset===files.length||result.files.length>0,'Manifest entry exceeds receipt bound');
+  return result;
  }
  // File hashes are restricted to this request; no arbitrary host path access.
  const entries=db.prepare('SELECT hash,manifest FROM research_archives WHERE request_id=?').all(id);
@@ -177,8 +189,8 @@ export async function advanceResearchArchive(state,c,slack,now=Date.now()){
     }catch(e){db.exec('ROLLBACK');throw e;}
    }else{
     result=readResearchArchive(db,row.request_id,JSON.parse(row.query));
-    const text='!ai-research receipt '+JSON.stringify({source_ts:row.source_ts,...result});
-    requireThat(Buffer.byteLength(text)<=16384,'Bounded research receipt required');
+    const text=receiptText(row.source_ts,result);
+    requireThat(Buffer.byteLength(text)<=RECEIPT_LIMIT,'Bounded research receipt required');
     db.prepare("UPDATE research_archive_events SET phase='ready',reply_text=?,diagnostic=NULL WHERE source_ts=?").run(text,row.source_ts);
    }
   }

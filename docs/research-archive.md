@@ -86,13 +86,18 @@ a durable `rejected` result, without repeated downloads. A predecessor conflict
 includes `expected_head`: read and reconcile that head before forming a new
 checkpoint with a new command ID. This is a rejected new checkpoint, not an
 unknown upload or permission to overwrite the old checkpoint.
-Manifest pages contain up to 32 files. Follow `next_offset`.
+Manifest pages contain up to 32 files and stop earlier to keep the complete
+receipt within 4,000 UTF-8 bytes. Follow `next_offset`.
 `archive_source_ts` identifies the original save, while the outer `source_ts`
 always identifies the current query thread. Follow
 `previous_sha256` for earlier checkpoints. The first occurrence of a path while
 walking backwards is its current version. File queries are scoped to that
-request and return 8192-byte chunks, original total size, offset, chunk hash and
+request and return up to 2048-byte chunks, original total size, offset, chunk hash and
 next offset. Validate each chunk and the complete original SHA256 before use.
+Follow the returned offset instead of assuming a fixed page length. The bound
+includes base64 expansion and the JSON envelope so Slack does not split a file
+receipt into multiple messages. Existing stored archives and uncertain replies
+are retained unchanged; use a fresh authenticated query to read committed data.
 No host path or command can be requested through this interface.
 Missing files/checkpoints return a terminal `not_found` observation; invalid
 offsets return `rejected`. A corrected or later observation uses a new query.
