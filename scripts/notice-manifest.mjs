@@ -1,3 +1,4 @@
+import {pageNoticeText} from './page-delivery.mjs';
 import {createHash} from "node:crypto";
 import {validateReportFields} from './revision-notice.mjs';
 
@@ -40,6 +41,7 @@ export function createNoticeManifest(reportBytes, commit, {stableUrls=false}={})
   "Notification build commit");
  const r = JSON.parse(new TextDecoder("utf-8", {fatal:true}).decode(reportBytes));
  validateReportFields(r);
+ requireThat(!r.page_delivery||stableUrls,"Page delivery requires stable URLs");
  requireThat(typeof r.date === "string" && /^\d{4}-\d\d-\d\d$/.test(r.date)
   && !Number.isNaN(Date.parse(r.date + "T00:00:00Z"))
   && new Date(r.date + "T00:00:00Z").toISOString().slice(0,10) === r.date
@@ -65,10 +67,10 @@ export function createNoticeManifest(reportBytes, commit, {stableUrls=false}={})
   return {id:a.id, title:a.title, url:index_url + a.id + "/"};
  });
  if (incompatibleTitle) throw new NoticeFormatError();
- const text = `AI Infra 晨报 · ${r.date}\n\n`
+ const text = r.page_delivery ? pageNoticeText(r.date,articles,r.page_delivery) : `AI Infra 晨报 · ${r.date}\n\n`
   + articles.map(a => `${a.title}\n${a.url}`).join("\n\n");
  if (Buffer.byteLength(text) > NOTICE_TEXT_LIMIT) throw new NoticeBudgetError();
- const manifest = {schema_version:"1.0", commit, date:r.date, revision:r.revision,
+ const manifest = {schema_version:r.page_delivery?"1.1":"1.0", ...(r.page_delivery?{page_delivery:r.page_delivery}:{}), commit, date:r.date, revision:r.revision,
   index_url, articles, text,
   poster:{url:`${NOTICE_ORIGIN}/reports/${publicSlug}/${r.poster}`, sha256:poster[0].sha256},
   report_sha256:sha256(reportBytes)};

@@ -143,7 +143,7 @@ export async function replyScheduledStatus(state,config,event,slack,query=queryS
  if(remote.status!=='not_found')requireThat(remote.request_id===requestId,'Status request differs');
  const job=state.metadata(requestId);
  if(job?.detail.commit&&remote.status!=='not_found')requireThat(remote.report_commit===job.detail.commit&&remote.bundle_sha256===job.hash,'Status original binding differs');
- const fields=['status','phase','report_date','report_commit','bundle_sha256','parts_sent','parts_total','next_attempt_at','attempts','delivery_kind','report_revision'];
+ const fields=['page_state','status','phase','report_date','report_commit','bundle_sha256','parts_sent','parts_total','next_attempt_at','attempts','delivery_kind','report_revision'];
  const result=Object.fromEntries(fields.filter(k=>Object.hasOwn(remote,k)).map(k=>[k,remote[k]]));
  if(remote.phase==='superseded'){
   requireThat(typeof remote.report_date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(remote.report_date)&&new RegExp('^morning-'+remote.report_date.replaceAll('-','')+'-r(?:[2-9]|[1-9][0-9]+)$').test(remote.superseded_by??''),'Status successor binding differs');

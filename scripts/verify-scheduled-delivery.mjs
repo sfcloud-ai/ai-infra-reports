@@ -16,7 +16,8 @@ function deliveryPlan(bundle,commit,stableUrls=bundle.report.path===`reports/${b
  const manifest=createNoticeManifest(bundle.files.get(bundle.report.path+'report.json'),commit,{stableUrls});
  const poster=bundle.files.get(bundle.report.path+bundle.report.poster);
  return {report_request_id:bundle.data.request_id,report_date:bundle.report.date,report_commit:commit,bundle_sha256:bundle.hash,
-  notice_key:manifest.index_url,text:manifest.text,poster_base64:poster.toString('base64'),
+  notice_key:manifest.index_url,text:manifest.text,
+  ...(bundle.report.page_delivery?{page_state:{...bundle.report.page_delivery,articles:bundle.report.articles.map(({id,title,sha256})=>({id,title,sha256}))}}:{}),poster_base64:poster.toString('base64'),
   poster_sha256:manifest.poster.sha256,mime:bundle.report.poster.endsWith('.png')?'image/png':'image/jpeg',
   ...(bundle.report.revision_notice?{revision_notice:{revision:bundle.report.revision,...bundle.report.revision_notice}}:{})};
 }
