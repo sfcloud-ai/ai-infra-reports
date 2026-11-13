@@ -1,4 +1,4 @@
-import {stagingTable,originalRunId,assertPageAdmission,pageRound} from './research-page-authority.mjs';
+import {stagingTable,originalRunId,assertPageAdmission,pageRound,assertPageCorrectionDelivery} from './research-page-authority.mjs';
 // Opt-in, host-persistent staging. Slack is the data transport, not an executor.
 // Installation is offline under the original Publisher lock; normal ticks never
 // create policy or infer a missing ledger. Old Producer unknowns remain fenced.
@@ -97,6 +97,7 @@ export async function advanceSubmission(state,config,slack,query=queryScheduled,
    db.exec('BEGIN IMMEDIATE');try{
     assertSubmission(db,config);
     if(pageRound(db,row.request_id))throw Object.assign(Error('Revision reserved by original page continuation'),{researchPublicationRejection:'page_revision_reserved'});
+    assertPageCorrectionDelivery(db,bundle);
     const prior=state.metadata(row.request_id);
     if(prior)requireThat(prior.hash===row.hash&&prior.source_ts===row.source_ts&&prior.detail.intake_file_id===row.file_id,'Original revision publication conflict');
     else{

@@ -1,3 +1,4 @@
+import {assertPageCorrectionDelivery} from './research-page-authority.mjs';
 import {REPOSITORY} from "./archive.mjs";
 import {decodeBundle,requireThat,SHA} from "./report-handoff.mjs";
 import {failureDetail,safeDiagnostic,isSlackWriteUnexecuted} from "./handoff-recovery.mjs";
@@ -35,6 +36,7 @@ export async function advanceHandoff(state,id,io){
   if(proposalAfter>(io.now??Date.now)()){
    state.move(id,'received','received',{...job.detail,recovery:{...job.detail.recovery,next_at:Math.max(job.detail.recovery?.next_at??0,proposalAfter)}});return;
   }
+  assertPageCorrectionDelivery(state.db,bundle);
   if(!state.move(id,"received","proposing",job.detail))return;
   try{
    const result=await io.propose(bundle.files,bundle.data.expected_base_sha);

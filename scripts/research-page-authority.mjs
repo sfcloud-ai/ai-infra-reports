@@ -39,6 +39,27 @@ function reportFromBundle(bytes,hash){
  try{validatePageDelivery(report.page_delivery,report.articles,report.date,report.revision);}catch{fail('page_partition_invalid');}
  return {bundle,report};
 }
+// Ordinary edits must not replace a live page before its original delivery settles.
+// This gate is also called immediately before proposal for already-admitted jobs.
+export function assertPageCorrectionDelivery(db,bundle){
+ const report=bundle.report;
+ if(report.schema_version!=='1.2'||!['correction','material_update','maintenance'].includes(report.revision_notice?.kind))return;
+ const previous=report.page_delivery?.previous;
+ need(previous&&typeof previous.request_id==='string','page_correction_previous');
+ const job=db.prepare('SELECT * FROM jobs WHERE id=?').get(previous.request_id);
+ need(job&&job.hash===previous.bundle_sha256,'page_correction_previous');
+ const detail=JSON.parse(job.detail),expected={request_id:previous.request_id,report_date:report.date,report_commit:detail.commit,bundle_sha256:job.hash};
+ need(detail.proof?.publication_status==='verified'&&detail.proof.commit===detail.commit&&detail.proof.bundle_sha256===job.hash,'page_correction_previous');
+ const table=db.prepare("SELECT 1 FROM sqlite_master WHERE name='scheduled_handoffs'").get();
+ const row=table&&db.prepare('SELECT * FROM scheduled_handoffs WHERE request_id=?').get(previous.request_id);
+ need(row&&['complete','skipped'].includes(row.phase),'page_correction_delivery_incomplete');
+ const receipt=JSON.parse(row.result),binding=JSON.parse(row.binding);
+ need(equal(binding,expected)&&Object.entries(expected).every(([k,v])=>receipt[k]===v),'page_correction_delivery_binding');
+ const prior=reportFromBundle(Buffer.from(job.bytes),job.hash).report;
+ const webOnly=prior.revision_notice?.kind==='maintenance'&&row.phase==='skipped'&&receipt.phase==='skipped'&&receipt.status==='skipped'&&receipt.delivery_kind==='web_only'&&receipt.parts_sent===0&&receipt.parts_total===0;
+ const sent=row.phase==='complete'&&receipt.status==='sent'&&receipt.phase==='complete'&&receipt.parts_sent===receipt.parts_total&&receipt.parts_total===(prior.revision===1?2:1);
+ need(Array.isArray(receipt.images)&&(webOnly&&receipt.images.length===0||sent&&(prior.revision===1?receipt.images.length===1&&receipt.images[0].file_id==='scheduled-poster'&&receipt.images[0].status==='sent'&&receipt.images[0].error===null:receipt.images.length===0&&receipt.delivery_kind===(prior.revision_notice?.kind==='page_completion'?'page_completion':'revision_update'))),'page_correction_delivery_incomplete');
+}
 // Only original host records may authenticate previous_evidence. Client claims,
 // Slack acknowledgments, a published URL, or an unknown send cannot do so.
 export function authenticatedPrevious(db,run,previousId,depth=0){

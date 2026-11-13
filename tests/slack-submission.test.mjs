@@ -1,3 +1,4 @@
+import {advanceHandoff} from '../scripts/handoff-worker.mjs';
 // Synthetic native Slack fixtures. No production uploads or deliveries.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -37,7 +38,7 @@ const slackFor=(messages=[stage,submit],download=async()=>bytes)=>({history:asyn
 async function scan(state,messages=[stage,submit]){const inbox=new PublisherInbox(state,config);await inbox.scan(slackFor(messages),Math.ceil(Math.max(...messages.map(m=>Number(m.ts)))*1000));return inbox;}
 async function stageOnly(state){await scan(state,[stage]);assert.equal(await advanceSubmission(state,config,slackFor([stage]),remote,now),undefined);}
 
-for(const paged of [false,true])test(`native ${paged?'paged':'ordinary'} revision upload enters durable submission and existing report flow without replacing daily staging`,async()=>{
+for(const paged of [false,true])test(`native ${paged?'paged revision waits for authenticated delivery':'ordinary revision enters existing report flow'} without replacing daily staging`,async()=>{
  const files=new Map(FILES),meta=[...files.keys()].find(p=>p.endsWith('/report.json'));
  const report=JSON.parse(files.get(meta));Object.assign(report,{schema_version:'1.1',revision:2,revision_notice:{kind:'correction',summary:'更正实验条件。'}});
  if(paged){report.schema_version='1.2';const topics=['model-serving-gpu','hardware-status','model-architecture-status','embodied-training','small-model-status','inference-engines'];report.page_delivery={previous:{request_id:id,bundle_sha256:digest(bytes)},added:[],pending:topics.filter(id=>!report.articles.some(a=>a.id===id)).map(id=>({id,reason:'待核验'}))};}
@@ -63,6 +64,13 @@ for(const paged of [false,true])test(`native ${paged?'paged':'ordinary'} revisio
    assert.equal(state.get(rid),null);assert.equal(submissionStatus(state.db,rid).pending.length,1);
   }
   state.db.prepare("UPDATE jobs SET phase='receipt_sent' WHERE id=?").run(id);
+  if(paged){
+   const outcome=await advanceSubmission(state,config,slack,remote,now+200000);
+   assert(outcome.code);assert.equal(state.get(rid),null);
+   state.admit({request_id:rid,hash,source_ts:submitTs,file_id:'FREVISION'},raw);
+   await assert.rejects(advanceHandoff(state,rid,{propose:()=>assert.fail('No publication before original delivery')}),/page_correction_previous/);
+   assert.equal(state.get(rid).phase,'received');return;
+  }
   await advanceSubmission(state,config,slack,()=>assert.fail('revisions do not require an empty date'),now+200000);
   assert.equal(state.get(rid).phase,'received');assert.equal(state.get(rid).detail.intake_transport,'slack_revision_file_v1');
   assert.deepEqual(state.db.prepare('SELECT * FROM slack_staged_bundles').get(),original);

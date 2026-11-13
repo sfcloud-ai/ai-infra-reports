@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {digest} from '../scripts/archive.mjs';
-import {installPageAuthority,beginPageRound,authenticatedPrevious,pagePublicationBinding,appendPagePermit,publicationPermit} from '../scripts/research-page-authority.mjs';
+import {assertPageCorrectionDelivery,installPageAuthority,beginPageRound,authenticatedPrevious,pagePublicationBinding,appendPagePermit,publicationPermit} from '../scripts/research-page-authority.mjs';
 import {TOPIC_IDS} from '../scripts/page-delivery.mjs';
 const root='morning-20261113-r1',sha='a'.repeat(40),audit='b'.repeat(64),archive='c'.repeat(64);
 function fixture(){
@@ -98,4 +98,15 @@ test('begin replay remains idempotent after successor job admission',()=>{
 test('already queued ordinary revision reserves the slot before page_begin',()=>{
  const {db,run}=fixture();db.exec('CREATE TABLE slack_submission_events(request_id TEXT,kind TEXT,phase TEXT)');db.prepare('INSERT INTO slack_submission_events VALUES(?,?,?)').run(root.replace(/r1$/,'r2'),'revision','pending');
  assert.throws(()=>beginPageRound(db,run,{previous_request_id:root,added:[TOPIC_IDS[1]]},123),/page_revision_reserved/);assert.equal(db.prepare('SELECT count(*) n FROM research_page_rounds').get().n,0);db.close();
+});
+
+test('ordinary page corrections and maintenance wait for bound delivery, not publication receipt',()=>{
+ for(const kind of ['correction','maintenance','material_update'])for(const phase of ['queued','unknown','partial','complete']){
+  const {db,report,receipt}=fixture();const correction={report:{...report,revision:2,revision_notice:{kind},page_delivery:{...report.page_delivery,added:[],previous:{request_id:root,bundle_sha256:receipt.bundle_sha256}}}};
+  const before=db.prepare('SELECT bytes FROM jobs WHERE id=?').get(root).bytes;
+  db.prepare('UPDATE scheduled_handoffs SET phase=?,result=?').run(phase,JSON.stringify({...receipt,status:phase==='complete'?'sent':phase,phase}));
+  if(phase==='complete')assert.doesNotThrow(()=>assertPageCorrectionDelivery(db,correction));
+  else assert.throws(()=>assertPageCorrectionDelivery(db,correction),/page_correction_delivery_incomplete/);
+  assert.deepEqual(db.prepare('SELECT bytes FROM jobs WHERE id=?').get(root).bytes,before);db.close();
+ }
 });
