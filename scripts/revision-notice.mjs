@@ -13,8 +13,9 @@ export function validateReportFields(report){
  const notice=report.revision_notice;
  requireThat(Number.isSafeInteger(report.revision)&&report.revision>1,'Revision notice requires a revised edition');
  requireThat(notice&&typeof notice==='object'&&!Array.isArray(notice)&&Object.keys(notice).sort().join()==='kind,summary','Exact revision notice required');
- requireThat((paged?notice.kind==='page_completion':['correction','material_update','maintenance'].includes(notice.kind)),'Unknown revision notice kind');
+ requireThat((['correction','material_update','maintenance'].includes(notice.kind)||paged&&notice.kind==='page_completion'),'Unknown revision notice kind');
  requireThat(typeof notice.summary==='string'&&notice.summary.trim()===notice.summary&&notice.summary.length>0&&Buffer.byteLength(notice.summary)<=600&&!/[\x00-\x1f\x7f-\x9f<>\u2028\u2029\ufeff\uD800-\uDFFF]/u.test(notice.summary),'Bounded single-line revision summary required');
+ if(paged)requireThat(notice.kind==='page_completion'?report.page_delivery.added.length>0:report.page_delivery.added.length===0,'Revision kind must match added pages');
  return notice;
 }
 export function revisionNoticeText(report){

@@ -12,7 +12,7 @@ export function validatePageDelivery(value,articles,date,revision){
  requireThat(Array.isArray(value.pending)&&value.pending.every(p=>exact(p,['id','reason'])&&TOPIC_IDS.includes(p.id)&&line(p.reason)),'Bounded pending reasons required');
  const all=[...ready,...value.pending.map(p=>p.id)];
  requireThat(all.length===6&&new Set(all).size===6,'Ready and pending must partition six topics');
- requireThat(Array.isArray(value.added)&&value.added.length>0&&new Set(value.added).size===value.added.length&&value.added.every(id=>ready.includes(id)),'Added ready pages required');
+ requireThat(Array.isArray(value.added)&&(revision>1||value.added.length>0)&&new Set(value.added).size===value.added.length&&value.added.every(id=>ready.includes(id)),'Added ready pages required');
  requireThat(ready.join()===TOPIC_IDS.filter(id=>ready.includes(id)).join()&&value.added.join()===ready.filter(id=>value.added.includes(id)).join()&&value.pending.map(p=>p.id).join()===TOPIC_IDS.filter(id=>!ready.includes(id)).join(),'Canonical page order required');
  if(revision===1)requireThat(value.previous===null&&value.added.join()===ready.join(),'Initial page set differs');
  else requireThat(exact(value.previous,['request_id','bundle_sha256'])&&value.previous.request_id===`morning-${date.replaceAll('-','')}-r${revision-1}`&&typeof value.previous.bundle_sha256==='string'&&value.previous.bundle_sha256.length===64&&/^[a-f0-9]{64}$/.test(value.previous.bundle_sha256),'Bound previous revision required');
@@ -33,4 +33,14 @@ export function validatePageProgressReport(previous,next){
  requireThat(added.join()===next.page_delivery.added.join(),'Completion must contain exactly new pages');
  const pending=new Set(previous.page_delivery.pending.map(p=>p.id));
  requireThat(added.every(id=>pending.has(id))&&next.page_delivery.pending.map(p=>p.id).join()===previous.page_delivery.pending.filter(p=>!added.includes(p.id)).map(p=>p.id).join(),'Completion pending set differs');
+}
+
+// A correction changes already published content, not the set of delivered pages.
+export function validatePageCorrectionReport(previous,next){
+ requireThat(previous?.page_delivery&&next?.page_delivery,'Page correction requires the original partition');
+ requireThat(previous.date===next.date&&next.revision===previous.revision+1,'Page correction date/revision differs');
+ requireThat(['correction','material_update','maintenance'].includes(next.revision_notice?.kind),'Explicit correction policy required');
+ requireThat(next.page_delivery.added.length===0,'Corrections cannot announce completed pages');
+ requireThat(next.articles.map(a=>a.id).join()===previous.articles.map(a=>a.id).join(),'Corrections cannot change ready pages');
+ requireThat(JSON.stringify(next.page_delivery.pending)===JSON.stringify(previous.page_delivery.pending),'Corrections must preserve pending pages and reasons');
 }

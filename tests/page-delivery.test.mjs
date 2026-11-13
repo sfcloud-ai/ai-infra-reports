@@ -11,3 +11,12 @@ test('missing topics, duplicate/overlapping pages, stale-date binding rejected',
 test('pure contract rejects noncanonical topic order',()=>{const r=report();r.articles.reverse();assert.throws(()=>validatePageDelivery(r.page_delivery,r.articles,r.date,r.revision));});
 import {validatePageProgressReport} from '../scripts/page-delivery.mjs';
 test('publication cannot overwrite old pages or reannounce them as additions',()=>{const old=report(2),next=report(3);next.revision=2;next.page_delivery.previous={request_id:'morning-20261113-r1',bundle_sha256:hash};next.page_delivery.added=[TOPIC_IDS[2]];next.revision_notice={kind:'page_completion',summary:'新增架构页'};validatePageProgressReport(old,next);for(const mutate of [r=>r.articles[0].sha256='b'.repeat(64),r=>r.page_delivery.added.push(TOPIC_IDS[0]),r=>r.page_delivery.pending.pop()]){const bad=structuredClone(next);mutate(bad);assert.throws(()=>validatePageProgressReport(old,bad));}});
+import {validatePageCorrectionReport} from '../scripts/page-delivery.mjs';
+import {revisionNoticeText} from '../scripts/revision-notice.mjs';
+test('correction preserves pending without masquerading as page completion',()=>{
+ const old=report(),next=structuredClone(old);next.revision=2;next.page_delivery.previous={request_id:'morning-20261113-r1',bundle_sha256:hash};next.page_delivery.added=[];next.revision_notice={kind:'correction',summary:'纠正已发布硬件说明'};next.articles[0].sha256='c'.repeat(64);
+ validatePageCorrectionReport(old,next);manifest(next);assert.match(revisionNoticeText(next),/重要更正/);assert.ok(!revisionNoticeText(next).includes('/model-serving-gpu/'));
+ const maintenance=structuredClone(next);maintenance.revision_notice.kind='maintenance';assert.equal(revisionNoticeText(maintenance),'');
+ for(const mutate of [r=>r.page_delivery.pending.pop(),r=>r.page_delivery.pending[0].reason='隐去缺口',r=>r.page_delivery.added.push(TOPIC_IDS[0]),r=>r.articles.pop()]){const bad=structuredClone(next);mutate(bad);assert.throws(()=>validatePageCorrectionReport(old,bad));}
+ next.revision_notice.kind='page_completion';assert.throws(()=>manifest(next));
+});
