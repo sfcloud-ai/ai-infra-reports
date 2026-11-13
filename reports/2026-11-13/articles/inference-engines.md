@@ -1,21 +1,35 @@
-# 推理引擎每日变动：技术文章已读，代码覆盖有缺口
+# 推理引擎每日变动：共享 CPU KV 与显存释放确认
 
-本篇保留三家引擎的独立核查状态。Inkling 2 Small两家首日适配已合并到[同一技术主文](https://sfcloud-ai.github.io/ai-infra-reports/2026-11-13/model-serving-gpu/)，这里不重复计作新闻。
+除明确标注外，下文合入时间均为北京时间。代码发现窗口为北京时间 11 月 12 日 07:20 至 11 月 13 日 07:20。补查读取该窗口默认分支的 vLLM 95 条、SGLang 87 条提交，均少于单页 100 条上限；以下具体事项另核对 PR 正文、合并时间与最终文件差异。合入主线不等于已进入稳定发行版。
 
-## vLLM
+## vLLM：CPU KV 共享不能漏掉压缩器状态
 
-已读[官方博客归档](https://vllm.ai/blog/archive)和[11月12日Inkling文章](https://vllm.ai/blog/2026-11-12-inkling2-small)，原始Markdown提供2026-11-12 09:00 UTC时间。主文涉及层边界融合、长输入sequence parallelism和6:1 GQA解码kernel。
+DeepSeek V4.1 的张量并行副本持有相同缓存内容时，把每份都卸载到主机内存仍会浪费容量。[#65373](https://github.com/vllm-project/vllm/pull/65373) 于 11 月 12 日 18:59:07 合入，提交为 `9a77b4201bc4551f7e23ce59758dcbe6410c9e10`。
 
-所读[release列表](https://api.github.com/repos/vllm-project/vllm/releases?per_page=5)最新版本为v0.33.0rc3、时间11月2日；未完成最新commit/PR核查，不能据此称代码没有更新。文章的day-0支持也不等于本期已确认稳定release或精确可复现commit。
+最终补丁在压缩器循环状态的缓存规格中补上 `max_tp_shards=1`，使已有 CPU 卸载共享路径知道这份状态在 TP rank 间重复，而非需要分别分片。主 KV 与索引器 K 在所核对提交中也具有同一声明；新增测试逐一检查三个缓存生产者。这里没有重写缓存接口、规划器或连接器，也不是不同模型共享权重。
 
-## SGLang
+作者报告的共享主机原型实验使用 8 张 H100、TP8，每 rank 20 GiB GPU KV，双方总 CPU KV 均为 64 GiB；以 407 个 LongBench v2 上下文重放 3,072 个请求，并发 8、chunks=1、最多输出128 token。请求吞吐从0.961到5.785次/秒，输出吞吐25.60到146.09 token/秒，P95首 token 延迟11.30秒到0.95秒。收益涉及固定总主机预算下重复缓存的消除，不能推广成任意负载约6倍加速。
 
-已读[博客列表](https://www.sglang.io/blog)和[Inkling支持正文](https://www.sglang.io/blog/inkling-2-small-day0-support)，日期精度为11月12日。统一缓存、HiCache、MegaMoE和relative-bias attention的机制与实验限制见主文。性能图是decode-only且接受长度模拟为3.5，不是端到端线上SLO结果。
+PR评论另有 DeepSeek-V4.1-Flash-1017 的 GSM8K 25-shot、TP8、8×H100 三轮作者自测，包含冷运行及CPU缓存重载，报告准确率落在相近误差范围。它不是独立复现；上述原型性能表也不是最终这一行差异在合并提交上的重新对照测试。因此可确认实现和测试边界，不能把6倍当作这一个最终补丁的独立实测收益。
 
-所读[release列表](https://api.github.com/repos/sgl-project/sglang/releases?per_page=5)最新v0.5.23发布于11月2日；未补齐最新commit/PR与完整recipe，保留代码覆盖缺口。[LMSYS博客入口](https://www.lmsys.org/blog/)未取得可用当前文章列表，不能写成无新文章。
+![共享CPU缓存与流水线释放确认的简化示意；不是完整实现时序](assets/engine-coordination.png)
 
-## DeepInfer
+## SGLang：返回“显存已释放”必须覆盖所有流水线阶段
 
-已单独读[官方仓库](https://github.com/deepseek-ai/DeepInfer)和[默认分支最近5条提交](https://api.github.com/repos/deepseek-ai/DeepInfer/commits?per_page=5)。所读最新提交为a679bb86ce36e883a98a97733492b686e5b9a08e，时间2026-11-03 07:31:40 UTC，早于本期一周窗口；在这个明确范围内未选出合格新变动。README静态能力及早期文档变更不作为本期新闻。
+训练与推理轮流使用同一组GPU时，调度器收到释放成功后可能立即启动训练。如果只有第一段流水线释放，后续阶段仍占显存，训练就可能OOM。[#49798](https://github.com/sgl-project/sglang/pull/49798) 于11月12日21:34:47合入，提交 `30593f940be2fa9d2b4468606007930374f71e36`，修复这项完成确认。
 
-另读[官方infra索引](https://github.com/deepseek-ai/open-infra-index)，没有把索引时间当成技术文章发布时间。该核查不代表全仓库所有分支/PR或全部站点已查清。DeepInfer与FlashInfer不是同一项目，不混称。
+补丁让各流水线阶段逐段汇总释放结果，任一阶段拒绝就保留拒绝；首阶段完成释放后，等末阶段返回结果才答复调用者。首阶段繁忙时立即拒绝，不阻塞后续流水线继续运转。TP组先汇总是否有繁忙rank，所有rank一致决定释放或拒绝，并在释放后同步，避免一部分rank提前退出、另一部分永远等屏障。结果消息使用独立tag，与原有阶段间消息分开。
+
+新增单测覆盖首阶段不能提前答复、繁忙立即拒绝、后续阶段保留前面的拒绝、请求与结果的发送次序，以及TP同伴繁忙时禁止单独释放。作者还报告 Qwen2.5-0.5B、H100、`--enable-memory-saver` 的单/双节点PP与TP组合测试：空闲释放成功，运行中请求拒绝且生成继续完成；包含pp3/tp2的6张卡，以及40轮并发释放。这里证明的是所测组合的释放确认和拒绝路径，不是大模型训练吞吐提升；PR页面的扩展及AMD CI仍有失败标记，不能写成全平台全部测试通过。
+
+### 默认GDS淘汰策略已撤回，不能按当前可用优化接入
+
+[#49430](https://github.com/sgl-project/sglang/pull/49430) 的混合模型循环状态GDS淘汰于当天短暂合入，但 [#50118](https://github.com/sgl-project/sglang/pull/50118) 已在11月12日21:42:09撤回整个改动，提交 `7b790e1c5f3f2601c3d9c549ad24eaf7ee0d5938`。维护者说明它未经充分约定便把所有相应模型的默认策略由LRU改成GDS，而证据仅来自一个模型、一条trace。因此不能把它当作当前默认可用优化推荐。
+
+## DeepInfer：在已读默认分支范围内未见窗口内变动
+
+已单独读[官方仓库](https://github.com/deepseek-ai/DeepInfer)和[默认分支最近5条提交](https://api.github.com/repos/deepseek-ai/DeepInfer/commits?per_page=5)。所读最新提交为`a679bb86ce36e883a98a97733492b686e5b9a08e`，时间2026年11月3日07:31:40 UTC，早于本期一周窗口；在这个明确范围内未选出合格新变动。README静态能力及早期文档变更不作为本期新闻。另读[官方infra索引](https://github.com/deepseek-ai/open-infra-index)，不把索引时间当成技术文章发布时间。该核查不代表全仓库所有分支和PR已查清，DeepInfer也不等同FlashInfer。
+
+## 博客与代码分开核验
+
+当天Inkling 2 Small的vLLM、SGLang官方文章已在主文分析，不把博客day-0支持当成精确稳定版本证明，也不直接横比不同负载的性能图。上述代码补查不替代其他板块未完成的正文取证。
