@@ -1,3 +1,4 @@
+import {checkDailyDelivery} from '../scripts/publisher-watchdog.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
@@ -23,6 +24,8 @@ test('paired actual relay r1 r2 r3 receipts advance bridge and original authorit
    items.push({request_id,bytes,hash,report,commit,bundle_base64:bytes.toString('base64')});previous={request_id,bundle_sha256:hash};
   }
   const child=spawnSync('python',['tests/helpers/paired-page-relay.py',paired],{input:JSON.stringify(items.map(({bytes,...v})=>v)),encoding:'utf8',maxBuffer:4*1024*1024});assert.equal(child.status,0,child.stderr);const receipts=JSON.parse(child.stdout);assert.equal(receipts[1].delivery_kind,'page_completion');assert.equal(receipts[2].delivery_kind,'page_completion');
+  const bindings=items.map((item,i)=>({request_id:item.request_id,report_date:DAY,report_commit:item.commit,bundle_sha256:item.hash,published:true,...(i?{report_revision:i+1,revision_kind:'page_completion'}:{})}));
+  assert.deepEqual((await checkDailyDelivery(bindings,async id=>receipts.find(r=>r.request_id===id))).issues,[]);
   let run={request_id:items[0].request_id,report_date:DAY,permit:null};
   for(const [i,item] of items.entries()){
    const metadata=Buffer.from('{}'),audit=Buffer.from(JSON.stringify({inputs:{draft_sha256:digest(Buffer.from(JSON.stringify(item.report)))},evidence_metadata_sha256:digest(metadata)}));const archive=Buffer.from(JSON.stringify({schema_version:'research_archive_v1',command_id:'11111111-1111-4111-8111-111111111111',request_id:run.request_id,report_date:DAY,previous_sha256:null,files:[['audit.json',audit],['metadata.json',metadata]].map(([path,b])=>({path,sha256:digest(b),content_base64:b.toString('base64')}))}));s.db.prepare('INSERT INTO research_archives VALUES(?,?,?)').run(run.request_id,digest(archive),archive);
@@ -34,6 +37,7 @@ test('paired actual relay r1 r2 r3 receipts advance bridge and original authorit
    if(i<2)beginPageRound(s.db,run,{previous_request_id:item.request_id,added:[topics[i+1]]},1);
   }
   const unknownRun=spawnSync('python',['tests/helpers/paired-page-relay.py',paired],{input:JSON.stringify(items.slice(0,2).map(({bytes,...v},i)=>({...v,unknown:i===1}))),encoding:'utf8',maxBuffer:4*1024*1024});assert.equal(unknownRun.status,0,unknownRun.stderr);const unknown=JSON.parse(unknownRun.stdout)[1];assert.equal(unknown.status,'unknown');
+  assert.deepEqual((await checkDailyDelivery(bindings.slice(0,2),async id=>id===unknown.request_id?unknown:receipts[0])).issues,['revision_delivery_incomplete']);
   s.db.prepare("UPDATE scheduled_handoffs SET result=?,phase='observed' WHERE request_id=?").run(JSON.stringify(unknown),items[1].request_id);
   assert.throws(()=>authenticatedPrevious(s.db,run,items[1].request_id),/page_previous_delivery_incomplete/);
  }finally{s.close();}

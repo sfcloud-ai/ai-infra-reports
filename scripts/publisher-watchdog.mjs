@@ -170,7 +170,7 @@ async function checkRevisionDeliveries(bindings,query){
   if(record.error){issues.add(record.error);return false;}
   const {binding:b,result:r}=record,revision=b.report_revision!==undefined;
   if(r?.status==='not_found'){issues.add('daily_delivery_not_admitted');return false;}
-  if(!r||['request_id','report_date','report_commit','bundle_sha256'].some(k=>r[k]!==b[k])||revision&&(r.report_revision!==b.report_revision||!['initial','revision_update','web_only'].includes(r.delivery_kind))){issues.add('daily_delivery_binding_mismatch');return false;}
+  if(!r||['request_id','report_date','report_commit','bundle_sha256'].some(k=>r[k]!==b[k])||revision&&(r.report_revision!==b.report_revision||!['initial','revision_update','web_only','page_completion'].includes(r.delivery_kind))){issues.add('daily_delivery_binding_mismatch');return false;}
   const counts=Number.isSafeInteger(r.parts_total)&&r.parts_total>=0&&Number.isSafeInteger(r.parts_sent)&&r.parts_sent>=0&&r.parts_sent<=r.parts_total;
   if(r.phase==='superseded'){
    const next=records.get(r.superseded_by)?.binding;
@@ -178,7 +178,7 @@ async function checkRevisionDeliveries(bindings,query){
   }else{
    const images=r.images??[],poster=Array.isArray(images)&&images.length===1&&images[0].file_id==='scheduled-poster'&&images[0].status==='sent'&&images[0].error==null;
    const skipped=revision&&r.delivery_kind==='web_only'&&r.phase==='skipped'&&r.status==='skipped'&&r.parts_total===0&&r.parts_sent===0&&Array.isArray(images)&&images.length===0;
-   const complete=r.status==='sent'&&r.phase==='complete'&&r.parts_sent===r.parts_total&&(revision&&r.delivery_kind==='revision_update'?r.parts_total===1&&Array.isArray(images)&&images.length===0:(!revision||r.delivery_kind==='initial')&&r.parts_total>=2&&poster);
+   const complete=r.status==='sent'&&r.phase==='complete'&&r.parts_sent===r.parts_total&&(revision&&['revision_update','page_completion'].includes(r.delivery_kind)?r.parts_total===1&&Array.isArray(images)&&images.length===0:(!revision||r.delivery_kind==='initial')&&r.parts_total>=2&&poster);
    if(counts&&(skipped||complete))return true;
   }
   issues.add(revision?'revision_delivery_incomplete':'daily_delivery_incomplete');return false;

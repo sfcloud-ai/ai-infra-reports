@@ -108,6 +108,12 @@ test('watchdog follows revision receipts without hiding unknowns or treating a p
  const update={...base};const responses=new Map([[first.request_id,original],[id,update]]);
  const query=async request=>responses.get(request);
  assert.deepEqual((await checkDailyDelivery([first,second],query)).issues,[]);
+ responses.set(id,{...base,delivery_kind:'page_completion'});
+ assert.deepEqual((await checkDailyDelivery([first,{...second,revision_kind:'page_completion'}],query)).issues,[]);
+ for(const patch of [{status:'unknown',phase:'unknown'},{parts_sent:0},{images:[{file_id:'unexpected',status:'sent'}]}]){
+  responses.set(id,{...base,delivery_kind:'page_completion',...patch});
+  assert.deepEqual((await checkDailyDelivery([first,{...second,revision_kind:'page_completion'}],query)).issues,['revision_delivery_incomplete']);
+ }
  responses.set(id,{...base,delivery_kind:'web_only',status:'skipped',phase:'skipped',parts_total:0,parts_sent:0});
  assert.deepEqual((await checkDailyDelivery([first,{...second,revision_kind:'maintenance'}],query)).issues,[]);
  responses.set(id,{...base,status:'unknown',phase:'unknown',parts_sent:0});
