@@ -1,3 +1,5 @@
+import {readResearchRecoveryHead,researchRecoveryWindow,researchRecoveryAccounting,recordResearchRecoveryOperation,appendResearchRecoveryGrant,assertResearchRecovery} from './research-recovery.mjs';
+import {isRepositoryResearchPlan,isLayeredResearchPlan,operationBudget,continuationWindow,LAYERED_BUDGET_POLICY,researchSecondsWithin,RESEARCH_SECONDS_EPSILON} from './research-budget.mjs';
 // Host authority for a disposable research client. Replies are observations;
 // only a newly committed operation intent can grant one external dispatch.
 import {randomUUID} from 'node:crypto';
@@ -8,6 +10,7 @@ import {handoffScope,scopeDigest} from './handoff-state.mjs';
 import {repositoryResearchInputs,repositoryResearchInputsHash,REPOSITORY_RESEARCH_INPUTS_VERSION} from './repository-research-inputs.mjs';
 import {requiredCoverageValid} from './research-coverage.mjs';
 export {REPOSITORY_RESEARCH_INPUTS_VERSION};
+export const LAYERED_RESEARCH_BUDGET_VERSION=1;
 
 const HASH=/^[a-f0-9]{64}$/,SHA=/^[a-f0-9]{40}$/,UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const keyName=/^[a-zA-Z0-9_.-]{1,80}$/,LEASE_MS=15*60000;
@@ -51,12 +54,12 @@ function policy(c){
 export function assertResearchControl(db,c){
  const rows=db.prepare("SELECT name,sql FROM sqlite_master WHERE type='table' AND name LIKE 'research_control_%'").all();
  if(!c.research_control){requireThat(!rows.length,'Installed research authority cannot be removed');return false;}
- assertResearchArchive(db,c);const binding=policy(c);
+ assertResearchArchive(db,c);assertResearchRecovery(db);const binding=policy(c);
  requireThat(rows.length===Object.keys(RESEARCH_CONTROL_SCHEMA).length&&rows.every(r=>r.sql===RESEARCH_CONTROL_SCHEMA[r.name]),'Original research authority schema required');
  const installed=db.prepare('SELECT * FROM research_control_policy').all();requireThat(installed.length===1&&installed[0].id===1&&installed[0].binding===binding,'Original research authority binding required');return true;
 }
 export function installResearchControl(db,c,reference){
- assertResearchArchive(db,c);const binding=policy(c);
+ assertResearchArchive(db,c);assertResearchRecovery(db);const binding=policy(c);
  requireThat(c.research_control.protocol==='repository_inputs_v1','New authority requires repository-input protocol');
  requireThat(typeof reference==='string'&&reference.length>0&&reference.length<=512&&!db.prepare("SELECT 1 FROM sqlite_master WHERE name LIKE 'research_control_%'").get(),'Explicit first authority installation required');
  const first=c.research_control.first_report_date;
@@ -83,15 +86,19 @@ export function migrateResearchControl(db,c,reference){
 export function decodeResearchControl(bytes){
  need(Buffer.isBuffer(bytes)&&bytes.length>0&&'!ai-research control v2 '.length+bytes.toString('base64').length<=5000,'control_wire_limit_split_reservations_or_reduce_plan');
  let c;try{c=JSON.parse(new TextDecoder('utf8',{fatal:true}).decode(bytes));}catch{refuse('control_json');}
- need(exact(c,'schema_version,command_id,request_id,action,owner_id,epoch,expected_revision,args')&&c.schema_version==='research_control_v2'&&string(c.command_id,UUID)&&typeof c.request_id==='string'&&/^morning-\d{8}-r1$/.test(c.request_id)&&['claim','renew','inputs','checkpoint','reserve','resume','settle','permit','status','upload_status','receipt'].includes(c.action)&&integer(c.epoch,0,1000000)&&integer(c.expected_revision,0,10000000)&&c.args&&typeof c.args==='object'&&!Array.isArray(c.args),'control_identity');
+ need(exact(c,'schema_version,command_id,request_id,action,owner_id,epoch,expected_revision,args')&&c.schema_version==='research_control_v2'&&string(c.command_id,UUID)&&typeof c.request_id==='string'&&/^morning-\d{8}-r1$/.test(c.request_id)&&['claim','renew','inputs','checkpoint','reserve','resume','settle','permit','recovery_grant','status','upload_status','receipt'].includes(c.action)&&integer(c.epoch,0,1000000)&&integer(c.expected_revision,0,10000000)&&c.args&&typeof c.args==='object'&&!Array.isArray(c.args),'control_identity');
  canonicalRequestDate(c.request_id);
  need(['status','upload_status','receipt'].includes(c.action)?c.owner_id===null:string(c.owner_id,UUID),'control_owner');return c;
 }
 export function decodeResearchPlan(encoded,id){
  need(typeof encoded==='string'&&encoded.length<=10000,'plan_size');const bytes=Buffer.from(encoded,'base64');need(bytes.toString('base64')===encoded,'plan_encoding');
  let p;try{p=JSON.parse(new TextDecoder('utf8',{fatal:true}).decode(bytes));}catch{refuse('plan_json');}
- need(exact(p,'schema_version,request_id,report_date,prompt_commit_sha,reports_commit_sha,files,model_stages,limits')&&p.schema_version==='research_plan_v3'&&p.request_id===id&&p.report_date===canonicalRequestDate(id)&&string(p.prompt_commit_sha,SHA)&&string(p.reports_commit_sha,SHA),'plan_identity');
+ need(exact(p,'schema_version,request_id,report_date,prompt_commit_sha,reports_commit_sha,files,model_stages,limits')&&isRepositoryResearchPlan(p)&&p.request_id===id&&p.report_date===canonicalRequestDate(id)&&string(p.prompt_commit_sha,SHA)&&string(p.reports_commit_sha,SHA),'plan_identity');
+ if(isLayeredResearchPlan(p)){
+  need(exact(p.limits,'max_attempts_per_source,max_attempts_per_model,source_attempt_timeout_seconds,model_stage_timeout_seconds,total_budget_seconds')&&integer(p.limits.max_attempts_per_source,1,2)&&integer(p.limits.max_attempts_per_model,1,2)&&integer(p.limits.source_attempt_timeout_seconds,1,180)&&integer(p.limits.total_budget_seconds,1,3600)&&integer(p.limits.model_stage_timeout_seconds,1,p.limits.total_budget_seconds),'plan_limits');
+ }else{
  need(exact(p.limits,'max_attempts_per_source,max_attempts_per_model,operation_timeout_seconds,total_budget_seconds')&&integer(p.limits.max_attempts_per_source,1,2)&&p.limits.max_attempts_per_model===1&&integer(p.limits.operation_timeout_seconds,1,180)&&integer(p.limits.total_budget_seconds,1,3600),'plan_limits');
+ }
  need(p.files&&typeof p.files==='object'&&!Array.isArray(p.files)&&Object.keys(p.files).length>0&&Object.keys(p.files).length<=32&&Object.entries(p.files).every(([name,hash])=>name.length<=200&&/^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*(?:\/[a-zA-Z0-9_.-]+)*$/.test(name)&&name.split('/').every(x=>x!=='.'&&x!=='..')&&string(hash,HASH)),'plan_files');
  need(Array.isArray(p.model_stages)&&p.model_stages.length>0&&p.model_stages.length<=12&&new Set(p.model_stages).size===p.model_stages.length&&p.model_stages.every(x=>string(x,keyName)),'plan_model_stages');
  try{repositoryResearchInputs(p);}catch{refuse('plan_repository_inputs');}
@@ -100,16 +107,43 @@ export function decodeResearchPlan(encoded,id){
 function archive(db,id,hash){
  need(string(hash,HASH),'archive_hash');const row=db.prepare('SELECT manifest FROM research_archives WHERE request_id=? AND hash=?').get(id,hash);need(row,'archive_not_stored');return JSON.parse(row.manifest);
 }
-function publicationEvidence(db,run,plan,args){
- const row=db.prepare('SELECT bytes FROM research_archives WHERE request_id=? AND hash=?').get(run.request_id,args.archive_sha256);
- need(row,'archive_not_stored');const {files}=decodeResearchArchive(Buffer.from(row.bytes));
+function readPublicationBytes(db,run,args,cache){
+ const decoded=commandArchive(db,run.request_id,args.archive_sha256,cache);
+ need(decoded,'archive_not_stored');const {files}=decoded;
  const read=hash=>{const file=files.find(f=>f.sha256===hash);need(file,'publication_bytes_missing');try{return JSON.parse(new TextDecoder('utf8',{fatal:true}).decode(file.data));}catch{refuse('publication_json');}};
  const bundle=read(args.bundle_sha256),audit=read(args.audit_sha256);
+ cache.archive=null;cache.archiveKey=null;
+ return {bundle,audit};
+}
+function publicationEvidence(db,run,plan,args,now,cache){
+ const {bundle,audit}=readPublicationBytes(db,run,args,cache);
  need(exact(bundle,'schema_version,request_id,repository,expected_base_sha,prompt_commit_sha,files')&&bundle.schema_version==='1.0'&&bundle.repository===REPOSITORY&&bundle.request_id===run.request_id&&bundle.expected_base_sha===plan.reports_commit_sha&&bundle.prompt_commit_sha===plan.prompt_commit_sha,'publication_plan_binding');
  // This is the existing trusted researcher's declaration, not a replacement
  // fact-checking engine. Keep its original bytes and explicit selected binding.
  need(audit&&audit.date===run.report_date&&audit.audit_valid===true&&Array.isArray(audit.blockers)&&audit.blockers.length===0&&['ready','partial','zero_items'].includes(audit.readiness),'publication_audit_blocked');
- need(requiredCoverageValid(audit,plan,bundle),'publication_coverage_contract');
+ const budget=effectiveResearchBudget(db,run,plan,now,cache);
+ const coveragePlan=budget?{...plan,schema_version:'research_plan_v4',limits:budget.limits}:plan;
+ need(requiredCoverageValid(audit,coveragePlan,bundle),'publication_coverage_contract');
+ if(budget){
+  need(audit.budget_policy===LAYERED_BUDGET_POLICY,'publication_budget_policy');
+  // Every research intent must have an authenticated known outcome before release.
+  need(budget.operations.filter(op=>op.kind!=='native').every(op=>classifiedResult(db,run,op,cache)),'publication_research_result_unknown');
+  need(researchSecondsWithin(budget.accounting.success_seconds+budget.accounting.reserved_seconds,budget.limits.total_budget_seconds),'publication_success_budget');
+  for(const op of budget.operations.filter(op=>op.kind!=='native')){
+   if(classifiedResult(db,run,op,cache)?.outcome==='success'&&op.elapsed_seconds!==null)need(researchSecondsWithin(op.elapsed_seconds,operationBudget(coveragePlan,op.kind)),'publication_operation_budget');
+  }
+  for(const [key,count] of Object.entries(budget.accounting.successful_attempts)){
+   const [kind]=JSON.parse(key);need(count<=(kind==='source'?budget.limits.max_attempts_per_source:budget.limits.max_attempts_per_model),'publication_attempt_budget');
+  }
+  const actual=budget.accounting,summary=audit.budget_accounting;
+  const equalSeconds=(a,b)=>typeof a==='number'&&Number.isFinite(a)&&Math.abs(a-b)<=RESEARCH_SECONDS_EPSILON;
+  need(summary&&equalSeconds(summary.successful_seconds,actual.success_seconds)&&equalSeconds(summary.failed_seconds,actual.failed_seconds)&&equalSeconds(summary.reserved_unknown_seconds,actual.reserved_seconds)&&equalSeconds(summary.charged_seconds,actual.success_seconds+actual.reserved_seconds),'publication_budget_accounting');
+  for(const kind of ['source','model']){
+   const count=(map)=>Object.entries(map).filter(([key])=>JSON.parse(key)[0]===kind).reduce((n,[,value])=>n+value,0);
+   need(summary.successful_attempts?.[kind]===count(actual.successful_attempts)&&summary.failed_attempts?.[kind]===count(actual.failed_attempts)&&summary.unknown_attempts?.[kind]===count(actual.unknown_attempts),'publication_budget_attempts');
+  }
+ }
+
 }
 export function researchSourceIdentity(input){
  need(exact(input,'method,url')&&input.method==='GET'&&typeof input.url==='string'&&input.url.length<=2000,'source_identity');
@@ -135,10 +169,85 @@ function nativePredecessor(db,run,op){
   need(index===3?op.input.source_ts===result.source_ts&&result.source_ts!==null:op.input.source_ts===null,'native_original_source');
  }
 }
+// Acknowledgement confirms storage, not success. Classify only original stored bytes.
+// Disposable for one synchronous command/read only; SQLite remains authoritative.
+function commandCache(){return {archiveKey:null,archive:null,classifications:new Map()};}
+function commandArchive(db,requestId,hash,cache){
+ const key=JSON.stringify([requestId,hash]);
+ if(cache.archiveKey===key)return cache.archive;
+ // Release the previous decoded body before fetching another bounded archive.
+ cache.archive=null;cache.archiveKey=null;
+ const row=db.prepare('SELECT bytes FROM research_archives WHERE request_id=? AND hash=?').get(requestId,hash);
+ const original=row?decodeResearchArchive(Buffer.from(row.bytes)):null;
+ // Never retain the envelope's base64 strings alongside decoded file bytes.
+ const decoded=original?{files:original.files}:null;
+ if(decoded){decoded.byHash=new Map();for(const file of decoded.files)if(!decoded.byHash.has(file.sha256))decoded.byHash.set(file.sha256,file);}
+ cache.archiveKey=key;cache.archive=decoded;return decoded;
+}
+function classifiedResult(db,run,op,cache){
+ const key=JSON.stringify([run.request_id,run.plan_hash,op.operation_id,op.phase,op.kind,op.input_hash,op.result_archive,op.result_file,op.elapsed_seconds]);
+ if(cache.classifications.has(key))return cache.classifications.get(key);
+ const result=classifyStoredResult(db,run,op,cache);
+ cache.classifications.set(key,result);return result;
+}
+function classifyStoredResult(db,run,op,cache){
+ if(op.phase!=='acknowledged'||!op.result_archive||!op.result_file)return null;
+ const file=commandArchive(db,run.request_id,op.result_archive,cache)?.byHash.get(op.result_file);if(!file)return null;
+ let result;try{result=JSON.parse(file.data);}catch{return null;}
+ if(!result||typeof result!=='object'||Array.isArray(result))return null;
+ if(op.kind==='model'){
+  if(result.operation_id!==op.operation_id||result.request_id!==run.request_id)return null;
+ }else{
+  const layered=isLayeredResearchPlan(JSON.parse(Buffer.from(run.plan)));
+  if(layered&&(result.operation_id!==op.operation_id||result.request_id!==run.request_id))return null;
+  if(!layered&&db.prepare('SELECT count(*) AS n FROM research_control_ops WHERE request_id=? AND result_file=?').get(run.request_id,op.result_file).n!==1)return null;
+  try{if(researchSourceIdentity({method:'GET',url:result.url}).hash!==op.input_hash)return null;}catch{return null;}
+ }
+ const status=result.stage_status??result.status;
+ const outcome=['failed','timeout'].includes(status)?'failed':['ok','success','partial'].includes(status)?'success':null;
+ if(!outcome||result.elapsed_seconds!==op.elapsed_seconds)return null;
+ return {authenticated:true,outcome,archive_sha256:op.result_archive,file_sha256:op.result_file};
+}
+function effectiveResearchBudget(db,run,plan,now,cache){
+ const installed=!!db.prepare("SELECT 1 FROM sqlite_master WHERE name='research_recovery_grants'").get();
+ const head=installed?readResearchRecoveryHead(db,run.request_id):null;
+ if(head){const binding=JSON.parse(db.prepare('SELECT binding FROM research_control_policy WHERE id=1').get().binding);need(head.grant.plan_hash===run.plan_hash&&head.grant.request_id===run.request_id&&head.grant.generation===binding.generation,'recovery_binding');}
+ if(!isLayeredResearchPlan(plan)&&!head)return null;
+ need(installed,'layered_budget_not_installed');
+ const limits=isLayeredResearchPlan(plan)?plan.limits:{max_attempts_per_source:plan.limits.max_attempts_per_source,max_attempts_per_model:plan.limits.max_attempts_per_model,source_attempt_timeout_seconds:plan.limits.operation_timeout_seconds,model_stage_timeout_seconds:plan.limits.total_budget_seconds,total_budget_seconds:plan.limits.total_budget_seconds};
+ const window=head?researchRecoveryWindow(head,now):{...continuationWindow(now),active:true};
+ const operations=db.prepare('SELECT * FROM research_control_ops WHERE request_id=? ORDER BY rowid').all(run.request_id);
+ // Group interleaved operations by immutable archive; retain only small outcomes.
+ const groups=new Map();
+ for(const op of operations){const key=op.result_archive; if(!groups.has(key))groups.set(key,[]);groups.get(key).push(op);}
+ for(const group of groups.values()){
+  for(const op of group)classifiedResult(db,run,op,cache);
+  cache.archive=null;cache.archiveKey=null;
+ }
+ const accounting=researchRecoveryAccounting(operations,op=>classifiedResult(db,run,op,cache));
+ return {policy:LAYERED_BUDGET_POLICY,grant_id:head?.grant.grant_id??'plan:'+run.plan_hash,grant_sha256:head?.sha256??null,limits,window,accounting,operations};
+}
+function budgetObservation(budget){
+ if(!budget)return null;
+ const {operations,...observation}=budget;
+ const counts=map=>Object.fromEntries(['source','model'].map(kind=>[kind,Object.entries(map).filter(([key])=>JSON.parse(key)[0]===kind).reduce((n,[,value])=>n+value,0)]));
+ observation.accounting={...budget.accounting,successful_attempts:counts(budget.accounting.successful_attempts),failed_attempts:counts(budget.accounting.failed_attempts),unknown_attempts:counts(budget.accounting.unknown_attempts)};
+ return observation;
+}
+export function researchOperationDispatchValid(db,run,op,now){
+ const cache=commandCache();
+ if(op.kind==='native')return true;
+ if(run.permit!==null)return false;
+ const plan=JSON.parse(Buffer.from(run.plan)),budget=effectiveResearchBudget(db,run,plan,now,cache);
+ if(!budget)return now<run.started_at+plan.limits.total_budget_seconds*1000;
+ const link=db.prepare('SELECT * FROM research_recovery_operations WHERE operation_id=? ORDER BY window_start DESC LIMIT 1').get(op.operation_id);
+ return !!link&&link.request_id===run.request_id&&link.grant_id===budget.grant_id&&budget.window.active&&now>=link.window_start&&now<link.window_start+3600000;
+}
 function view(run){return run?{request_id:run.request_id,report_date:run.report_date,owner_id:run.owner_id,epoch:run.epoch,revision:run.revision,lease_until:run.lease_until,started_at:run.started_at,charged_seconds:run.charged_seconds,plan_hash:run.plan_hash,inputs_hash:run.inputs_hash,checkpoint_hash:run.checkpoint_hash,permit:run.permit?JSON.parse(run.permit):null}:null;}
 const load=(db,id)=>db.prepare('SELECT * FROM research_control_runs WHERE request_id=?').get(id);
 function owner(run,c,now){need(run,'run_not_found');need(run.owner_id===c.owner_id&&run.epoch===c.epoch,'owner_fenced');need(run.revision===c.expected_revision,'revision_conflict');need(run.lease_until>now,'lease_expired');}
-function apply(db,c,now){
+function apply(db,c,now,config){
+ const cache=commandCache();
  let run=load(db,c.request_id);
  if(c.action==='upload_status'){
   need(exact(c.args,'archive_sha256,permit_id')&&string(c.args.archive_sha256,HASH)&&(c.args.permit_id===null||string(c.args.permit_id,UUID)),'upload_status_fields');
@@ -150,9 +259,11 @@ function apply(db,c,now){
  }
  if(c.action==='status'){
   need(exact(c.args,'offset')&&integer(c.args.offset,0,100000),'status_offset');
-  if(!run)return {status:'not_found',run:null};
+  const capabilities=assertResearchRecovery(db)?{capabilities:{repository_plan_versions:['research_plan_v3','research_plan_v4'],budget_policy:LAYERED_BUDGET_POLICY}}:{};
+  if(!run)return {status:'not_found',run:null,...capabilities};
   const ops=db.prepare('SELECT * FROM research_control_ops WHERE request_id=? ORDER BY rowid LIMIT 2 OFFSET ?').all(c.request_id,c.args.offset);
-  return {status:'observed',run:view(run),plan_base64:Buffer.from(run.plan).toString('base64'),operations:ops.slice(0,1).map(op=>({...op,input:JSON.parse(op.input),native_result:op.native_result?JSON.parse(op.native_result):null})),next_offset:ops.length>1?c.args.offset+1:null};
+  const budget=effectiveResearchBudget(db,run,JSON.parse(Buffer.from(run.plan)),now,cache);
+  return {status:'observed',run:view(run),...capabilities,...(budget?{effective_budget:budgetObservation(budget)}:{}),plan_base64:Buffer.from(run.plan).toString('base64'),operations:ops.slice(0,1).map(op=>({...op,input:JSON.parse(op.input),native_result:op.native_result?JSON.parse(op.native_result):null})),next_offset:ops.length>1?c.args.offset+1:null};
  }
  if(c.action==='receipt'){
   need(exact(c.args,'command_id')&&string(c.args.command_id,UUID),'receipt_identity');
@@ -163,11 +274,12 @@ function apply(db,c,now){
  if(c.action==='claim'){
   need(exact(c.args,'plan_base64'),'claim_fields');const plan=decodeResearchPlan(c.args.plan_base64,c.request_id);
   if(!run){
+   if(isLayeredResearchPlan(plan.value))need(db.prepare("SELECT 1 FROM sqlite_master WHERE name='research_recovery_grants'").get(),'layered_budget_not_installed');
    need(c.expected_revision===0&&c.epoch===0,'initial_claim_revision');
    need(!db.prepare('SELECT 1 FROM jobs WHERE id=?').get(c.request_id)&&!db.prepare('SELECT 1 FROM slack_staged_bundles WHERE request_id=?').get(c.request_id),'existing_publication');
    db.prepare('INSERT INTO research_control_runs VALUES(?,?,?,?,?,1,1,?,?,0,NULL,NULL,NULL)').run(c.request_id,plan.value.report_date,plan.bytes,digest(plan.bytes),c.owner_id,now+LEASE_MS,now);
   }else{
-   need(JSON.parse(Buffer.from(run.plan)).schema_version==='research_plan_v3','retired_plan_read_only');
+   need(isRepositoryResearchPlan(JSON.parse(Buffer.from(run.plan))),'retired_plan_read_only');
    need(run.plan_hash===digest(plan.bytes)&&Buffer.from(run.plan).equals(plan.bytes),'immutable_plan');
    need(run.revision===c.expected_revision&&run.epoch===c.epoch,'revision_conflict');
    need(run.lease_until<=now,'owner_still_live');
@@ -175,7 +287,7 @@ function apply(db,c,now){
   }
   return {status:'claimed',run:view(load(db,c.request_id))};
  }
- need(!run||JSON.parse(Buffer.from(run.plan)).schema_version==='research_plan_v3','retired_plan_read_only');
+ need(!run||isRepositoryResearchPlan(JSON.parse(Buffer.from(run.plan))),'retired_plan_read_only');
  if(c.action==='settle')need(exact(c.args,'operation_id,outcome,elapsed_seconds,archive_sha256,file_sha256,native_result')&&string(c.args.operation_id,UUID)&&['acknowledged','unknown'].includes(c.args.outcome),'settle_fields');
  if(c.action==='settle'&&run&&run.revision===c.expected_revision){
   const original=db.prepare('SELECT owner_id,epoch FROM research_control_ops WHERE request_id=? AND operation_id=?').get(c.request_id,c.args.operation_id??'');
@@ -184,8 +296,12 @@ function apply(db,c,now){
   // result. A later takeover cannot erase a resumed executor's late evidence.
   if(!(original&&original.owner_id===c.owner_id&&original.epoch===c.epoch)&&!resumed)owner(run,c,now);
  }else owner(run,c,now);
- const plan=JSON.parse(Buffer.from(run.plan));let grants=[];
- if(c.action==='renew')need(exact(c.args,''),'renew_fields');
+ const plan=JSON.parse(Buffer.from(run.plan));const budget=effectiveResearchBudget(db,run,plan,now,cache);let grants=[];
+ if(c.action==='recovery_grant'){
+  need(exact(c.args,'grant_base64')&&typeof c.args.grant_base64==='string','recovery_fields');
+  const bytes=Buffer.from(c.args.grant_base64,'base64');need(bytes.toString('base64')===c.args.grant_base64,'recovery_encoding');
+  appendResearchRecoveryGrant(db,bytes,{request_id:run.request_id,generation:config.research_control.generation,plan_hash:run.plan_hash,plan},{now});
+ }else if(c.action==='renew')need(exact(c.args,''),'renew_fields');
  else if(c.action==='inputs'){
   need(exact(c.args,''),'repository_inputs_fields');
   const hash=repositoryResearchInputsHash(plan);
@@ -198,7 +314,7 @@ function apply(db,c,now){
  }else if(c.action==='reserve'){
   need(exact(c.args,'operations')&&Array.isArray(c.args.operations)&&c.args.operations.length>0&&c.args.operations.length<=8,'operation_batch');
   for(const op of c.args.operations){
-   need(exact(op,'operation_id,kind,key,input_sha256,input,max_seconds')&&string(op.operation_id,UUID)&&['source','model','native'].includes(op.kind)&&typeof op.key==='string'&&op.key.length>0&&op.key.length<=180&&string(op.input_sha256,HASH)&&integer(op.max_seconds,0,plan.limits.operation_timeout_seconds),'operation_fields');
+   need(exact(op,'operation_id,kind,key,input_sha256,input,max_seconds')&&string(op.operation_id,UUID)&&['source','model','native'].includes(op.kind)&&typeof op.key==='string'&&op.key.length>0&&op.key.length<=180&&string(op.input_sha256,HASH)&&integer(op.max_seconds,0,(budget?operationBudget({schema_version:'research_plan_v4',limits:budget.limits},op.kind):operationBudget(plan,op.kind))),'operation_fields');
    need(!db.prepare('SELECT 1 FROM research_control_ops WHERE operation_id=?').get(op.operation_id),'operation_id_used');
    const used=db.prepare('SELECT count(*) n FROM research_control_ops WHERE request_id=? AND kind=? AND operation_key=?').get(c.request_id,op.kind,op.key).n;
    if(op.kind==='native'){
@@ -209,12 +325,39 @@ function apply(db,c,now){
    }else{
     need(run.inputs_hash!==null&&run.permit===null,'research_inputs_or_phase');need(op.max_seconds>0,'research_operation_input');
     if(op.kind==='source'){const source=researchSourceIdentity(op.input);need(op.key===source.hash&&op.input_sha256===source.hash,'source_identity_hash');}
-    else need(op.input===null,'research_operation_input');
-    need(now<run.started_at+plan.limits.total_budget_seconds*1000,'research_deadline');
-    need(op.kind==='source'?string(op.key,HASH)&&used<plan.limits.max_attempts_per_source:plan.model_stages.includes(op.key)&&used<plan.limits.max_attempts_per_model,'attempt_budget');
-    need(run.charged_seconds+op.max_seconds<=plan.limits.total_budget_seconds,'time_budget');run.charged_seconds+=op.max_seconds;
+    else if(budget&&used>0){
+     need(exact(op.input,'previous_operation_id,checkpoint_archive_sha256,checkpoint_file_sha256')&&string(op.input.previous_operation_id,UUID)&&string(op.input.checkpoint_archive_sha256,HASH)&&string(op.input.checkpoint_file_sha256,HASH),'model_recovery_checkpoint');
+     const prior=db.prepare("SELECT * FROM research_control_ops WHERE request_id=? AND kind='model' AND operation_key=? ORDER BY rowid DESC LIMIT 1").get(c.request_id,op.key);
+     need(prior&&prior.operation_id===op.input.previous_operation_id&&prior.phase==='acknowledged'&&prior.elapsed_seconds!==null&&prior.result_archive===op.input.checkpoint_archive_sha256&&prior.result_file===op.input.checkpoint_file_sha256,'model_recovery_original');
+     need(classifiedResult(db,run,prior,cache)?.outcome==='failed','model_recovery_not_failed');
+     const succeeded=budget.operations.filter(item=>item.kind==='model'&&item.operation_key===op.key&&classifiedResult(db,run,item,cache)?.outcome!=='failed').reduce((n,item)=>n+(item.elapsed_seconds??item.reserved_seconds),0);
+     need(researchSecondsWithin(succeeded+op.max_seconds,budget.limits.model_stage_timeout_seconds),'model_stage_budget');
+    }else need(op.input===null,'research_operation_input');
+    if(budget){
+     need(budget.window.active,'research_continuation_not_due');
+     const key=JSON.stringify([op.kind,op.key]),successes=budget.accounting.successful_attempts[key]??0;
+     const unresolved=budget.operations.some(item=>item.kind===op.kind&&item.operation_key===op.key&&(!classifiedResult(db,run,item,cache)||item.elapsed_seconds===null));
+     need(!unresolved,'research_original_result_unknown');
+     need(op.kind==='source'?string(op.key,HASH)&&successes<budget.limits.max_attempts_per_source:plan.model_stages.includes(op.key)&&successes<budget.limits.max_attempts_per_model,'attempt_budget');
+     need(researchSecondsWithin(budget.accounting.success_seconds+budget.accounting.reserved_seconds+op.max_seconds,budget.limits.total_budget_seconds),'time_budget');
+     // Reserve against the same accounting snapshot for every member of a batch.
+     budget.accounting.reserved_seconds+=op.max_seconds;
+     const windowStart=budget.window.start??budget.window.window_start??budget.window.not_before;
+     const count=db.prepare('SELECT count(DISTINCT x.operation_id) AS n FROM research_recovery_operations x JOIN research_control_ops o ON o.operation_id=x.operation_id WHERE x.request_id=? AND x.window_start=? AND o.kind=? AND o.operation_key=?').get(c.request_id,windowStart,op.kind,op.key).n;
+     need(count<2,'research_window_attempts_exhausted');
+    }else{
+     need(now<run.started_at+plan.limits.total_budget_seconds*1000,'research_deadline');
+     need(op.kind==='source'?string(op.key,HASH)&&used<plan.limits.max_attempts_per_source:plan.model_stages.includes(op.key)&&used<plan.limits.max_attempts_per_model,'attempt_budget');
+     need(run.charged_seconds+op.max_seconds<=plan.limits.total_budget_seconds,'time_budget');
+    }
+    run.charged_seconds+=op.max_seconds;
    }
    db.prepare("INSERT INTO research_control_ops VALUES(?,?,?,?,?,?,?,?,?,'intent',NULL,NULL,NULL,NULL)").run(op.operation_id,c.request_id,op.kind,op.key,op.input_sha256,JSON.stringify(op.input),c.owner_id,c.epoch,op.max_seconds);
+   if(budget&&op.kind!=='native'){
+    const windowStart=budget.window.start??budget.window.window_start??budget.window.not_before;
+    recordResearchRecoveryOperation(db,{operation_id:op.operation_id,request_id:c.request_id,grant_id:budget.grant_id,window_start:windowStart},now);
+    budget.operations.push({...op,operation_key:op.key,phase:'intent',reserved_seconds:op.max_seconds});
+   }
    grants.push({operation_id:op.operation_id,kind:op.kind,key:op.key,input_sha256:op.input_sha256});
   }
   db.prepare('UPDATE research_control_runs SET charged_seconds=? WHERE request_id=?').run(run.charged_seconds,c.request_id);
@@ -222,13 +365,20 @@ function apply(db,c,now){
   need(exact(c.args,'operation_id')&&string(c.args.operation_id,UUID),'resume_fields');
   const op=db.prepare('SELECT * FROM research_control_ops WHERE request_id=? AND operation_id=?').get(c.request_id,c.args.operation_id);
   need(op&&op.phase==='intent','resume_original_intent');
-  need(op.kind==='native'||run.permit===null&&now<run.started_at+plan.limits.total_budget_seconds*1000,'research_deadline');
+  if(!budget)need(researchOperationDispatchValid(db,run,op,now),'research_deadline');
   const events=[];
   for(const event of db.prepare('SELECT source_ts,phase,reply_text FROM research_control_events WHERE reply_text IS NOT NULL').iterate()){
    const reply=JSON.parse(event.reply_text.slice('!ai-research control-receipt '.length));
    if((reply.dispatch_granted||reply.grant_expired)&&reply.operations?.some(item=>item.operation_id===op.operation_id))events.push({source_ts:event.source_ts,phase:event.phase,dispatch_granted:reply.dispatch_granted});
   }
   need(events.length>0&&events.every(event=>event.phase==='ready'||event.phase==='superseded'||event.phase==='sent'&&event.dispatch_granted===false),'resume_dispatch_not_proven_unstarted');
+  if(budget&&op.kind!=='native'){
+   need(budget.window.active&&run.permit===null,'research_continuation_not_due');
+   const windowStart=budget.window.start??budget.window.window_start??budget.window.not_before;
+   const count=db.prepare('SELECT count(DISTINCT x.operation_id) AS n FROM research_recovery_operations x JOIN research_control_ops o ON o.operation_id=x.operation_id WHERE x.request_id=? AND x.window_start=? AND o.kind=? AND o.operation_key=? AND o.operation_id!=?').get(c.request_id,windowStart,op.kind,op.operation_key,op.operation_id).n;
+   need(count<2,'research_window_attempts_exhausted');
+   recordResearchRecoveryOperation(db,{operation_id:op.operation_id,request_id:c.request_id,grant_id:budget.grant_id,window_start:windowStart},now);
+  }
   for(const event of events)if(event.phase==='ready')db.prepare("UPDATE research_control_events SET phase='superseded' WHERE source_ts=?").run(event.source_ts);
   grants=[{operation_id:op.operation_id,kind:op.kind,key:op.operation_key,input_sha256:op.input_hash}];
  }else if(c.action==='settle'){
@@ -249,7 +399,7 @@ function apply(db,c,now){
  }else if(c.action==='permit'){
   need(exact(c.args,'archive_sha256,bundle_sha256,audit_sha256')&&string(c.args.bundle_sha256,HASH)&&string(c.args.audit_sha256,HASH),'permit_fields');
   const files=archive(db,c.request_id,c.args.archive_sha256);need(run.inputs_hash&&files.some(f=>f.sha256===c.args.bundle_sha256)&&files.some(f=>f.sha256===c.args.audit_sha256),'publication_bytes_missing');
-  publicationEvidence(db,run,plan,c.args);
+  publicationEvidence(db,run,plan,c.args,now,cache);
   if(run.permit){const prior=JSON.parse(run.permit);need(prior.bundle_sha256===c.args.bundle_sha256&&prior.audit_sha256===c.args.audit_sha256&&prior.archive_sha256===c.args.archive_sha256,'immutable_publication_permit');}
   else{
    const permit={permit_id:randomUUID(),request_id:c.request_id,report_date:run.report_date,prompt_commit_sha:plan.prompt_commit_sha,publisher_scope_sha256:db.prepare('SELECT value FROM scope WHERE id=1').get().value,...c.args};
@@ -270,7 +420,7 @@ export function executeResearchControl(db,config,bytes,now=Date.now(),{onResult=
   try{
    need(config.research_control.protocol==='repository_inputs_v1'||['status','upload_status','receipt'].includes(c.action),'authority_migration_required');
    if(c.action==='permit'){const check=publicationChecks.get(publicationCheck);need(check?.command_hash===hash,'publication_validation_required');need(!check.code,check.code);}
-   result=apply(db,c,now);db.exec('RELEASE command');
+   result=apply(db,c,now,config);db.exec('RELEASE command');
   }catch(e){if(!e.researchControlCode)throw e;db.exec('ROLLBACK TO command; RELEASE command');result={status:'rejected',code:e.researchControlCode,run:view(load(db,c.request_id)),dispatch_granted:false};}
   result={command_id:c.command_id,command_sha256:hash,request_id:c.request_id,...result};
   need(Buffer.byteLength(JSON.stringify(result))<=16000,'control_result_limit');

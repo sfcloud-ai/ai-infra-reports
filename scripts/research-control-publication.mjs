@@ -1,3 +1,4 @@
+import {isRepositoryResearchPlan,isLayeredResearchPlan,operationBudget} from './research-budget.mjs';
 import {acceptDataCommand,acceptReadCommand,canonicalRequestDate,requireThat} from './report-handoff.mjs';
 const UUID='[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}';
 export const controlledDate=(c,id)=>!!c.research_control&&canonicalRequestDate(id)>=c.research_control.first_report_date;
@@ -23,7 +24,7 @@ export function permitSubmission(db,c,row,stored=null){
  need(controlledDate(c,row.request_id),'retired_publication_entry');
  const envelope=db.prepare('SELECT permit_id FROM research_control_submissions WHERE source_ts=?').get(row.source_ts);
  const run=db.prepare('SELECT permit,plan FROM research_control_runs WHERE request_id=?').get(row.request_id),permit=run?.permit?JSON.parse(run.permit):null;
- need(run&&JSON.parse(Buffer.from(run.plan)).schema_version==='research_plan_v3','retired_plan_read_only');
+ need(run&&isRepositoryResearchPlan(JSON.parse(Buffer.from(run.plan))),'retired_plan_read_only');
  need(envelope&&permit&&envelope.permit_id===permit.permit_id&&permit.request_id===row.request_id&&permit.bundle_sha256===row.hash&&permit.report_date===canonicalRequestDate(row.request_id),'publication_permit_binding');
  need(permit.publisher_scope_sha256===db.prepare('SELECT value FROM scope WHERE id=1').get().value,'publication_permit_scope');
  const step=row.kind==='stage'?'complete':'submit';

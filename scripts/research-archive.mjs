@@ -1,3 +1,4 @@
+import {isRepositoryResearchPlan,isLayeredResearchPlan,operationBudget} from './research-budget.mjs';
 // Private, immutable research checkpoints. This storage lane grants no research
 // ownership, publication permission, or budget; those require separate policy.
 import {digest} from './archive.mjs';
@@ -105,7 +106,7 @@ export function storeResearchArchive(db,event,bytes){
  if(db.prepare("SELECT 1 FROM sqlite_master WHERE name='research_control_runs'").get()){
   const run=db.prepare('SELECT plan FROM research_control_runs WHERE request_id=?').get(value.request_id);
   const plan=run?JSON.parse(Buffer.from(run.plan)):null;
-  if(plan?.schema_version==='research_plan_v3'){
+  if(isRepositoryResearchPlan(plan)){
    try{assertResearchOutputFiles(plan,files);}catch{rejectArchive('repository_inputs_must_be_references');}
   }
  }
@@ -173,7 +174,7 @@ export async function advanceResearchArchive(state,c,slack,now=Date.now()){
     // retrieval. Historical readback remains available without a new claim.
     if(!c.research_control||!db.prepare("SELECT 1 FROM sqlite_master WHERE name='research_control_runs'").get())rejectArchive('original_research_authority_required');
     const run=db.prepare('SELECT plan FROM research_control_runs WHERE request_id=?').get(row.request_id);
-    if(!run||JSON.parse(Buffer.from(run.plan)).schema_version!=='research_plan_v3')rejectArchive('original_repository_plan_required');
+    if(!run||!isRepositoryResearchPlan(JSON.parse(Buffer.from(run.plan))))rejectArchive('original_repository_plan_required');
     const op=db.prepare("SELECT input,phase FROM research_control_ops WHERE request_id=? AND operation_key=? AND kind='native'").get(row.request_id,'archive:'+row.hash+':complete');
     if(!op||!['intent','unknown','acknowledged'].includes(op.phase))rejectArchive('original_archive_operation_required');
     const input=JSON.parse(op.input);

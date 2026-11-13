@@ -760,5 +760,117 @@ class UnitTests(unittest.TestCase):
                 cd.unit_for(invalid, Path("/new"), Path("/node"), Path("/config"))
 
 
+
+
+
+class ResearchRecoveryCdTests(unittest.TestCase):
+    """新恢复层的只读快照和旧运行端拒绝边界，均为隔离夹具。"""
+    setUp = LedgerTests.setUp
+
+    def install(self):
+        generation = '11111111-1111-4111-8111-111111111111'
+        activation = '1794461160.996000'
+        scope = 'a' * 64
+        with connection(self.database) as database:
+            database.execute('UPDATE scope SET value=?', (scope,))
+            for schema in (cd.PRODUCER_FENCE_SCHEMA, cd.SUBMISSION_SCHEMA,
+                           cd.RESEARCH_ARCHIVE_SCHEMA, cd.RESEARCH_CONTROL_SCHEMA,
+                           cd.RESEARCH_RECOVERY_SCHEMA):
+                for sql in schema.values():
+                    database.execute(sql)
+            database.execute('INSERT INTO producer_admission_fence VALUES(1,?,?,?,?,?)',
+                             (generation, activation, scope, json.dumps(dict(journal_device='1', journal_inode='2', lock_device='3', lock_inode='4')), 'synthetic approval'))
+            common = dict(generation=generation, activation_ts=activation, first_report_date='2026-11-13', publisher_scope_sha256=scope)
+            for table, value in [('slack_submission_policy', dict(common, fence_generation=generation)),
+                                 ('research_archive_policy', dict(common, submission_generation=generation)),
+                                 ('research_control_policy', dict(common, archive_generation=generation, protocol='repository_inputs_v1'))]:
+                database.execute('INSERT INTO '+table+' VALUES(1,?,?)', (json.dumps(value), 'synthetic installation'))
+            database.execute("INSERT INTO research_recovery_installation VALUES(1,'synthetic explicit install',1794461160996)")
+            database.execute('INSERT INTO research_recovery_authorizations VALUES(?,?,?,?)', ('b'*64, 'synthetic approval', b'original approval bytes', 1))
+            database.execute('INSERT INTO research_recovery_grants VALUES(?,?,?,?,?,?,?,?)', ('grant','request',generation,'c'*64,None,'d'*64,b'original grant bytes',2))
+            database.execute('INSERT INTO research_recovery_operations VALUES(?,?,?,?,?)', ('op','request','grant',1200000,3))
+
+    def config(self):
+        path = self.root / 'publisher.json'; path.write_text('{}')
+        operation = self.root / 'operation'; operation.mkdir(exist_ok=True)
+        return {'state':str(self.root),'publisher_config':str(path),'uid':996,'gid':996}, operation
+
+    def test_complete_recovery_schema_rows_and_indexes_are_fingerprinted(self):
+        self.install()
+        before = cd.snapshot(self.database)
+        self.assertEqual(cd.snapshot(self.database), before)
+        with connection(self.database) as database:
+            database.execute("UPDATE research_recovery_grants SET bytes=?", (b'altered',))
+        self.assertNotEqual(cd.snapshot(self.database), before)
+        with connection(self.database) as database:
+            database.execute('CREATE INDEX unauthorized ON research_recovery_operations(request_id)')
+        with self.assertRaisesRegex(ValueError, 'unsupported_research_recovery_schema'):
+            cd.snapshot(self.database)
+
+    def test_partial_or_changed_recovery_schema_rejected(self):
+        self.install()
+        with connection(self.database) as database:
+            database.execute('ALTER TABLE research_recovery_operations ADD COLUMN extra TEXT')
+        with self.assertRaisesRegex(ValueError, 'unsupported_research_recovery_schema'):
+            cd.snapshot(self.database)
+        with connection(self.database) as database:
+            database.execute('DROP TABLE research_recovery_operations')
+        with self.assertRaisesRegex(ValueError, 'unsupported_research_recovery_schema'):
+            cd.snapshot(self.database)
+
+    def test_old_runtime_rejected_before_config_and_state_open(self):
+        node = shutil.which('node')
+        if node is None:
+            self.skipTest('Node is required for candidate rejection check')
+        self.install()
+        scripts = self.root / 'scripts'; scripts.mkdir()
+        (scripts/'handoff-state.mjs').write_text("export class HandoffState{constructor(){throw Error('state_opened')}};export const handoffScope=x=>x;")
+        (scripts/'notice-outbox.mjs').write_text("export class NoticeOutbox{};export const notificationScope=x=>x;")
+        (scripts/'run-handoff.mjs').write_text("export function validateConfig(){throw Error('config_opened')}")
+        (scripts/'research-control.mjs').write_text('export const REPOSITORY_RESEARCH_INPUTS_VERSION=1;')
+        config, operation = self.config(); before = cd.snapshot(self.database)
+        def probe(config, release, arguments, **kwargs):
+            result = subprocess.run([node,'--input-type=module','-e',arguments[-1]],cwd=release,capture_output=True,text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('layered_budget_requires_compatible_release', result.stderr)
+            self.assertNotIn('config_opened', result.stderr)
+            self.assertNotIn('state_opened', result.stderr)
+            raise ValueError('candidate_incompatible')
+        with patch.object(cd,'container',side_effect=probe), patch.object(cd,'legacy_dependency_mount',return_value=[]), patch.object(os,'chown'):
+            with self.assertRaisesRegex(ValueError,'candidate_incompatible'):
+                cd.compatibility(config,self.root,operation,before)
+        self.assertEqual(cd.snapshot(self.database),before)
+
+    def test_probe_retains_recovery_rows_and_does_not_install_on_legacy(self):
+        config, operation = self.config()
+        def probe(config, release, arguments, **kwargs):
+            mount=kwargs['extra'][1]; copied=Path(mount[len('type=bind,src='):-len(',dst=/probe')])/'handoff.sqlite'
+            self.assertEqual(cd.snapshot(copied), before)
+            self.assertEqual('LAYERED_RESEARCH_BUDGET_VERSION' in arguments[-1], installed)
+        for installed in [False, True]:
+            if installed:
+                self.install()
+            before=cd.snapshot(self.database)
+            with patch.object(cd,'container',side_effect=probe), patch.object(cd,'legacy_dependency_mount',return_value=[]), patch.object(os,'chown'):
+                cd.compatibility(config,self.root,operation,before)
+            self.assertEqual(cd.snapshot(self.database),before)
+        def mutation(config, release, arguments, **kwargs):
+            mount=kwargs['extra'][1]; copied=Path(mount[len('type=bind,src='):-len(',dst=/probe')])/'handoff.sqlite'
+            with connection(copied) as database:
+                database.execute("UPDATE research_recovery_authorizations SET bytes=?", (b'changed',))
+        with patch.object(cd,'container',side_effect=mutation), patch.object(cd,'legacy_dependency_mount',return_value=[]), patch.object(os,'chown'):
+            with self.assertRaisesRegex(ValueError,'automatic_state_migration_not_supported'):
+                cd.compatibility(config,self.root,operation,before)
+        self.assertEqual(cd.snapshot(self.database),before)
+
+    def test_cd_schema_matches_runtime_export_exactly(self):
+        node = shutil.which('node')
+        if node is None:
+            self.skipTest('Node is required for runtime schema comparison')
+        root = Path(__file__).resolve().parents[1]
+        result = subprocess.run([node,'--input-type=module','-e',"import{RESEARCH_RECOVERY_SCHEMA}from'./scripts/research-recovery.mjs';console.log(JSON.stringify(RESEARCH_RECOVERY_SCHEMA))"],cwd=root,capture_output=True,text=True,check=True)
+        self.assertEqual(json.loads(result.stdout), cd.RESEARCH_RECOVERY_SCHEMA)
+
+
 if __name__ == "__main__":
     unittest.main()
