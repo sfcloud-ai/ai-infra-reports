@@ -1,3 +1,4 @@
+import {stagingTable,originalRunId,assertPageAdmission,pageRound,assertPageCorrectionDelivery} from './research-page-authority.mjs';
 // Opt-in, host-persistent staging. Slack is the data transport, not an executor.
 // Installation is offline under the original Publisher lock; normal ticks never
 // create policy or infer a missing ledger. Old Producer unknowns remain fenced.
@@ -70,7 +71,7 @@ export function queueSubmission(db,event){
 }
 export function submissionStatus(db,id){
  if(!db.prepare("SELECT 1 FROM sqlite_master WHERE name='slack_submission_policy'").get())return null;
- const bundle=db.prepare('SELECT request_id,report_date,hash,source_ts,file_id,phase,submit_ts FROM slack_staged_bundles WHERE request_id=?').get(id);
+ const bundle=db.prepare(`SELECT request_id,report_date,hash,source_ts,file_id,phase,submit_ts FROM ${stagingTable(db,id)} WHERE request_id=?`).get(id);
  const pending=db.prepare("SELECT source_ts,kind,hash,file_id,target_ts,phase,next_at,diagnostic FROM slack_submission_events WHERE request_id=? AND phase='pending' ORDER BY source_ts LIMIT 4").all(id);
  return {bundle:bundle??null,pending:pending.map(r=>({...r,diagnostic:r.diagnostic?JSON.parse(r.diagnostic):null}))};
 }
@@ -87,13 +88,16 @@ export async function advanceSubmission(state,config,slack,query=queryScheduled,
   const date=canonicalRequestDate(row.request_id);
   requireThat(!db.prepare('SELECT 1 FROM producer_quarantined_dates WHERE report_date=?').get(date),'Original unresolved date is quarantined');
   if(row.kind==='revision'){
+   if(pageRound(db,row.request_id))throw Object.assign(Error('Revision reserved by original page continuation'),{researchPublicationRejection:'page_revision_reserved'});
    requireThat(!db.prepare("SELECT 1 FROM slack_submission_events WHERE request_id=? AND hash!=? AND phase!='fenced'").get(row.request_id,row.hash),'Conflicting original revision evidence requires reconciliation');
    const message=await slack.exactPublish(row.source_ts),original=acceptSubmission(message,config,now,{from:config.slack_submission.activation_ts,to:row.source_ts});
    requireThat(original&&['kind','request_id','hash','file_id','target_ts'].every(k=>(original[k]??null)===row[k]),'Original revision command changed');
    const bytes=await slack.download(row),bundle=await decodeBundle(bytes);
-   requireThat(bundle.report.schema_version==='1.1'&&bundle.report.revision>1&&bundle.data.request_id===row.request_id&&bundle.hash===row.hash&&bundle.report.date===date,'Explicit revision bundle binding required');
+   requireThat(['1.1','1.2'].includes(bundle.report.schema_version)&&bundle.report.revision>1&&['correction','material_update','maintenance'].includes(bundle.report.revision_notice?.kind)&&bundle.data.request_id===row.request_id&&bundle.hash===row.hash&&bundle.report.date===date,'Explicit revision bundle binding required');
    db.exec('BEGIN IMMEDIATE');try{
     assertSubmission(db,config);
+    if(pageRound(db,row.request_id))throw Object.assign(Error('Revision reserved by original page continuation'),{researchPublicationRejection:'page_revision_reserved'});
+    assertPageCorrectionDelivery(db,bundle);
     const prior=state.metadata(row.request_id);
     if(prior)requireThat(prior.hash===row.hash&&prior.source_ts===row.source_ts&&prior.detail.intake_file_id===row.file_id,'Original revision publication conflict');
     else{
@@ -113,7 +117,9 @@ export async function advanceSubmission(state,config,slack,query=queryScheduled,
    }catch(error){db.exec('ROLLBACK');throw error;}
    return;
   }
-  let stored=db.prepare('SELECT * FROM slack_staged_bundles WHERE request_id=?').get(row.request_id);
+  const stagedTable=stagingTable(db,row.request_id),page=stagedTable==='research_page_staged';
+  const checkPage=bundle=>assertPageAdmission(db,db.prepare('SELECT * FROM research_control_runs WHERE request_id=?').get(originalRunId(row.request_id)),bundle.data);
+  let stored=db.prepare(`SELECT * FROM ${stagedTable} WHERE request_id=?`).get(row.request_id);
   permitSubmission(db,config,row,stored);
   requireThat(!db.prepare("SELECT 1 FROM slack_submission_events WHERE request_id=? AND hash!=? AND phase!='fenced'").get(row.request_id,row.hash),'Conflicting original staging evidence requires reconciliation');
   const message=await slack.exactPublish(row.source_ts),original=acceptSubmission(message,config,now,{from:config.slack_submission.activation_ts,to:row.source_ts});
@@ -124,12 +130,13 @@ export async function advanceSubmission(state,config,slack,query=queryScheduled,
    requireThat(bundle.data.request_id===row.request_id&&bundle.hash===row.hash&&bundle.report.date===date,'Staged bundle binding differs');
    if(stored){requireThat(stored.hash===row.hash&&stored.report_date===date&&Buffer.from(stored.bytes).equals(bytes),'Original staged bytes cannot change');}
    else{
-    requireThat(!db.prepare('SELECT 1 FROM slack_staged_bundles WHERE report_date=?').get(date),'Date already staged');
-    await emptyDay(state,config,row,date,query,clock);
+    if(page)checkPage(bundle);
+    else{requireThat(!db.prepare('SELECT 1 FROM slack_staged_bundles WHERE report_date=?').get(date),'Date already staged');await emptyDay(state,config,row,date,query,clock);}
    }
    db.exec('BEGIN IMMEDIATE');try{
     const authority=permitSubmission(db,config,row,stored);
-    if(!stored)db.prepare('INSERT INTO slack_staged_bundles(request_id,report_date,hash,source_ts,file_id,bytes) VALUES(?,?,?,?,?,?)').run(row.request_id,date,row.hash,row.source_ts,row.file_id,bytes);
+    if(page)checkPage(bundle);
+    if(!stored)db.prepare(`INSERT INTO ${stagedTable}(request_id,report_date,hash,source_ts,file_id,bytes) VALUES(?,?,?,?,?,?)`).run(row.request_id,date,row.hash,row.source_ts,row.file_id,bytes);
     settlePermitSubmission(db,authority,row,bytes.length);
     db.prepare("UPDATE slack_submission_events SET phase='done',diagnostic=NULL,next_at=0 WHERE source_ts=?").run(row.source_ts);db.exec('COMMIT');
    }catch(e){db.exec('ROLLBACK');throw e;}
@@ -139,13 +146,14 @@ export async function advanceSubmission(state,config,slack,query=queryScheduled,
    requireThat(bundle.hash===stored.hash&&bundle.report.date===date&&bundle.data.request_id===row.request_id,'Original staged bytes changed');
    const prior=state.metadata(row.request_id);
    if(prior)requireThat(stored.phase==='admitted'&&prior.hash===stored.hash&&prior.source_ts===stored.source_ts&&prior.detail.intake_file_id===stored.file_id,'Original publication conflicts with staging');
-   else{requireThat(stored.phase==='staged','Original staged admission missing');await emptyDay(state,config,row,date,query,clock);}
+   else{requireThat(stored.phase==='staged','Original staged admission missing');if(page)checkPage(bundle);else await emptyDay(state,config,row,date,query,clock);}
    db.exec('BEGIN IMMEDIATE');try{
     const authority=permitSubmission(db,config,row,stored);
+    if(page)checkPage(bundle);
     if(!prior){
      const job=state.admit({request_id:row.request_id,hash:stored.hash,source_ts:stored.source_ts,file_id:stored.file_id},bytes);
      state.move(job.id,'received','received',{...job.detail,intake_transport:'slack_staged_file_v1',submission_source_ts:row.source_ts});
-     db.prepare("UPDATE slack_staged_bundles SET phase='admitted',submit_ts=? WHERE request_id=?").run(row.source_ts,row.request_id);
+     db.prepare(`UPDATE ${stagedTable} SET phase='admitted',submit_ts=? WHERE request_id=?`).run(row.source_ts,row.request_id);
     }
     settlePermitSubmission(db,authority,row,bytes.length);
     db.prepare("UPDATE slack_submission_events SET phase='done',diagnostic=NULL,next_at=0 WHERE source_ts=?").run(row.source_ts);db.exec('COMMIT');

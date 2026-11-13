@@ -68,10 +68,11 @@ export async function advanceScheduledDelivery(state,config,query=queryScheduled
    const expected=JSON.parse(binding);
    const revised=!!bundle.report.revision_notice;
    requireThat(result&&Object.entries(expected).every(([k,v])=>result[k]===v)&&['queued','sending','sent','failed','unknown','partial',...(revised?['skipped']:[])].includes(result.status)&&Number.isSafeInteger(result.parts_total)&&result.parts_total>=(revised?0:1)&&Number.isSafeInteger(result.parts_sent)&&result.parts_sent>=0&&result.parts_sent<=result.parts_total,'Relay status binding/counts differ');
-   if(revised)requireThat(result.report_revision===bundle.report.revision&&['initial','revision_update','web_only'].includes(result.delivery_kind),'Revision delivery policy binding differs');
+   if(revised)requireThat(result.report_revision===bundle.report.revision&&['initial','revision_update','web_only','page_completion'].includes(result.delivery_kind),'Revision delivery policy binding differs');
+   if(result.delivery_kind==='page_completion'||bundle.report.revision_notice?.kind==='page_completion')requireThat(result.delivery_kind==='page_completion'&&bundle.report.revision_notice?.kind==='page_completion','Page completion policy differs');
    const images=statusImages(result.images);
    const full=images.length===1&&images[0].file_id==='scheduled-poster'&&images[0].status==='sent'&&images[0].error===null;
-   const complete=result.status==='sent'&&result.phase==='complete'&&result.parts_sent===result.parts_total&&(revised&&result.delivery_kind==='revision_update'?result.parts_total===1&&images.length===0:(!revised||result.delivery_kind==='initial')&&full);
+   const complete=result.status==='sent'&&result.phase==='complete'&&result.parts_sent===result.parts_total&&(revised&&['revision_update','page_completion'].includes(result.delivery_kind)?result.parts_total===1&&images.length===0:(!revised||result.delivery_kind==='initial')&&full);
    const skipped=revised&&result.delivery_kind==='web_only'&&result.phase==='skipped'&&result.status==='skipped'&&result.parts_total===0&&images.length===0;
    requireThat(result.status!=='skipped'||skipped,'Website-only update is not a sent message');
    requireThat(result.status!=='sent'||complete,'Incomplete delivery cannot be sent');
@@ -143,7 +144,7 @@ export async function replyScheduledStatus(state,config,event,slack,query=queryS
  if(remote.status!=='not_found')requireThat(remote.request_id===requestId,'Status request differs');
  const job=state.metadata(requestId);
  if(job?.detail.commit&&remote.status!=='not_found')requireThat(remote.report_commit===job.detail.commit&&remote.bundle_sha256===job.hash,'Status original binding differs');
- const fields=['status','phase','report_date','report_commit','bundle_sha256','parts_sent','parts_total','next_attempt_at','attempts','delivery_kind','report_revision'];
+ const fields=['page_state','status','phase','report_date','report_commit','bundle_sha256','parts_sent','parts_total','next_attempt_at','attempts','delivery_kind','report_revision'];
  const result=Object.fromEntries(fields.filter(k=>Object.hasOwn(remote,k)).map(k=>[k,remote[k]]));
  if(remote.phase==='superseded'){
   requireThat(typeof remote.report_date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(remote.report_date)&&new RegExp('^morning-'+remote.report_date.replaceAll('-','')+'-r(?:[2-9]|[1-9][0-9]+)$').test(remote.superseded_by??''),'Status successor binding differs');

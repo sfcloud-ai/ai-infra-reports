@@ -1,11 +1,13 @@
+import {installResearchRecovery,approveResearchRecoveryGrant,nextResearchContinuationAt} from '../scripts/research-recovery.mjs';
 // Isolated host authority fixtures. No real provider calls or native uploads.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
+import {administerRecovery} from '../scripts/research-recovery-admin.mjs';
 import {mkdtemp,rm,writeFile,readFile,mkdir} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {pathToFileURL} from 'node:url';
+import {pathToFileURL,fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 import {REQUIRED_RESEARCH_CHECKS} from '../scripts/research-coverage.mjs';
 import {HandoffState,handoffScope} from '../scripts/handoff-state.mjs';
@@ -14,7 +16,7 @@ import {installSubmission,advanceSubmission} from '../scripts/slack-submission.m
 import {PublisherInbox} from '../scripts/publisher-inbox.mjs';
 import {encodeBundle} from '../scripts/report-handoff.mjs';
 import {installResearchArchive,storeResearchArchive} from '../scripts/research-archive.mjs';
-import {installResearchControl,migrateResearchControl,assertResearchControl,executeResearchControl,researchSourceIdentity,decodeResearchControl,preparePublicationCheck,RESEARCH_CONTROL_SCHEMA} from '../scripts/research-control.mjs';
+import {installResearchControl,migrateResearchControl,assertResearchControl,executeResearchControl,researchSourceIdentity,decodeResearchControl,preparePublicationCheck,RESEARCH_CONTROL_SCHEMA,researchOperationDispatchValid} from '../scripts/research-control.mjs';
 import {advanceResearchControl,queueResearchControl,pendingResearchControls,researchControlHealth} from '../scripts/research-control-inbox.mjs';
 import {handoffTick} from '../scripts/run-handoff.mjs';
 import {nativeResearchAuthority,researchCommandText,verifyResearchControlReceipt,CONTROL_THREAD_TOOL} from '../scripts/research-control-client.mjs';
@@ -53,7 +55,7 @@ function archive(s,files){
  const hash=digest(bytes);storeResearchArchive(s.db,{request_id:id,hash,source_ts:'1793491201.'+String(s.db.prepare('SELECT count(*) n FROM research_archives').get().n).padStart(6,'0'),file_id:'FARCHIVE'},bytes);return hash;
 }
 const repositoryPlan=plan;
-function start(s,bytes=plan){const claim=execute(s,command('claim',{plan_base64:bytes.toString('base64')}));assert.equal(claim.status,'claimed');const result=execute(s,command('inputs',{},claim.run));assert.equal(result.status,'committed');return result.run;}
+function start(s,bytes=plan){if(JSON.parse(bytes).schema_version==='research_plan_v4')installResearchRecovery(s.db,'synthetic layered activation');const claim=execute(s,command('claim',{plan_base64:bytes.toString('base64')}));assert.equal(claim.status,'claimed');const result=execute(s,command('inputs',{},claim.run));assert.equal(result.status,'committed');return result.run;}
 function message(text,ts,file){return {type:'message',user:SCOPE.sender_user_id,app_id:SCOPE.sender_user_app_id,ts,text:text+' '+SCOPE.sender_attribution_text,...(file?{files:[{id:file}]}:{}),blocks:[{type:'rich_text',elements:[{type:'rich_text_section',elements:[{type:'text',text}]}]},{type:'context',elements:[{type:'mrkdwn',text:SCOPE.sender_attribution_text,verbatim:false}]}]};}
 const source=(key='https://example.org/changes',kind='source')=>{const input=kind==='source'?{method:'GET',url:key}:null,hash=input?researchSourceIdentity(input).hash:'d'.repeat(64);return {operation_id:randomUUID(),kind,key:input?hash:key,input_sha256:hash,input,max_seconds:180};};
 const unknown=operation_id=>({operation_id,outcome:'unknown',elapsed_seconds:null,archive_sha256:null,file_sha256:null,native_result:null});
@@ -176,7 +178,7 @@ test('a real child-process exit after confirmed POST resumes completion using th
   s=new HandoffState(database,handoffScope(config));assert.equal(s.db.prepare('SELECT count(*) n FROM research_control_ops').get().n,3);
   assert.equal(s.db.prepare("SELECT count(*) n FROM research_control_ops WHERE phase='acknowledged'").get().n,3);
   assert.equal(s.db.prepare('SELECT file_id FROM research_archives').get().file_id,'FORIGINAL');
- }finally{s?.close();await rm(dir,{recursive:true,force:true});}
+ }finally{s?.close();delete config.producer_app_id;delete config.merger_app_id;delete config.ready_for_review;await rm(dir,{recursive:true,force:true});}
 });
 test('wire size rejects oversized batches before reservation and malformed settle receives a terminal reply',async()=>{
  const s=setup();try{
@@ -558,5 +560,541 @@ test('real staging path accepts the original completed upload after takeover and
   await inbox.scan(slack,clock+2000);const submitted=await advanceSubmission(s,config,slack,async()=>({...await remote(),observed_at:clock+2000}),clock+2000);assert.equal(submitted,undefined);
   assert.equal(s.metadata(id).hash,hash);assert.equal(s.metadata(id).source_ts,stage.ts);assert.equal(s.metadata(id).detail.submission_source_ts,submit.ts);
   assert.equal(s.db.prepare('SELECT count(*) n FROM jobs').get().n,1);assert.equal(s.db.prepare('SELECT phase FROM research_control_ops WHERE operation_id=?').get(op.operation_id).phase,'acknowledged');
+ }finally{s.close();}
+});
+
+const layeredPlan=()=>Buffer.from(JSON.stringify({...JSON.parse(plan),schema_version:'research_plan_v4',limits:{max_attempts_per_source:2,max_attempts_per_model:2,source_attempt_timeout_seconds:180,model_stage_timeout_seconds:1200,total_budget_seconds:3600}}));
+test('layered plan admits model stages over 180 seconds without changing legacy plan limits',()=>{
+ const s=setup();try{
+  let run=start(s,layeredPlan());
+  const model={...source('editor','model'),max_seconds:600};
+  const result=execute(s,command('reserve',{operations:[model]},run));
+  assert.equal(result.status,'committed');assert.equal(result.run.charged_seconds,600);
+  const bad={...source('https://example.org/slow'),max_seconds:181};
+  assert.equal(execute(s,command('reserve',{operations:[bad]},result.run)).code,'operation_fields');
+ }finally{s.close();}
+ const old=setup();try{const run=start(old);assert.equal(execute(old,command('reserve',{operations:[{...source('editor','model'),max_seconds:600}]},run)).code,'operation_fields');}finally{old.close();}
+});
+test('layered model recovery binds original acknowledged failure checkpoint and remaining stage budget',()=>{
+ const s=setup();try{
+  let run=start(s,layeredPlan());const first={...source('editor','model'),max_seconds:600};
+  run=execute(s,command('reserve',{operations:[first]},run)).run;
+  const data=Buffer.from(JSON.stringify({status:'timeout',operation_id:first.operation_id,request_id:id,elapsed_seconds:500,completed:['candidate-1'],remaining:['candidate-2']}));
+  const head=archive(s,{'stage_artifacts/checkpoint.json':data});
+  run=execute(s,command('settle',{operation_id:first.operation_id,outcome:'acknowledged',elapsed_seconds:500,archive_sha256:head,file_sha256:digest(data),native_result:null},run)).run;
+  const second={...source('editor','model'),input_sha256:'e'.repeat(64),max_seconds:1200,input:{previous_operation_id:first.operation_id,checkpoint_archive_sha256:head,checkpoint_file_sha256:digest(data)}};
+  assert.equal(execute(s,command('reserve',{operations:[{...second,max_seconds:1201}]},run)).code,'operation_fields');
+  assert.equal(execute(s,command('reserve',{operations:[{...second,input:{...second.input,checkpoint_file_sha256:'f'.repeat(64)}}]},run)).code,'model_recovery_original');
+  const result=execute(s,command('reserve',{operations:[second]},run));assert.equal(result.status,'committed');assert.equal(result.run.charged_seconds,1700);
+  const observed=execute(s,command('status',{offset:0}));assert.equal(observed.effective_budget.accounting.failed_seconds,500);assert.equal(observed.effective_budget.accounting.reserved_seconds,1200);
+ }finally{s.close();}
+});
+test('layered model unknown result cannot be replayed as recovery',()=>{
+ const s=setup();try{
+  let run=start(s,layeredPlan());const first=source('editor','model');run=execute(s,command('reserve',{operations:[first]},run)).run;
+  run=execute(s,command('settle',unknown(first.operation_id),run)).run;
+  const second={...source('editor','model'),input:{previous_operation_id:first.operation_id,checkpoint_archive_sha256:'a'.repeat(64),checkpoint_file_sha256:'b'.repeat(64)}};
+  assert.equal(execute(s,command('reserve',{operations:[second]},run)).code,'model_recovery_original');
+ }finally{s.close();}
+});
+
+test('layered failed source attempts preserve evidence but resume next hourly window without consuming success allowance',()=>{
+ const s=setup();try{
+  let run=start(s,layeredPlan());const url='https://example.org/temporary';
+  for(let i=0;i<2;i++){
+   const op=source(url);run=execute(s,command('reserve',{operations:[op]},run)).run;
+   const data=Buffer.from(JSON.stringify({status:'timeout',url,operation_id:op.operation_id,request_id:id,elapsed_seconds:181}));
+   const head=archive(s,{['results/attempt-'+i+'.json']:data});
+   const settled=execute(s,command('settle',{operation_id:op.operation_id,outcome:'acknowledged',elapsed_seconds:181,archive_sha256:head,file_sha256:digest(data),native_result:null},run));
+   assert.equal(settled.status,'committed');run=settled.run;
+  }
+  assert.equal(execute(s,command('reserve',{operations:[source(url)]},run)).code,'research_window_attempts_exhausted');
+  const oldStarted=run.started_at,oldHash=run.plan_hash;
+  const later=now+3600000;
+  run=execute(s,command('claim',{plan_base64:layeredPlan().toString('base64')},run),later).run;
+  const resumed=execute(s,command('reserve',{operations:[source(url)]},run),later);
+  assert.equal(resumed.status,'committed');assert.equal(resumed.run.started_at,oldStarted);assert.equal(resumed.run.plan_hash,oldHash);
+  const observed=execute(s,command('status',{offset:0}),later);
+  assert.equal(observed.effective_budget.accounting.failed_seconds,362);assert.equal(observed.effective_budget.accounting.success_seconds,0);assert.equal(observed.run.charged_seconds,542);
+ }finally{s.close();}
+});
+
+test('layered original unstarted intent can resume in a later window without duplicate operation or charge',()=>{
+ const s=setup();try{
+  let run=start(s,layeredPlan());const op=source('editor','model'),cmd=command('reserve',{operations:[op]},run),result=execute(s,cmd);run=result.run;
+  const reply='!ai-research control-receipt '+JSON.stringify({...result,dispatch_granted:false,grant_expired:true});
+  s.db.prepare('INSERT INTO research_control_events VALUES(?,?,?,?,?,?,?,?,?,?)').run('1793491201.999999',cmd.command_id,digest(Buffer.from(JSON.stringify(cmd))),Buffer.from(JSON.stringify(cmd)),'sent',1,0,reply,'1793491202.999999',null);
+  const later=now+3600000;
+  run=execute(s,command('claim',{plan_base64:layeredPlan().toString('base64')},run),later).run;
+  const resumed=execute(s,command('resume',{operation_id:op.operation_id},run),later);
+  assert.equal(resumed.status,'committed');assert.equal(resumed.dispatch_granted,true);
+  assert.equal(s.db.prepare('SELECT count(*) n FROM research_control_ops').get().n,1);
+  assert.equal(s.db.prepare('SELECT count(*) n FROM research_recovery_operations').get().n,2);
+  assert.equal(resumed.run.charged_seconds,180);
+ }finally{s.close();}
+});
+test('approved recovery grant continues original legacy failed model without rewriting original plan or elapsed cost',()=>{
+ const s=setup();try{
+  let run=start(s);const first=source('editor','model');run=execute(s,command('reserve',{operations:[first]},run)).run;
+  const data=Buffer.from(JSON.stringify({schema_version:'private_research_result_v1',request_id:id,operation_id:first.operation_id,stage_status:'failed',elapsed_seconds:189.45}));
+  const head=archive(s,{'original-failure.json':data});
+  run=execute(s,command('settle',{operation_id:first.operation_id,outcome:'acknowledged',elapsed_seconds:189.45,archive_sha256:head,file_sha256:digest(data),native_result:null},run)).run;
+  const savedPlan=s.db.prepare('SELECT plan FROM research_control_runs').get().plan,originalStart=run.started_at;
+  installResearchRecovery(s.db,'explicit synthetic user authorization',now);
+  const grant={schema_version:'research_recovery_grant_v1',grant_id:randomUUID(),request_id:id,generation:config.research_control.generation,plan_hash:run.plan_hash,previous_sha256:null,authorization_reference:'synthetic owner approval',effective_not_before:nextResearchContinuationAt(now),window_seconds:3600,failed_attempts_consume_success_budget:false,continuation_policy:'hourly_20_until_complete'};
+  const bytes=Buffer.from(JSON.stringify(grant));
+  assert.equal(execute(s,command('recovery_grant',{grant_base64:bytes.toString('base64')},run)).code,'recovery_authorization_unverified');
+  approveResearchRecoveryGrant(s.db,bytes,grant.authorization_reference,now);
+  run=execute(s,command('recovery_grant',{grant_base64:bytes.toString('base64')},run)).run;
+  const retry={...source('editor','model'),max_seconds:600,input:{previous_operation_id:first.operation_id,checkpoint_archive_sha256:head,checkpoint_file_sha256:digest(data)}};
+  assert.equal(execute(s,command('reserve',{operations:[retry]},run)).code,'research_continuation_not_due');
+  const later=grant.effective_not_before+3600000;
+  run=execute(s,command('claim',{plan_base64:plan.toString('base64')},run),later).run;
+  const resumed=execute(s,command('reserve',{operations:[retry]},run),later);
+  assert.equal(resumed.status,'committed');assert.equal(resumed.run.charged_seconds,789.45);assert.equal(resumed.run.started_at,originalStart);
+  assert.deepEqual(s.db.prepare('SELECT plan FROM research_control_runs').get().plan,savedPlan);
+ }finally{s.close();}
+});
+
+test('layered publication verifies host accounting with only microsecond summation tolerance',async()=>{
+ const s=setup();try{
+  let run=start(s,layeredPlan());
+  for(const [i,elapsed] of [0.3,0.2,0.1].entries()){
+   const url='https://example.org/accounting/'+i,op=source(url);run=execute(s,command('reserve',{operations:[op]},run)).run;
+   const data=Buffer.from(JSON.stringify({request_id:id,operation_id:op.operation_id,url,status:'ok',elapsed_seconds:elapsed}));
+   const h=archive(s,{['source-'+i+'.json']:data});
+   run=execute(s,command('settle',{operation_id:op.operation_id,outcome:'acknowledged',elapsed_seconds:elapsed,archive_sha256:h,file_sha256:digest(data),native_result:null},run)).run;
+  }
+  const bundle=await encodeBundle(FILES,id,'b'.repeat(40),'a'.repeat(40));
+  const valid=auditSummary({schema_version:'1.4',budget_policy:'successful_work_hourly_continuation_v1',limits:{source_attempts:2,model_attempts:2,source_attempt_seconds:180,model_stage_seconds:1200,run_seconds:3600},budget_accounting:{successful_attempts:{source:3,model:0},failed_attempts:{source:0,model:0},unknown_attempts:{source:0,model:0},successful_seconds:0.1+0.2+0.3,failed_seconds:0,reserved_unknown_seconds:0,charged_seconds:0.1+0.2+0.3}});
+  for(const [a,code] of [[{...valid,schema_version:'1.3'},'publication_coverage_contract'],[{...valid,budget_accounting:{...valid.budget_accounting,successful_seconds:0}},'publication_budget_accounting']]){
+   const audit=Buffer.from(JSON.stringify(a)),h=archive(s,{'bundle.json':bundle,'audit.json':audit});
+   assert.equal((await issuePermit(s,command('permit',{archive_sha256:h,bundle_sha256:digest(bundle),audit_sha256:digest(audit)},run))).code,code);
+  }
+  const audit=Buffer.from(JSON.stringify(valid)),h=archive(s,{'bundle.json':bundle,'audit.json':audit});
+  assert.equal((await issuePermit(s,command('permit',{archive_sha256:h,bundle_sha256:digest(bundle),audit_sha256:digest(audit)},run))).status,'committed');
+ }finally{s.close();}
+});
+
+
+test('malformed recovery grant is a durable rejection not an unhandled pending command',async()=>{
+ const s=setup();try{const run=start(s);const cmd=command('recovery_grant',{grant_base64:Buffer.from('{broken').toString('base64')},run);
+ const result=execute(s,cmd);assert.equal(result.status,'rejected');assert.equal(result.code,'recovery_json');assert.equal(result.dispatch_granted,false);
+ assert.deepEqual(execute(s,cmd),{...result,replayed:true});
+ const fresh=command('recovery_grant',{grant_base64:Buffer.from('{broken').toString('base64')},run);queue(s,fresh);
+ let receipt;await advanceResearchControl(s,config,{controlReceipt:async(_,text)=>{receipt=JSON.parse(text.slice('!ai-research control-receipt '.length));return '1793491209.000001';}},now);
+ assert.equal(receipt.code,'recovery_json');assert.equal(receipt.status,'rejected');
+ assert.equal(s.db.prepare('SELECT phase FROM research_control_events').get().phase,'sent');
+ }finally{s.close();}
+});
+
+test('unstarted legacy intent follows approved grant chain without a new operation',()=>{
+ const s=setup();try{
+ let run=start(s),t=now;installResearchRecovery(s.db,'explicit synthetic user authorization',now);
+ const grant=(previous)=>{const g={schema_version:'research_recovery_grant_v1',grant_id:randomUUID(),request_id:id,generation:config.research_control.generation,plan_hash:run.plan_hash,previous_sha256:previous,authorization_reference:'synthetic owner approval',effective_not_before:nextResearchContinuationAt(t),window_seconds:3600,failed_attempts_consume_success_budget:false,continuation_policy:'hourly_20_until_complete'};const b=Buffer.from(JSON.stringify(g));approveResearchRecoveryGrant(s.db,b,g.authorization_reference,t);run=execute(s,command('recovery_grant',{grant_base64:b.toString('base64')},run),t).run;return {g,b};};
+ const first=grant(null);t=first.g.effective_not_before;
+ run=execute(s,command('claim',{plan_base64:plan.toString('base64')},run),t).run;
+ const op=source('editor','model'),cmd=command('reserve',{operations:[op]},run),result=execute(s,cmd,t);run=result.run;
+ const reply='!ai-research control-receipt '+JSON.stringify({...result,dispatch_granted:false,grant_expired:true});
+ s.db.prepare('INSERT INTO research_control_events VALUES(?,?,?,?,?,?,?,?,?,?)').run('1793491201.999999',cmd.command_id,digest(Buffer.from(JSON.stringify(cmd))),Buffer.from(JSON.stringify(cmd)),'sent',1,0,reply,'1793491202.999999',null);
+ const second=grant(digest(first.b));t=second.g.effective_not_before;
+ run=execute(s,command('claim',{plan_base64:plan.toString('base64')},run),t).run;
+ const resumed=execute(s,command('resume',{operation_id:op.operation_id},run),t);
+ assert.equal(resumed.status,'committed');assert.equal(resumed.dispatch_granted,true);assert.equal(resumed.run.charged_seconds,180);
+ assert.equal(s.db.prepare('SELECT count(*) n FROM research_control_ops').get().n,1);
+ assert.equal(s.db.prepare('SELECT count(*) n FROM research_recovery_operations').get().n,2);
+ }finally{s.close();}
+});
+
+
+test('non-object archived results remain unknown without breaking the original control ledger',()=>{
+ for(const value of ['null','[]','42','"invalid"']){
+ const s=setup();try{
+  let run=start(s,layeredPlan());const op=source('editor','model');run=execute(s,command('reserve',{operations:[op]},run)).run;
+  const data=Buffer.from(value),head=archive(s,{'malformed-result.json':data});
+  const settled=execute(s,command('settle',{operation_id:op.operation_id,outcome:'acknowledged',elapsed_seconds:20,archive_sha256:head,file_sha256:digest(data),native_result:null},run));
+  assert.equal(settled.status,'committed');run=settled.run;
+  const status=execute(s,command('status',{offset:0},null,null));assert.equal(status.status,'observed');
+  assert.equal(execute(s,command('renew',{},run)).status,'committed');
+  run=execute(s,command('status',{offset:0},null,null)).run;
+  const retry={...source('editor','model'),input:{previous_operation_id:op.operation_id,checkpoint_archive_sha256:head,checkpoint_file_sha256:digest(data)}};
+  assert.equal(execute(s,command('reserve',{operations:[retry]},run)).code,'model_recovery_not_failed');
+  assert.equal(s.db.prepare('SELECT count(*) n FROM research_control_ops').get().n,1);
+ }finally{s.close();}
+ }
+});
+
+test('uninstalled recovery layer returns durable well-formed rejection through inbox',async()=>{
+ const s=setup();try{
+  const run=start(s),original=Buffer.from(s.db.prepare('SELECT plan FROM research_control_runs').get().plan);
+  const grant={schema_version:'research_recovery_grant_v1',grant_id:randomUUID(),request_id:id,generation:config.research_control.generation,plan_hash:run.plan_hash,previous_sha256:null,authorization_reference:'synthetic owner approval',effective_not_before:nextResearchContinuationAt(now),window_seconds:3600,failed_attempts_consume_success_budget:false,continuation_policy:'hourly_20_until_complete'};
+  const args={grant_base64:Buffer.from(JSON.stringify(grant)).toString('base64')};
+  const cmd=command('recovery_grant',args,run),result=execute(s,cmd);
+  assert.equal(result.status,'rejected');assert.equal(result.code,'recovery_layer_not_installed');assert.equal(result.dispatch_granted,false);
+  assert.deepEqual(execute(s,cmd),{...result,replayed:true});
+  queue(s,command('recovery_grant',args,run));let receipt;
+  await advanceResearchControl(s,config,{controlReceipt:async(_,text)=>{receipt=JSON.parse(text.slice('!ai-research control-receipt '.length));return '1793491209.000001';}},now);
+  assert.equal(receipt.code,'recovery_layer_not_installed');assert.equal(receipt.status,'rejected');
+  assert.equal(s.db.prepare('SELECT phase FROM research_control_events').get().phase,'sent');
+  assert.equal(s.db.prepare("SELECT count(*) n FROM sqlite_master WHERE name LIKE 'research_recovery_%'").get().n,0);
+  assert.deepEqual(Buffer.from(s.db.prepare('SELECT plan FROM research_control_runs').get().plan),original);
+ }finally{s.close();}
+});
+test('installed capability is observable for both absent and existing legacy run before grant',()=>{
+ const s=setup();try{
+  assert.equal(execute(s,command('status',{offset:0})).capabilities,undefined);
+  installResearchRecovery(s.db,'synthetic explicit installation');
+  const absent=execute(s,command('status',{offset:0}));assert.equal(absent.status,'not_found');
+  const run=start(s),original=Buffer.from(s.db.prepare('SELECT plan FROM research_control_runs').get().plan);
+  const existing=execute(s,command('status',{offset:0}));
+  assert.equal(existing.status,'observed');assert.deepEqual(existing.capabilities,absent.capabilities);
+  assert.deepEqual(existing.capabilities.repository_plan_versions,['research_plan_v3','research_plan_v4']);
+  assert.equal(existing.capabilities.budget_policy,'successful_work_hourly_continuation_v1');
+  assert.equal(existing.effective_budget,undefined);assert.equal(existing.run.plan_hash,run.plan_hash);
+  assert.equal(s.db.prepare('SELECT count(*) n FROM research_recovery_grants').get().n,0);
+  assert.deepEqual(Buffer.from(s.db.prepare('SELECT plan FROM research_control_runs').get().plan),original);
+ }finally{s.close();}
+});
+
+test('layered cumulative publication budget tolerates only bounded floating arithmetic error',async()=>{
+ for(const excess of [0,0.000002]){
+ const s=setup();try{
+  let run=start(s,layeredPlan()),total=0;
+  const durations=excess?[...Array(18).fill(180),0.03,179.99,179.98+excess]:[...Array(18).fill(180),0.03,179.99,178.98,1];
+  for(const [i,elapsed] of durations.entries()){
+   const url='https://example.org/float-limit/'+i,op={...source(url),max_seconds:Math.max(1,Math.floor(elapsed))};
+   const reservation=execute(s,command('reserve',{operations:[op]},run));assert.equal(reservation.status,'committed');run=reservation.run;
+   const data=Buffer.from(JSON.stringify({request_id:id,operation_id:op.operation_id,url,status:'ok',elapsed_seconds:elapsed}));
+   const h=archive(s,{['float-'+i+'.json']:data});run=execute(s,command('settle',{operation_id:op.operation_id,outcome:'acknowledged',elapsed_seconds:elapsed,archive_sha256:h,file_sha256:digest(data),native_result:null},run)).run;total+=elapsed;
+  }
+  const bundle=await encodeBundle(FILES,id,'b'.repeat(40),'a'.repeat(40));
+  const a=auditSummary({schema_version:'1.4',budget_policy:'successful_work_hourly_continuation_v1',limits:{source_attempts:2,model_attempts:2,source_attempt_seconds:180,model_stage_seconds:1200,run_seconds:3600},budget_accounting:{successful_attempts:{source:durations.length,model:0},failed_attempts:{source:0,model:0},unknown_attempts:{source:0,model:0},successful_seconds:total,failed_seconds:0,reserved_unknown_seconds:0,charged_seconds:total}});
+  const audit=Buffer.from(JSON.stringify(a)),h=archive(s,{'bundle.json':bundle,'audit.json':audit});
+  const result=await issuePermit(s,command('permit',{archive_sha256:h,bundle_sha256:digest(bundle),audit_sha256:digest(audit)},run));
+  if(excess)assert.equal(result.code,'publication_success_budget');else {assert(total>3600);assert.equal(result.status,'committed');}
+ }finally{s.close();}
+ }
+});
+
+test('large shared result archive is decoded once per command and never reused across commands',()=>{
+ const s=setup();try{
+  let run=start(s,layeredPlan());
+  const ops=Array.from({length:16},(_,i)=>source('https://example.org/command-cache/'+i));
+  for(let i=0;i<ops.length;i+=8){const result=execute(s,command('reserve',{operations:ops.slice(i,i+8)},run));assert.equal(result.status,'committed');run=result.run;}
+  const files=Object.fromEntries(ops.map((op,i)=>['result-'+i+'.json',Buffer.from(JSON.stringify({request_id:id,operation_id:op.operation_id,url:op.input.url,status:'ok',elapsed_seconds:1}))]));
+  files['body-a.txt']=Buffer.alloc(8*1024*1024,65);files['body-b.txt']=Buffer.alloc(3*1024*1024,66);
+  const head=archive(s,files);
+  // Synthetic fixture rows bind each original intent to its distinct stored result.
+  for(const [i,op] of ops.entries())s.db.prepare("UPDATE research_control_ops SET phase='acknowledged',elapsed_seconds=1,result_archive=?,result_file=? WHERE operation_id=?").run(head,digest(files['result-'+i+'.json']),op.operation_id);
+  const parse=JSON.parse,prepare=s.db.prepare;
+  let decodes=0,reads=0;
+  JSON.parse=function(value,...args){if(typeof value==='string'&&value.startsWith('{"schema_version":"research_archive_v1",'))decodes++;return parse(value,...args);};
+  s.db.prepare=function(sql){if(sql==='SELECT bytes FROM research_archives WHERE request_id=? AND hash=?')reads++;return prepare.call(this,sql);};
+  try{
+   const observed=execute(s,command('status',{offset:0}));assert.equal(observed.status,'observed');
+   assert.equal(observed.effective_budget.accounting.success_seconds,16);assert.equal(decodes,1);assert.equal(reads,1);
+   const renewed=execute(s,command('renew',{},run));assert.equal(renewed.status,'committed');
+   assert.equal(decodes,2);assert.equal(reads,2);
+   // A new command must observe changed phase/result evidence, not old classifications.
+   s.db.prepare("UPDATE research_control_ops SET phase='unknown',elapsed_seconds=NULL,result_archive=NULL,result_file=NULL WHERE operation_id=?").run(ops[0].operation_id);
+   const changed=execute(s,command('status',{offset:0}));
+   assert.equal(changed.effective_budget.accounting.success_seconds,15);assert.equal(changed.effective_budget.accounting.reserved_seconds,180);
+   assert.equal(changed.effective_budget.accounting.unknown_attempts.source,1);assert.equal(decodes,3);assert.equal(reads,3);
+   // Tampering between commands is detected by a fresh original-byte hash validation.
+   const row=s.db.prepare('SELECT bytes FROM research_archives WHERE hash=?').get(head),bad=parse(Buffer.from(row.bytes).toString());
+   bad.files[0].content_base64=Buffer.from('changed').toString('base64');
+   s.db.prepare('UPDATE research_archives SET bytes=? WHERE hash=?').run(Buffer.from(JSON.stringify(bad)),head);
+   assert.throws(()=>execute(s,command('status',{offset:0})),/Research file bytes differ/);
+   assert.equal(decodes,4);assert.equal(reads,4);
+  }finally{JSON.parse=parse;s.db.prepare=prepare;}
+ }finally{s.close();}
+});
+
+test('interleaved large archives have bounded command-local retained memory',()=>{
+ if(!process.env.RESEARCH_CACHE_MEMORY_CHILD){
+  const env={...process.env,RESEARCH_CACHE_MEMORY_CHILD:'1'};delete env.NODE_TEST_CONTEXT;
+  const child=spawnSync(process.execPath,['--expose-gc','--test','--test-name-pattern=^interleaved large archives have bounded command-local retained memory$',fileURLToPath(import.meta.url)],{env,encoding:'utf8',timeout:120000});
+  assert.equal(child.status,0,child.stdout+'\n'+child.stderr);
+  assert.match(child.stdout,/cache-memory peak_growth_bytes=\d+ after_growth_bytes=-?\d+ archives=8/);
+  console.log(child.stdout.match(/cache-memory peak_growth_bytes=\d+ after_growth_bytes=-?\d+ archives=8/)[0]);
+  return;
+ }
+ assert.equal(typeof global.gc,'function');
+ const s=setup();try{
+  let run=start(s,layeredPlan());
+  const ops=Array.from({length:16},(_,i)=>source('https://example.org/bounded-cache/'+i));
+  for(let i=0;i<ops.length;i+=8){const r=execute(s,command('reserve',{operations:ops.slice(i,i+8)},run));assert.equal(r.status,'committed');run=r.run;}
+  // Row order interleaves eight archives twice, each with an 8 MiB body.
+  function storeGroup(group){
+   const files={'body.txt':Buffer.alloc(8*1024*1024,65+group)};
+   for(const i of [group,group+8])files['result-'+i+'.json']=Buffer.from(JSON.stringify({request_id:id,operation_id:ops[i].operation_id,url:ops[i].input.url,status:'ok',elapsed_seconds:1}));
+   const head=archive(s,files);
+   for(const i of [group,group+8])s.db.prepare("UPDATE research_control_ops SET phase='acknowledged',elapsed_seconds=1,result_archive=?,result_file=? WHERE operation_id=?").run(head,digest(files['result-'+i+'.json']),ops[i].operation_id);
+  }
+  for(let i=0;i<8;i++)storeGroup(i);
+  const retained=()=>{global.gc();global.gc();const m=process.memoryUsage();return m.heapUsed+m.arrayBuffers;};
+  const baseline=retained();let peak=baseline,decodes=0;
+  const parse=JSON.parse;
+  JSON.parse=function(value,...args){
+   if(typeof value==='string'&&value.startsWith('{"schema_version":"research_archive_v1",')){
+    decodes++;peak=Math.max(peak,retained());
+   }
+   return parse(value,...args);
+  };
+  try{
+   const observed=execute(s,command('status',{offset:0}));
+   assert.equal(observed.effective_budget.accounting.success_seconds,16);
+   assert.equal(decodes,8,'one decode per archive despite interleaved operation rows');
+   const after=retained();
+   // Forced-GC live-memory samples at parse boundaries include current raw
+   // SQLite bytes and UTF-8 text, not transient allocation peaks or process RSS.
+   // Retaining eight bodies/envelopes exceeded 150 MiB in the previous cache.
+   assert(peak-baseline<80*1024*1024,'bounded live archive memory: '+(peak-baseline));
+   assert(after-baseline<8*1024*1024,'no large bodies retained after command: '+(after-baseline));
+   const again=execute(s,command('status',{offset:0}));
+   assert.equal(again.effective_budget.accounting.success_seconds,16);assert.equal(decodes,16);
+   console.log('cache-memory peak_growth_bytes='+(peak-baseline)+' after_growth_bytes='+(after-baseline)+' archives=8');
+  }finally{JSON.parse=parse;}
+ }finally{s.close();}
+});
+
+test('offline immediate approval stamps real locked approval time and dispatch ends at next :20',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'immediate-admin-')),stateFile=join(dir,'handoff.sqlite');let s;
+ Object.assign(config,{producer_app_id:10,merger_app_id:11,ready_for_review:false});
+ try{
+  s=setup(stateFile);let run=start(s);installResearchRecovery(s.db,'synthetic immediate installation',now);
+  const grant={schema_version:'research_recovery_grant_v1',grant_id:randomUUID(),request_id:id,generation:config.research_control.generation,plan_hash:run.plan_hash,previous_sha256:null,authorization_reference:'synthetic immediate user approval',effective_not_before:null,window_seconds:3600,failed_attempts_consume_success_budget:false,continuation_policy:'immediate_once_then_hourly_20_until_complete'};
+  s.close();s=null;
+  const cfg=join(dir,'config.json'),file=join(dir,'template.json');
+  await writeFile(cfg,JSON.stringify({...config,state_dir:dir,slack_token_file:join(dir,'unused-token'),producer_key_file:join(dir,'unused-key')}),{mode:0o600});await writeFile(file,JSON.stringify(grant),{mode:0o600});
+  const approved=await administerRecovery(cfg,'--approve-now',grant.authorization_reference,file,now);
+  const original=Buffer.from(approved.grant_base64,'base64');assert.equal(approved.approved_at,now);assert.equal(JSON.parse(original).effective_not_before,now);assert.equal(digest(original),approved.sha256);
+  s=new HandoffState(stateFile,handoffScope(config));
+  run=execute(s,command('recovery_grant',{grant_base64:approved.grant_base64},run)).run;
+  const op=source();const reserved=execute(s,command('reserve',{operations:[op]},run));assert.equal(reserved.status,'committed');
+  const row=s.db.prepare('SELECT * FROM research_control_runs WHERE request_id=?').get(id),operation=s.db.prepare('SELECT * FROM research_control_ops WHERE operation_id=?').get(op.operation_id);
+  assert.equal(researchOperationDispatchValid(s.db,row,operation,now),true);
+  assert.equal(researchOperationDispatchValid(s.db,row,operation,nextResearchContinuationAt(now)),false);
+ }finally{s?.close();delete config.producer_app_id;delete config.merger_app_id;delete config.ready_for_review;await rm(dir,{recursive:true,force:true});}
+});
+
+test('legacy body-bound source results require unique authenticated original metadata and never downgrade v4',()=>{
+ for(const mode of ['ok','http-failed','mismatch','duplicate','layered']){
+ const s=setup();try{
+  let run=start(s,mode==='layered'?layeredPlan():plan);const op=source('https://example.org/original-body');run=execute(s,command('reserve',{operations:[op]},run)).run;
+  const body=Buffer.from('original source body'),meta={operation_id:op.operation_id,kind:'source',key:op.key,input_sha256:op.input_sha256,input:op.input,max_seconds:op.max_seconds,elapsed_seconds:1,attempts:1,exit_code:0,http_status:mode==='http-failed'?'404':'200',error:'',bytes:body.length,sha256:digest(body)};
+  if(mode==='mismatch')meta.key='f'.repeat(64);
+  const files={'sources/original.txt':body,'sources/original.json':Buffer.from(JSON.stringify(meta))};if(mode==='duplicate')files['sources/duplicate.json']=files['sources/original.json'];
+  const h=archive(s,files);run=execute(s,command('settle',{operation_id:op.operation_id,outcome:'acknowledged',elapsed_seconds:1,archive_sha256:h,file_sha256:digest(body),native_result:null},run)).run;
+  if(mode!=='layered'){
+   installResearchRecovery(s.db,'synthetic installation',now);const grant={schema_version:'research_recovery_grant_v1',grant_id:randomUUID(),request_id:id,generation:config.research_control.generation,plan_hash:run.plan_hash,previous_sha256:null,authorization_reference:'synthetic immediate approval',effective_not_before:now,window_seconds:3600,failed_attempts_consume_success_budget:false,continuation_policy:'immediate_once_then_hourly_20_until_complete'};
+   const b=Buffer.from(JSON.stringify(grant));approveResearchRecoveryGrant(s.db,b,grant.authorization_reference,now);run=execute(s,command('recovery_grant',{grant_base64:b.toString('base64')},run)).run;
+  }
+  const totals=execute(s,command('status',{offset:0})).effective_budget.accounting;
+  assert.equal(totals.success_seconds,mode==='ok'?1:0);assert.equal(totals.failed_seconds,mode==='http-failed'?1:0);assert.equal(totals.reserved_seconds,['ok','http-failed'].includes(mode)?0:180);
+ }finally{s.close();}
+ }
+});
+
+import {installPageAuthority,authenticatedPrevious} from '../scripts/research-page-authority.mjs';
+import {PAGE_CHECKS} from '../scripts/research-page-coverage.mjs';
+import {installScheduledTables} from '../scripts/scheduled-delivery-state.mjs';
+for(const targetRevision of [2,6,11])test(`real r${targetRevision} page bundle permits append to original run and use independent native/staging identity`,async()=>{
+ const s=setup();try{
+  let run=start(s,layeredPlan());installPageAuthority(s.db);
+  const original=JSON.parse([...FILES].find(([p])=>p.endsWith('/report.json'))[1]);
+  const topicIds=Object.keys(PAGE_CHECKS),rootPath=`reports/${DAY}/`;
+  function pageBundle(revision,previous=null){
+   const report={...structuredClone(original),schema_version:'1.2',revision,articles:original.articles.slice(0,revision),entries:original.entries.filter(e=>topicIds.slice(0,revision).includes(e.article_id))};
+   report.page_delivery={previous,added:[topicIds[revision-1]],pending:topicIds.slice(revision).map(id=>({id,reason:'等待原始来源核验'}))};
+   if(revision>1)report.revision_notice={kind:'page_completion',summary:'补齐硬件页'};
+   const files=new Map([...FILES].filter(([p])=>!p.includes('/articles/')||topicIds.slice(0,revision).some(id=>p.endsWith('/'+id+'.md'))).map(([p,b])=>[p.replace('/r1/','/'),b]));
+   files.set(rootPath+'report.json',Buffer.from(JSON.stringify(report)));return {report,files};
+  }
+  const first=pageBundle(1),scope=report=>({contract:'verified_pages_v1',page_delivery:report.page_delivery,checked_pages:report.page_delivery.added,previous_evidence:null});
+  const limits={source_attempts:2,model_attempts:2,source_attempt_seconds:180,model_stage_seconds:1200,run_seconds:3600};
+  let metadata={schema_version:'1.4',date:DAY,scope:'new_daily',decisions:[],status_entries:[],page_scope:scope(first.report),limits,started_at:new Date(now).toISOString(),budget_policy:'successful_work_hourly_continuation_v1',inputs:auditSummary().inputs,sources:[],checks:Object.fromEntries(REQUIRED_RESEARCH_CHECKS.map(k=>[k,{status:k==='model_serving'?'checked':'not_checked'}])),model_calls:['research','editor'].map(stage=>({stage,model:{name:null,version:null,unavailable_reason:'Synthetic fixture'},attempt_records:[]}))};
+  async function artifacts(page,metadata,base){
+   metadata.inputs={...metadata.inputs,draft_sha256:digest(page.files.get(rootPath+'report.json'))};
+   const meta=Buffer.from(JSON.stringify(metadata)),ready=page.report.articles.flatMap(a=>PAGE_CHECKS[a.id]),pending=REQUIRED_RESEARCH_CHECKS.filter(c=>!ready.includes(c));
+   const host=execute(s,command('status',{offset:0})).effective_budget.accounting;
+   const audit=auditSummary({schema_version:'1.4',readiness:pending.length?'partial':'ready',coverage_checked:ready,coverage_incomplete:pending,coverage_unchecked:pending,page_scope:metadata.page_scope,evidence_metadata_sha256:digest(meta),budget_policy:metadata.budget_policy,limits,budget_accounting:{successful_attempts:host.successful_attempts,failed_attempts:host.failed_attempts,unknown_attempts:host.unknown_attempts,successful_seconds:host.success_seconds,failed_seconds:host.failed_seconds,reserved_unknown_seconds:host.reserved_seconds,charged_seconds:host.success_seconds+host.reserved_seconds}},page.files);
+   const bytes=await encodeBundle(page.files,`morning-${DAY.replaceAll('-','')}-r${page.report.revision}`,base,'a'.repeat(40));
+   const auditBytes=Buffer.from(JSON.stringify(audit)),archiveHash=archive(s,{'audit.json':meta,'audit-summary.json':auditBytes,'bundle.json':bytes});
+   return {bytes,audit,args:{archive_sha256:archiveHash,bundle_sha256:digest(bytes),audit_sha256:digest(auditBytes)}};
+  }
+  const a=await artifacts(first,metadata,'b'.repeat(40));
+  const oldLayoutFiles=new Map([...first.files].map(([path,bytes])=>[path.replace(rootPath,rootPath+'r1/'),bytes]));
+  const oldLayout=await encodeBundle(oldLayoutFiles,id,'b'.repeat(40),'a'.repeat(40)),oldSummary=Buffer.from(JSON.stringify(a.audit)),oldMeta=Buffer.from(JSON.stringify(metadata));
+  const oldHead=archive(s,{'bundle.json':oldLayout,'audit-summary.json':oldSummary,'audit.json':oldMeta});
+  const oldDenied=await issuePermit(s,command('permit',{archive_sha256:oldHead,bundle_sha256:digest(oldLayout),audit_sha256:digest(oldSummary)},run));
+  assert.equal(oldDenied.status,'rejected');assert.equal(oldDenied.code,'publication_page_layout_required');assert.equal(oldDenied.run.permit,null);
+
+  // A conventional full-coverage audit must not opt a pending report out of
+  // the page metadata/recovery contract by merely omitting page_scope.
+  const unscoped=structuredClone(a.audit);delete unscoped.page_scope;delete unscoped.evidence_metadata_sha256;
+  unscoped.coverage_checked=[...REQUIRED_RESEARCH_CHECKS];unscoped.coverage_incomplete=[];unscoped.coverage_unchecked=[];unscoped.readiness='ready';
+  const unscopedHead=archive(s,{'bundle.json':a.bytes,'audit-summary.json':Buffer.from(JSON.stringify(unscoped))});
+  const unscopedCommand=command('permit',{archive_sha256:unscopedHead,bundle_sha256:digest(a.bytes),audit_sha256:digest(Buffer.from(JSON.stringify(unscoped)))},run);
+  const unscopedResult=await issuePermit(s,unscopedCommand);assert.equal(unscopedResult.status,'rejected');assert.equal(unscopedResult.code,'publication_page_metadata_required');assert.equal(unscopedResult.run.permit,null);
+  assert.equal((await issuePermit(s,unscopedCommand)).replayed,true);
+  // A legacy v3 run lacking an explicit recovery grant must not seal a pending
+  // package even when its ordinary audit otherwise passes the old contract.
+  const legacy=setup();try{
+   const legacyRun=start(legacy);installPageAuthority(legacy.db);
+   const legacyAudit=auditSummary({},first.files);
+   const legacyBytes=Buffer.from(JSON.stringify(legacyAudit));
+   const legacyHead=archive(legacy,{'bundle.json':a.bytes,'audit-summary.json':legacyBytes});
+   const legacyResult=await issuePermit(legacy,command('permit',{archive_sha256:legacyHead,bundle_sha256:digest(a.bytes),audit_sha256:digest(legacyBytes)},legacyRun));
+   assert.equal(legacyResult.status,'rejected');assert.equal(legacyResult.code,'publication_page_recovery_required');assert.equal(legacyResult.run.permit,null);
+  }finally{legacy.close();}
+
+  // Missing or structurally unusable metadata must not freeze an unresumable
+  // first permit. Each rejection is durable and leaves the original run usable.
+  for(const mode of ['missing','null','bad-scope','bad-stages','bad-model']){
+   const bad=structuredClone(a.audit);let rawMetadata;
+   if(mode==='missing')delete bad.evidence_metadata_sha256;
+   else{const m=structuredClone(metadata);if(mode==='null')rawMetadata=Buffer.from('null');else{if(mode==='bad-scope')m.page_scope=null;else if(mode==='bad-model')delete m.model_calls[0].model;else m.model_calls=[];rawMetadata=Buffer.from(JSON.stringify(m));}bad.evidence_metadata_sha256=digest(rawMetadata);}
+   const summary=Buffer.from(JSON.stringify(bad)),files={'bundle.json':a.bytes,'audit-summary.json':summary};if(rawMetadata)files['audit.json']=rawMetadata;
+   const badHead=archive(s,files),cmd=command('permit',{archive_sha256:badHead,bundle_sha256:digest(a.bytes),audit_sha256:digest(summary)},run);
+   const denied=await issuePermit(s,cmd);assert.equal(denied.status,'rejected');assert.equal(denied.code,'publication_page_metadata_required');assert.equal(denied.run.permit,null);
+   const replay=await issuePermit(s,cmd);assert.equal(replay.replayed,true);assert.equal(replay.status,'rejected');
+  }
+  const nullAudit=Buffer.from('null'),nullHead=archive(s,{'bundle.json':a.bytes,'audit-summary.json':nullAudit});
+  const nullCommand=command('permit',{archive_sha256:nullHead,bundle_sha256:digest(a.bytes),audit_sha256:digest(nullAudit)},run);
+  const nullResult=await issuePermit(s,nullCommand);assert.equal(nullResult.status,'rejected');assert.equal(nullResult.code,'publication_audit_blocked');assert.equal((await issuePermit(s,nullCommand)).replayed,true);
+  let result=await issuePermit(s,command('permit',a.args,run));assert.equal(result.status,'committed',result.code);run=result.run;const originalPermit=run.permit;
+  const commit='c'.repeat(40),job=s.admit({request_id:id,hash:digest(a.bytes),source_ts:'1793491202.000031'},a.bytes);
+  s.move(id,'received','receipt_sent',{commit,proof:{publication_status:'verified',bundle_sha256:job.hash,commit}});
+  installScheduledTables(s.db,['scheduled_handoffs','scheduled_bridge_scope']);
+  const binding={request_id:id,report_date:DAY,report_commit:commit,bundle_sha256:job.hash};
+  s.db.prepare('INSERT INTO scheduled_handoffs VALUES(?,?,?,?,0)').run(id,JSON.stringify(binding),'complete',JSON.stringify({...binding,status:'sent',phase:'complete',parts_sent:2,parts_total:2,images:[{file_id:'scheduled-poster',status:'sent',error:null}]}));
+  let previousId=id,previousHash=job.hash;
+  for(let revision=2;revision<targetRevision;revision++){
+   const r=structuredClone(first.report);r.revision=revision;r.revision_notice={kind:'correction',summary:'已审核纠错'};r.page_delivery={...r.page_delivery,previous:{request_id:previousId,bundle_sha256:previousHash},added:[]};
+   const files=new Map(first.files);files.set(rootPath+'report.json',Buffer.from(JSON.stringify(r)));const request_id=id.replace(/r1$/,`r${revision}`),bytes=await encodeBundle(files,request_id,commit,'a'.repeat(40));
+   const hash=digest(bytes),ts=`1793491202.${String(100+revision).padStart(6,'0')}`;s.admit({request_id,hash,source_ts:ts},bytes);s.move(request_id,'received','receipt_sent',{commit,proof:{publication_status:'verified',bundle_sha256:hash,commit}});
+   const bound={request_id,report_date:DAY,report_commit:commit,bundle_sha256:hash};s.db.prepare('INSERT INTO scheduled_handoffs VALUES(?,?,?,?,0)').run(request_id,JSON.stringify(bound),'complete',JSON.stringify({...bound,status:'sent',phase:'complete',parts_sent:1,parts_total:1,delivery_kind:'revision_update',images:[]}));previousId=request_id;previousHash=hash;
+  }
+  const completing=targetRevision===6,attemptPages=completing?topicIds.slice(1):['hardware-status','embodied-training'];
+  result=execute(s,command('page_begin',{previous_request_id:previousId,added:attemptPages},run));assert.equal(result.status,'committed',result.code);run=result.run;
+  const failedSource=source('https://example.org/embodied-missing');
+  run=execute(s,command('reserve',{operations:[failedSource]},run)).run;
+  const failure=Buffer.from(JSON.stringify({request_id:id,operation_id:failedSource.operation_id,url:failedSource.input.url,status:'failed',elapsed_seconds:2}));
+  const failureArchive=archive(s,{'embodied-failure.json':failure});
+  run=execute(s,command('settle',{operation_id:failedSource.operation_id,outcome:'acknowledged',elapsed_seconds:2,archive_sha256:failureArchive,file_sha256:digest(failure),native_result:null},run)).run;
+  const continued=execute(s,command('status',{offset:0}));assert.equal(continued.effective_budget.accounting.failed_seconds,2);assert.equal(continued.effective_budget.accounting.success_seconds,0);
+  const previous=authenticatedPrevious(s.db,s.db.prepare('SELECT * FROM research_control_runs WHERE request_id=?').get(id),previousId);
+  const second=pageBundle(completing?6:2,{request_id:previousId,bundle_sha256:previousHash});if(completing)second.report.page_delivery.added=topicIds.slice(1);second.report.revision=targetRevision;second.files.set(rootPath+'report.json',Buffer.from(JSON.stringify(second.report)));metadata=structuredClone(metadata);metadata.page_scope={...scope(second.report),previous_evidence:previous.evidence};metadata.checks.hardware={status:'checked'};if(completing)for(const k of REQUIRED_RESEARCH_CHECKS)metadata.checks[k]={status:'checked'};
+  metadata.sources.push({id:'embodied-failure',status:'failed',operation_id:failedSource.operation_id,archive_sha256:failureArchive});
+  for(const call of metadata.model_calls){
+   call.attempt_records.push({outcome:'success',elapsed_seconds:0,page_round:{revision:targetRevision,page_ids:attemptPages,previous_audit_sha256:a.args.audit_sha256}});
+  }
+  const publicationBase='e'.repeat(40),b=await artifacts(second,metadata,publicationBase),target=id.replace(/r1$/,`r${targetRevision}`);
+  if(completing){
+   assert.deepEqual(second.report.page_delivery.pending,[]);
+   for(const mode of ['no-scope','missing-metadata']){
+    const bad=structuredClone(b.audit);bad.readiness='ready';
+    if(mode==='no-scope')delete bad.page_scope;
+    delete bad.evidence_metadata_sha256;
+    const summary=Buffer.from(JSON.stringify(bad)),head=archive(s,{'bundle.json':b.bytes,'summary.json':summary});
+    const denied=await issuePermit(s,command('page_permit',{publication_request_id:target,archive_sha256:head,bundle_sha256:digest(b.bytes),audit_sha256:digest(summary)},run));
+    assert.equal(denied.status,'rejected');assert.equal(denied.code,mode==='no-scope'?'publication_page_metadata_required':'publication_coverage_contract');assert.equal(denied.page_round?.permit??null,null);
+   }
+  }
+  result=await issuePermit(s,command('page_permit',{publication_request_id:target,...b.args},run));
+  assert.equal(result.status,'committed',result.code);assert.deepEqual(result.run.permit,originalPermit);assert.equal(JSON.parse(result.page_round.permit).request_id,target);assert.deepEqual(JSON.parse(result.page_round.permit).page_ids,completing?topicIds.slice(1):['hardware-status']);
+  if(!completing)assert.ok(second.report.page_delivery.pending.some(p=>p.id==='embodied-training'));assert.equal(result.run.charged_seconds,run.charged_seconds);
+  const roundPermit=JSON.parse(result.page_round.permit),upload=execute(s,{...command('upload_status',{archive_sha256:b.args.archive_sha256,permit_id:roundPermit.permit_id}),owner_id:null});
+  assert.equal(upload.permit.request_id,target);assert.deepEqual(upload.operations,[]);
+  run=result.run;const hash=digest(b.bytes),permit=roundPermit.permit_id;
+  for(const step of ['ticket','post','complete']){
+   const input={archive_sha256:b.args.archive_sha256,permit_id:permit,step,file_id:step==='ticket'?null:'FPAGE',source_ts:null,bytes:b.bytes.length,sha256:hash};
+   const op={operation_id:randomUUID(),kind:'native',key:'permit:'+permit+':'+step,input_sha256:digest(Buffer.from(JSON.stringify(input))),input,max_seconds:0};
+   result=execute(s,command('reserve',{operations:[op]},run));assert.equal(result.dispatch_granted,true,result.code);run=result.run;
+   if(step==='complete')break;
+   run=execute(s,command('settle',{operation_id:op.operation_id,outcome:'acknowledged',elapsed_seconds:null,archive_sha256:null,file_sha256:null,native_result:{file_id:'FPAGE',source_ts:null,sha256:hash,bytes:b.bytes.length}},run)).run;
+  }
+  const correction=structuredClone(first.report);correction.revision=targetRevision;correction.revision_notice={kind:'correction',summary:'Concurrent correction'};correction.page_delivery={...correction.page_delivery,previous:{request_id:previousId,bundle_sha256:previousHash},added:[]};const correctionFiles=new Map(first.files);correctionFiles.set(rootPath+'report.json',Buffer.from(JSON.stringify(correction)));const correctionBytes=await encodeBundle(correctionFiles,target,publicationBase,'a'.repeat(40));
+  const raced=message(`!ai-report revise ${target} ${digest(correctionBytes)}`,'1793491202.900001','FCORRECTION');
+  const stage=message(`!ai-report stage-v2 ${target} ${hash} ${permit}`,'1793491203.000001','FPAGE'),messages=[raced,stage];
+  const slack={historyPage:async({from,to})=>({messages:messages.filter(m=>m.ts>=from&&m.ts<=to),next_cursor:null}),exactPublish:async ts=>messages.find(m=>m.ts===ts),download:async row=>row.file_id==='FCORRECTION'?correctionBytes:b.bytes};
+  const inbox=new PublisherInbox(s,config);await inbox.scan(slack,now);await advanceSubmission(s,config,slack,()=>assert.fail('No date lookup'),now);assert.equal(s.db.prepare('SELECT phase FROM slack_submission_events WHERE source_ts=?').get(raced.ts).phase,'fenced');assert.equal(s.metadata(target),null);await advanceSubmission(s,config,slack,()=>assert.fail('successor must not require empty date'),now);
+  assert.equal(s.db.prepare('SELECT phase FROM research_page_staged WHERE request_id=?').get(target)?.phase,'staged');
+  assert.equal(s.db.prepare('SELECT count(*) n FROM slack_staged_bundles').get().n,0);
+  run=execute(s,command('status',{offset:0})).run;
+  const input={archive_sha256:b.args.archive_sha256,permit_id:permit,step:'submit',file_id:'FPAGE',source_ts:stage.ts,bytes:b.bytes.length,sha256:hash};
+  const op={operation_id:randomUUID(),kind:'native',key:'permit:'+permit+':submit',input_sha256:digest(Buffer.from(JSON.stringify(input))),input,max_seconds:0};
+  assert.equal(execute(s,command('reserve',{operations:[op]},run)).dispatch_granted,true);
+  messages.push(message(`!ai-report submit-v2 ${target} ${hash} ${stage.ts} ${permit}`,'1793491211.000001'));
+  await inbox.scan(slack,now+2000);await advanceSubmission(s,config,slack,()=>assert.fail('successor must not require empty date'),now+2000);
+  assert.equal(s.metadata(target)?.hash,hash);assert.equal(s.db.prepare('SELECT count(*) n FROM jobs').get().n,targetRevision);
+  assert.equal(s.db.prepare('SELECT phase FROM research_page_staged WHERE request_id=?').get(target).phase,'admitted');
+  assert.equal(s.db.prepare('SELECT count(*) n FROM research_control_runs').get().n,1);
+  const {inspectPublisherDay}=await import('../scripts/producer-inspect.mjs');
+  for(const [request_id,bundle_sha256] of [[id,job.hash],[target,hash]]){
+   const inspect={kind:'inspect',request_id,report_date:DAY,bundle_sha256,query_id:randomUUID()};const result=await inspectPublisherDay(s,config,inspect,'1793491212.000001');assert.equal(result.publisher.request_id,request_id);assert.equal(result.publisher_day.length,targetRevision);
+  }
+  s.db.prepare("UPDATE research_page_staged SET phase='staged' WHERE request_id=?").run(target);
+  await assert.rejects(inspectPublisherDay(s,config,{kind:'inspect',request_id:id,report_date:DAY,bundle_sha256:job.hash,query_id:randomUUID()},'1793491213.000001'),/Date reserved/);
+
+ }finally{s.close();}
+});
+
+test('inbox dispatch batch checks authority without decoding historical archives per operation',async()=>{
+ const s=setup();try{
+  let run=start(s,layeredPlan());const old=source('https://example.org/dispatch-history');
+  run=execute(s,command('reserve',{operations:[old]},run)).run;
+  const data=Buffer.from(JSON.stringify({request_id:id,operation_id:old.operation_id,url:old.input.url,status:'ok',elapsed_seconds:1}));
+  const head=archive(s,{'result.json':data,'body.txt':Buffer.alloc(8*1024*1024,65)});
+  s.db.prepare("UPDATE research_control_ops SET phase='acknowledged',elapsed_seconds=1,result_archive=?,result_file=? WHERE operation_id=?").run(head,digest(data),old.operation_id);
+  const ops=Array.from({length:8},(_,i)=>source('https://example.org/batch-dispatch/'+i));
+  queue(s,command('reserve',{operations:ops},run));
+  const parse=JSON.parse;let decodes=0,reply;
+  JSON.parse=function(value,...args){if(typeof value==='string'&&value.startsWith('{"schema_version":"research_archive_v1",'))decodes++;return parse(value,...args);};
+  try{
+   await advanceResearchControl(s,config,{controlReceipt:async(_ts,text)=>{reply=parse(text.slice('!ai-research control-receipt '.length));return '1793491209.000001';}},now);
+   assert.equal(reply.dispatch_granted,true);assert.equal(reply.operations.length,8);assert.equal(decodes,1,'only command accounting reads archive, dispatch uses authority/window');
+   const actual=s.db.prepare('SELECT * FROM research_control_runs WHERE request_id=?').get(id);
+   for(const op of ops){const original=s.db.prepare('SELECT * FROM research_control_ops WHERE operation_id=?').get(op.operation_id);assert.equal(researchOperationDispatchValid(s.db,actual,original,now),true);assert.equal(researchOperationDispatchValid(s.db,actual,original,now+3600000),false);}
+   assert.equal(decodes,1,'direct dispatch checks do not classify historic results');
+  }finally{JSON.parse=parse;}
+ }finally{s.close();}
+});
+
+test('v4 original withheld intent survives explicit grant activation with one operation and no refunded charge',()=>{
+ const s=setup();try{
+  let run=start(s,layeredPlan());const op=source('editor','model'),cmd=command('reserve',{operations:[op]},run),result=execute(s,cmd);run=result.run;
+  const original=s.db.prepare('SELECT * FROM research_control_ops').get();
+  const reply='!ai-research control-receipt '+JSON.stringify({...result,dispatch_granted:false,grant_expired:true});
+  s.db.prepare('INSERT INTO research_control_events VALUES(?,?,?,?,?,?,?,?,?,?)').run('1793491201.999999',cmd.command_id,digest(Buffer.from(JSON.stringify(cmd))),Buffer.from(JSON.stringify(cmd)),'sent',1,0,reply,'1793491202.999999',null);
+  const grant={schema_version:'research_recovery_grant_v1',grant_id:randomUUID(),request_id:id,generation:config.research_control.generation,plan_hash:run.plan_hash,previous_sha256:null,authorization_reference:'synthetic owner approval',effective_not_before:nextResearchContinuationAt(now),window_seconds:3600,failed_attempts_consume_success_budget:false,continuation_policy:'hourly_20_until_complete'};
+  const bytes=Buffer.from(JSON.stringify(grant));approveResearchRecoveryGrant(s.db,bytes,grant.authorization_reference,now);
+  run=execute(s,command('recovery_grant',{grant_base64:bytes.toString('base64')},run)).run;
+  const later=grant.effective_not_before;run=execute(s,command('claim',{plan_base64:layeredPlan().toString('base64')},run),later).run;
+  const resumed=execute(s,command('resume',{operation_id:op.operation_id},run),later);
+  assert.equal(resumed.status,'committed');assert.equal(resumed.dispatch_granted,true);assert.equal(resumed.run.charged_seconds,180);
+  assert.deepEqual(s.db.prepare('SELECT * FROM research_control_ops').get(),original);
+  assert.equal(s.db.prepare('SELECT count(*) n FROM research_recovery_operations').get().n,2);
+  const actual=s.db.prepare('SELECT * FROM research_control_runs').get();assert.equal(researchOperationDispatchValid(s.db,actual,original,later),true);
+  s.db.prepare("UPDATE research_control_events SET phase='unknown'").run();
+  assert.equal(execute(s,command('resume',{operation_id:op.operation_id},resumed.run),later).code,'resume_dispatch_not_proven_unstarted');
+ }finally{s.close();}
+});
+
+test('full ready schema 1.2 still requires installed page decoder authority without changing v3 budget',async()=>{
+ const s=setup();try{
+  const run=start(s),files=new Map([...FILES].map(([p,b])=>[p.replace('/r1/','/'),b]));
+  const path=[...files.keys()].find(p=>p.endsWith('/report.json')),report=JSON.parse(files.get(path));
+  report.schema_version='1.2';report.page_delivery={previous:null,added:report.articles.map(a=>a.id),pending:[]};files.set(path,Buffer.from(JSON.stringify(report)));
+  const bytes=await encodeBundle(files,id,'b'.repeat(40),'a'.repeat(40)),audit=Buffer.from(JSON.stringify(auditSummary({readiness:'ready'},files)));
+  const hash=archive(s,{'bundle.json':bytes,'audit.json':audit}),args={archive_sha256:hash,bundle_sha256:digest(bytes),audit_sha256:digest(audit)};
+  const before=s.db.prepare('SELECT plan FROM research_control_runs WHERE request_id=?').get(id).plan;
+  const result=await issuePermit(s,command('permit',args,run));
+  assert.equal(result.status,'rejected');assert.equal(result.code,'publication_page_authority_required');assert.equal(result.run.permit,null);
+  assert.deepEqual(s.db.prepare('SELECT plan FROM research_control_runs WHERE request_id=?').get(id).plan,before);
+  installPageAuthority(s.db);
+  assert.equal((await issuePermit(s,command('permit',args,result.run))).status,'committed');
+  assert.deepEqual(s.db.prepare('SELECT plan FROM research_control_runs WHERE request_id=?').get(id).plan,before);
  }finally{s.close();}
 });

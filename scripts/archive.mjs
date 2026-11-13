@@ -1,3 +1,4 @@
+import {validatePageProgressReport,validatePageCorrectionReport} from './page-delivery.mjs';
 import {evidenceAssets,evidenceAssetReferences} from "./evidence-assets.mjs";
 import {validateReportFields} from './revision-notice.mjs';
 // Report-only, data-only contract shared by the publisher, CI and trusted merge gate.
@@ -79,6 +80,7 @@ export function validateArchive(files, {checkIndex=true}={}) {
     const bytes=files.get(metaPath); assert(bytes.length<128*1024,"metadata too large");
     const r=JSON.parse(bytes.toString("utf8")); const dir=metaPath.slice(0,-11);
     validateReportFields(r);
+    assert(!r.page_delivery||current,"Page delivery requires current report layout");
     assert(/^\d{4}-\d\d-\d\d$/.test(r.date) && new Date(r.date+"T00:00:00Z").toISOString().slice(0,10)===r.date,"report date");
     assert(Number.isSafeInteger(r.revision) && (current ? r.revision>=1 && !revisions.has(r.date) : r.revision===(revisions.get(r.date)||0)+1),"revisions must be consecutive");
     assert(dir==="reports/"+r.date+(current ? "/" : "/r"+r.revision+"/"),"report path mismatch");
@@ -146,7 +148,7 @@ export function validateChange(base, head) {
   const dirs=new Set(added.map(p=>p.split("/").slice(0,3).join("/")));
   assert(dirs.size===1 && added.some(p=>p.endsWith("/report.json")),"one report revision per PR");
   const next=result.reports.find(r=>r.path===[...dirs][0]+'/');
-  assert(next.revision===1||next.schema_version==='1.1','New revisions require an explicit notification policy');
+  assert(next.revision===1||['1.1','1.2'].includes(next.schema_version),'New revisions require an explicit notification policy');
   return result;
 }
 
@@ -217,6 +219,10 @@ function validateCurrentChange(base,head) {
   assert(changed.size===1,"one report revision per PR");
   const date=[...changed][0],old=previous.reports.find(r=>r.date===date),next=result.reports.find(r=>r.date===date);
   assert(next&&next.revision===(old?.revision||0)+1,"revisions must be consecutive");
-  assert(next.revision===1||next.schema_version==='1.1','New revisions require an explicit notification policy');
+  if(next.page_delivery&&next.revision>1||old?.page_delivery){
+    if(next.revision_notice?.kind==='page_completion')validatePageProgressReport(old,next);
+    else validatePageCorrectionReport(old,next);
+  }
+  assert(next.revision===1||['1.1','1.2'].includes(next.schema_version),'New revisions require an explicit notification policy');
   return result;
 }

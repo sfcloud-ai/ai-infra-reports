@@ -43,7 +43,7 @@ export async function inspectDay(state,config,command,sourceTs,query,now=Date.no
    if(row.phase==='fenced'&&isFencedOut(state,config.producer_fence,row)&&row.source_ts>=config.producer_fence.activation_ts)return false;
    const date=canonicalRequestDate(row.request_id);return !date||date===day||row.request_id===command.request_id;
   });
-  const staged=exists(db,'slack_staged_bundles')?db.prepare('SELECT request_id,report_date,hash,source_ts,file_id,phase,submit_ts FROM slack_staged_bundles WHERE report_date=? OR request_id=? LIMIT 101').all(day,command.request_id):[];
+  const staged=['slack_staged_bundles','research_page_staged'].flatMap(table=>exists(db,table)?db.prepare(`SELECT request_id,report_date,hash,source_ts,file_id,phase,submit_ts FROM ${table} WHERE report_date=? OR request_id=? LIMIT 101`).all(day,command.request_id):[]);
   const allPending=exists(db,'slack_submission_events')?db.prepare("SELECT source_ts,kind,request_id,hash,file_id,target_ts,phase,next_at FROM slack_submission_events WHERE phase='pending' LIMIT 10001").all():[];
   requireThat(allPending.length<=10000&&staged.length<=100,'Publisher day staging capacity exceeded');
   const pending=allPending.filter(row=>{const date=canonicalRequestDate(row.request_id);return !date||date===day||row.request_id===command.request_id;});
