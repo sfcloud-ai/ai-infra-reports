@@ -63,8 +63,15 @@ function successorEvidenceValid(audit,report,previous,metadata){
   const call=metadata.model_calls.find(c=>c.stage===stage),oldCall=prior.model_calls.find(c=>c.stage===stage);
   if(!call||!oldCall||!Array.isArray(call.attempt_records)||!Array.isArray(oldCall.attempt_records)||call.attempt_records.length<=oldCall.attempt_records.length
    ||!equal(call.attempt_records.slice(0,oldCall.attempt_records.length),oldCall.attempt_records))return false;
-  const round={revision:report.revision,page_ids:added,previous_audit_sha256:evidence.audit_sha256};
-  if(!call.attempt_records.slice(oldCall.attempt_records.length).every(a=>equal(a.page_round,round)))return false;
+  const allowed=previous.allowed_pages??added,newAttempts=call.attempt_records.slice(oldCall.attempt_records.length);
+  if(!Array.isArray(allowed)||!equal(allowed,ids.filter(id=>allowed.includes(id)))||!added.every(id=>allowed.includes(id)))return false;
+  for(const attempt of newAttempts){
+   const round=attempt.page_round,pages=round?.page_ids;
+   if(!exact(round,['revision','page_ids','previous_audit_sha256'])||round.revision!==report.revision||round.previous_audit_sha256!==evidence.audit_sha256
+    ||!Array.isArray(pages)||pages.length===0||!equal(pages,ids.filter(id=>pages.includes(id)))||!pages.every(id=>allowed.includes(id)&&oldPending.includes(id)))return false;
+  }
+  const lastSuccess=newAttempts.findLast(a=>['ok','partial','success'].includes(a.status??a.outcome));
+  if(!lastSuccess||!added.every(id=>lastSuccess.page_round.page_ids.includes(id)))return false;
  }
  return true;
 }

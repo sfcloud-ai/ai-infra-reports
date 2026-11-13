@@ -20,13 +20,14 @@ its live state. This migration alone does not send anything.
 
 1. Read the complete original status/operations. At the next eligible hourly
    window, submit `page_begin` with exact arguments
-   `{previous_request_id, added}`. `added` is a nonempty canonical subset of the
-   previous pending topics. The host reads the original permit, stored job,
+   `{previous_request_id, added}`. `added` is the immutable maximum allowed page set for this round: a nonempty
+   canonical subset of previous pending topics. It is not a commitment to publish
+   every selected page if one still lacks evidence. The host reads the original permit, stored job,
    authenticated archive/audit/metadata and `scheduled_handoffs` full sent receipt.
    Unknown/partial sends, missing audit metadata hashes and legacy unpartitioned
    reports cannot create a round. No client-supplied `sent` assertion is accepted.
 2. The host appends a deterministic rN round and previous evidence. Repeated
-   identical begin observes that round; changing its page selection is rejected.
+   identical begin observes that round; expanding or changing that allowed set is rejected.
    It never overwrites the original permit, resets a budget, or replaces an
    unknown upload. Source identities remain unchanged. Model operation keys are
    the original plan stage plus `:morning-YYYYMMDD-rN`; only the current open
@@ -34,13 +35,19 @@ its live state. This migration alone does not send anything.
    original cumulative accounting.
 3. Save the real new evidence with the original run's archive chain. The current
    audit must bind original metadata bytes and retain the prior records/attempts.
+   Model attempts retain their real `page_round.page_ids`, which can include
+   pages still pending at publication. Each attempt must stay within the original
+   allowed set, and each stage’s last successful attempt must cover the actual
+   published subset. Failed attempts are retained, not relabeled or removed.
    Previous evidence has exact fields `request_id`, `bundle_sha256`,
    `audit_sha256`, `archive_sha256`, and `report_commit`.
 4. Use `page_permit` with exact arguments `publication_request_id`,
    `archive_sha256`, `bundle_sha256`, `audit_sha256`. The host validates the full
    original bundle, current audit and previous authenticated bytes. New bundle
-   base is the previous verified publication commit. Only previously pending
-   pages may become ready. Old articles, entries and assets are immutable;
+   base is the previous verified publication commit. Only a nonempty completed subset of the round’s allowed pages may become ready.
+   The permit freezes that actual subset in `page_ids`; all other pages stay
+   pending, including selected pages whose evidence collection failed. A failed
+   page must not hold up independently verified pages. Old articles, entries and assets are immutable;
    report metadata and the common poster may extend to show newly ready pages.
 5. Use the same native research client with `upload.request_id` still the r1 run
    and the new round's permit ID. `upload_status` returns that specific permit.

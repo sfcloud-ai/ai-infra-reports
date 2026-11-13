@@ -49,3 +49,15 @@ for(const [name,change] of Object.entries({
  'unbound previous summary':f=>f.previous.audit.evidence_metadata_sha256=null,
  'wrong authenticated receipt':f=>f.previous.evidence.report_commit='e'.repeat(40),
 }))test('successor rejects '+name,()=>{const f=successor();change(f);assert.equal(pageCoverageValid(f.audit,bundle(f.report),f.previous,f.metadata),false);});
+test('completed subset preserves wider failed attempts but cannot expand the host allowed set',()=>{
+ const f=successor();f.previous.allowed_pages=['hardware-status','embodied-training'];
+ for(const call of f.metadata.model_calls){
+  const successful=call.attempt_records.at(-1);successful.page_round.page_ids=['hardware-status','embodied-training'];
+  call.attempt_records.splice(-1,0,{status:'failed',elapsed_seconds:2,page_round:{...successful.page_round,page_ids:['embodied-training']}});
+ }
+ assert.equal(pageCoverageValid(f.audit,bundle(f.report),f.previous,f.metadata),true);
+ const bad=structuredClone(f);bad.metadata.model_calls[0].attempt_records.at(-1).page_round.page_ids=['hardware-status','small-model-status'];
+ assert.equal(pageCoverageValid(bad.audit,bundle(bad.report),bad.previous,bad.metadata),false);
+ const uncovered=structuredClone(f);uncovered.metadata.model_calls[1].attempt_records.at(-1).page_round.page_ids=['embodied-training'];
+ assert.equal(pageCoverageValid(uncovered.audit,bundle(uncovered.report),uncovered.previous,uncovered.metadata),false);
+});

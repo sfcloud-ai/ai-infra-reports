@@ -91,7 +91,9 @@ export function pagePublicationBinding(db,run,bundle){
  const previous=authenticatedPrevious(db,run,JSON.parse(round.previous_evidence).request_id);
  need(equal(previous.evidence,JSON.parse(round.previous_evidence)),'page_previous_evidence_changed');
  const bytes=Buffer.from(JSON.stringify(bundle)),{report}=reportFromBundle(bytes,digest(bytes));
- need(report.revision===round.revision&&equal(report.page_delivery.added,JSON.parse(round.added))&&equal(report.page_delivery.previous,{request_id:previous.evidence.request_id,bundle_sha256:previous.evidence.bundle_sha256}),'page_round_binding');
+ const allowed=JSON.parse(round.added),completed=report.page_delivery.added;
+ need(Array.isArray(completed)&&completed.length>0&&completed.every(id=>allowed.includes(id)),'page_completed_scope');
+ need(report.revision===round.revision&&equal(report.page_delivery.previous,{request_id:previous.evidence.request_id,bundle_sha256:previous.evidence.bundle_sha256}),'page_round_binding');
  try{validatePageProgressReport(previous.report,report);}catch{fail('page_progress_invalid');}
  const oldIds=new Set(previous.report.articles.map(a=>a.id));
  need(equal(previous.report.entries??[],(report.entries??[]).filter(e=>oldIds.has(e.article_id))),'page_previous_entries_changed');
@@ -104,7 +106,7 @@ export function pagePublicationBinding(db,run,bundle){
   const a=previous.bundle.files.find(f=>f.path===path),b=bundle.files.find(f=>f.path===path);
   need(a&&b&&a.sha256===b.sha256&&a.base64===b.base64,'page_previous_bytes_changed');
  }
- return {round,previous};
+ return {round,previous:{...previous,allowed_pages:allowed},completed_pages:completed};
 }
 export function appendPagePermit(db,run,permit){
  const round=pageRound(db,permit.request_id);need(round?.run_id===run.request_id,'page_original_run');

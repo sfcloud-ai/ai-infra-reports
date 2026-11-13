@@ -147,7 +147,7 @@ function publicationEvidence(db,run,plan,args,now,cache,page=false){
    need(summary.successful_attempts?.[kind]===count(actual.successful_attempts)&&summary.failed_attempts?.[kind]===count(actual.failed_attempts)&&summary.unknown_attempts?.[kind]===count(actual.unknown_attempts),'publication_budget_attempts');
   }
  }
-
+ return pageBinding;
 }
 export function researchSourceIdentity(input){
  need(exact(input,'method,url')&&input.method==='GET'&&typeof input.url==='string'&&input.url.length<=2000,'source_identity');
@@ -431,12 +431,12 @@ function apply(db,c,now,config){
  }else if(c.action==='page_permit'){
   need(exact(c.args,'publication_request_id,archive_sha256,bundle_sha256,audit_sha256')&&/^morning-\d{8}-r[2-6]$/.test(c.args.publication_request_id)&&string(c.args.bundle_sha256,HASH)&&string(c.args.audit_sha256,HASH),'permit_fields');
   need(run.inputs_hash,'publication_bytes_missing');
-  publicationEvidence(db,run,plan,c.args,now,cache,true);
+  const pageProof=publicationEvidence(db,run,plan,c.args,now,cache,true);
   const round=currentPageRound(db,run.request_id);
   need(round?.request_id===c.args.publication_request_id,'page_current_round');
   const {publication_request_id,...binding}=c.args;
   const prior=round.permit?JSON.parse(round.permit):null;
-  const permit={permit_id:prior?.permit_id??randomUUID(),request_id:publication_request_id,report_date:run.report_date,prompt_commit_sha:plan.prompt_commit_sha,publisher_scope_sha256:db.prepare('SELECT value FROM scope WHERE id=1').get().value,...binding};
+  const permit={permit_id:prior?.permit_id??randomUUID(),request_id:publication_request_id,page_ids:pageProof.completed_pages,report_date:run.report_date,prompt_commit_sha:plan.prompt_commit_sha,publisher_scope_sha256:db.prepare('SELECT value FROM scope WHERE id=1').get().value,...binding};
   appendPagePermit(db,run,permit);
  }else if(c.action==='permit'){
   need(exact(c.args,'archive_sha256,bundle_sha256,audit_sha256')&&string(c.args.bundle_sha256,HASH)&&string(c.args.audit_sha256,HASH),'permit_fields');
