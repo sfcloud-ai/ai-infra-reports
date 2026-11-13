@@ -219,7 +219,7 @@ function validateCurrentChange(base,head) {
   assert(changed.size===1,"one report revision per PR");
   const date=[...changed][0],old=previous.reports.find(r=>r.date===date),next=result.reports.find(r=>r.date===date);
   assert(next&&next.revision===(old?.revision||0)+1,"revisions must be consecutive");
-  if(next.page_delivery&&next.revision>1||old?.page_delivery?.pending.length){
+  if(next.page_delivery&&next.revision>1||old?.page_delivery){
     if(next.revision_notice?.kind==='page_completion')validatePageProgressReport(old,next);
     else validatePageCorrectionReport(old,next);
   }

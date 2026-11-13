@@ -924,6 +924,12 @@ for(const targetRevision of [2,6,11])test(`real r${targetRevision} page bundle p
    return {bytes,audit,args:{archive_sha256:archiveHash,bundle_sha256:digest(bytes),audit_sha256:digest(auditBytes)}};
   }
   const a=await artifacts(first,metadata,'b'.repeat(40));
+  const oldLayoutFiles=new Map([...first.files].map(([path,bytes])=>[path.replace(rootPath,rootPath+'r1/'),bytes]));
+  const oldLayout=await encodeBundle(oldLayoutFiles,id,'b'.repeat(40),'a'.repeat(40)),oldSummary=Buffer.from(JSON.stringify(a.audit)),oldMeta=Buffer.from(JSON.stringify(metadata));
+  const oldHead=archive(s,{'bundle.json':oldLayout,'audit-summary.json':oldSummary,'audit.json':oldMeta});
+  const oldDenied=await issuePermit(s,command('permit',{archive_sha256:oldHead,bundle_sha256:digest(oldLayout),audit_sha256:digest(oldSummary)},run));
+  assert.equal(oldDenied.status,'rejected');assert.equal(oldDenied.code,'publication_page_layout_required');assert.equal(oldDenied.run.permit,null);
+
   // A conventional full-coverage audit must not opt a pending report out of
   // the page metadata/recovery contract by merely omitting page_scope.
   const unscoped=structuredClone(a.audit);delete unscoped.page_scope;delete unscoped.evidence_metadata_sha256;

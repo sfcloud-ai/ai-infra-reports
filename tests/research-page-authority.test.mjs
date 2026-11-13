@@ -110,3 +110,15 @@ test('ordinary page corrections and maintenance wait for bound delivery, not pub
   assert.deepEqual(db.prepare('SELECT bytes FROM jobs WHERE id=?').get(root).bytes,before);db.close();
  }
 });
+
+test('fully ready predecessor rejects schema downgrade before queued or unknown delivery can be replaced',()=>{
+ for(const phase of ['queued','unknown']){
+  const {db,report,bundle,receipt}=fixture();report.page_delivery.pending=[];report.page_delivery.added=[...TOPIC_IDS];report.articles=TOPIC_IDS.map(id=>({...report.articles[0],id}));
+  const raw=Buffer.from(JSON.stringify(report));bundle.files[0].base64=raw.toString('base64');bundle.files[0].sha256=digest(raw);
+  const bytes=Buffer.from(JSON.stringify(bundle));db.prepare('UPDATE jobs SET bytes=?,hash=?').run(bytes,digest(bytes));
+  db.prepare('UPDATE scheduled_handoffs SET phase=?,result=?').run(phase,JSON.stringify({...receipt,status:phase,phase}));
+  const next={...report,schema_version:'1.1',revision:2,revision_notice:{kind:'correction',summary:'Downgrade'}};delete next.page_delivery;
+  assert.throws(()=>assertPageCorrectionDelivery(db,{report:next}),/page_correction_schema_downgrade/);
+  assert.deepEqual(Buffer.from(db.prepare('SELECT bytes FROM jobs').get().bytes),bytes);db.close();
+ }
+});

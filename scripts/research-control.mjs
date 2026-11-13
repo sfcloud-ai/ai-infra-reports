@@ -134,7 +134,11 @@ function publicationEvidence(db,run,plan,args,now,cache,page=false){
  // optional audit declaration: omitting page_scope must not bypass this gate.
  const reportFiles=bundle.files.filter(f=>f.path.endsWith('/report.json'));
  let publicationReport;try{publicationReport=JSON.parse(Buffer.from(reportFiles[0].base64,'base64'));}catch{refuse('publication_json');}
- if(publicationReport.schema_version==='1.2')need(pageAuthorityInstalled(db),'publication_page_authority_required');
+ if(publicationReport.schema_version==='1.2'){
+  need(pageAuthorityInstalled(db),'publication_page_authority_required');
+  const prefix=`reports/${run.report_date}/`;
+  need(bundle.files.every(f=>typeof f.path==='string'&&f.path.startsWith(prefix)&&!/^r[1-9]\d*\//.test(f.path.slice(prefix.length))),'publication_page_layout_required');
+ }
  if(page||publicationReport.page_delivery?.pending?.length){
   need(budget&&pageAuthorityInstalled(db),'publication_page_recovery_required');
   need(audit.page_scope&&resumablePageMetadataValid(audit,metadata),'publication_page_metadata_required');

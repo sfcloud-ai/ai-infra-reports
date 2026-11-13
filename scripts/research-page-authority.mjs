@@ -43,7 +43,18 @@ function reportFromBundle(bytes,hash){
 // This gate is also called immediately before proposal for already-admitted jobs.
 export function assertPageCorrectionDelivery(db,bundle){
  const report=bundle.report;
- if(report.schema_version!=='1.2'||!['correction','material_update','maintenance'].includes(report.revision_notice?.kind))return;
+ if(!['correction','material_update','maintenance'].includes(report.revision_notice?.kind))return;
+ // A successor cannot discard its predecessor's page contract, even when all
+ // six pages were ready. Check the bound original job before schema dispatch.
+ const predecessorId=`morning-${report.date.replaceAll('-','')}-r${report.revision-1}`;
+ const predecessor=db.prepare('SELECT * FROM jobs WHERE id=?').get(predecessorId);
+ if(predecessor){
+  const raw=Buffer.from(predecessor.bytes);need(digest(raw)===predecessor.hash,'page_correction_previous');
+  const data=JSON.parse(raw),file=data.files.find(f=>f.path.endsWith('/report.json'));
+  const priorReport=JSON.parse(Buffer.from(file.base64,'base64'));
+  if(priorReport.schema_version==='1.2')need(report.schema_version==='1.2','page_correction_schema_downgrade');
+ }
+ if(report.schema_version!=='1.2')return;
  const previous=report.page_delivery?.previous;
  need(previous&&typeof previous.request_id==='string','page_correction_previous');
  const job=db.prepare('SELECT * FROM jobs WHERE id=?').get(previous.request_id);

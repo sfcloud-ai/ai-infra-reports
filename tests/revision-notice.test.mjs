@@ -11,7 +11,7 @@ import {encodeNoticeCommand} from '../scripts/notice-command.mjs';
 import {digest} from '../scripts/archive.mjs';
 import {checkDailyDelivery} from '../scripts/publisher-watchdog.mjs';
 import {installScheduledTables,requireSettledScheduled} from '../scripts/scheduled-delivery-state.mjs';
-import {readReports,migrateArchive,replaceCurrentReport,validateArchive} from '../scripts/archive.mjs';
+import {readReports,migrateArchive,replaceCurrentReport,validateArchive,reindexArchive} from '../scripts/archive.mjs';
 import {publicationSite} from './helpers/publication-site.mjs';
 import {FILES,MERGE,DAY} from './helpers/cloud-sender-fixture.mjs';
 const id='morning-20261101-r2',dir=`reports/${DAY}/`;
@@ -140,4 +140,15 @@ test('readiness migration accepts bound terminal revision chains and rejects mis
   assert.throws(()=>requireSettledScheduled(s.db));
   s.db.prepare('DELETE FROM scheduled_handoffs WHERE request_id=?').run(id);assert.throws(()=>requireSettledScheduled(s.db));
  }finally{s.close();}
+});
+
+test('current archive cannot downgrade a fully ready page contract through ordinary correction',async()=>{
+ const source=await readReports('.'),prefix=`reports/${DAY}/`,r=JSON.parse(source.get(prefix+'report.json'));
+ r.schema_version='1.2';r.revision_notice={kind:'maintenance',summary:'Complete prior page contract'};r.page_delivery={previous:{request_id:`morning-${DAY.replaceAll('-','')}-r${r.revision-1}`,bundle_sha256:'a'.repeat(64)},added:[],pending:[]};
+ source.set(prefix+'report.json',Buffer.from(JSON.stringify(r)));reindexArchive(source);validateArchive(source);
+ const incoming=new Map([...source].filter(([p])=>p.startsWith(prefix))),next=structuredClone(r);
+ next.schema_version='1.1';next.revision++;next.revision_notice={kind:'correction',summary:'A correction must retain the page contract'};delete next.page_delivery;
+ incoming.set(prefix+'report.json',Buffer.from(JSON.stringify(next)));
+ assert.throws(()=>replaceCurrentReport(source,incoming),/Page correction requires the original partition/);
+ assert.equal(JSON.parse(source.get(prefix+'report.json')).schema_version,'1.2');
 });
