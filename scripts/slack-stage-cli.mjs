@@ -28,10 +28,10 @@ export async function stageFile(bytes,channel,callTool,{upload,probe=false,resea
   requireThat(typeof authority?.validateArchive==='function','Original repository plan check required before upload');
   await authority.validateArchive(archive);
  }else if(revision){
-  const bundle=await decodeBundle(bytes);requireThat(bundle.report.schema_version==='1.1'&&bundle.report.revision>1,'Explicit revision notice required');
+  const bundle=await decodeBundle(bytes);requireThat(['1.1','1.2'].includes(bundle.report.schema_version)&&bundle.report.revision>1&&['correction','material_update','maintenance'].includes(bundle.report.revision_notice?.kind),'Explicit revision notice required');
   id=bundle.data.request_id;name='ai-brief-bundle.json';comment=`!ai-report revise ${id} ${bundle.hash}`;
  }else{
-  const bundle=await decodeBundle(bytes);requireThat(bundle.data.request_id===`morning-${bundle.report.date.replaceAll('-','')}-r1`,'Daily revision-one staging required');
+  const bundle=await decodeBundle(bytes);requireThat(bundle.data.request_id===`morning-${bundle.report.date.replaceAll('-','')}-r1`||(bundle.report.schema_version==='1.2'&&bundle.report.revision>1&&authority),'Daily revision-one staging required');
   id=bundle.data.request_id;name='ai-brief-bundle.json';comment=`!ai-report stage-v2 ${id} ${bundle.hash} ${authority.permit_id}`;
  }
  const recovered=await authority?.recover?.(bytes);

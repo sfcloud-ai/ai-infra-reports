@@ -1,0 +1,159 @@
+import {createHash} from 'node:crypto';
+import {RESEARCH_CONTROL_SCHEMA} from '../scripts/research-control.mjs';
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {DatabaseSync} from 'node:sqlite';
+import {RESEARCH_RECOVERY_SCHEMA,appendResearchRecoveryGrant,readResearchRecoveryHead,researchRecoveryWindow,researchRecoveryAccounting,nextResearchContinuationAt,installResearchRecovery,approveResearchRecoveryGrant,recordResearchRecoveryOperation} from '../scripts/research-recovery.mjs';
+const now=Date.parse('2026-11-13T01:10:00Z'),plan_hash='a'.repeat(64),generation='original-generation';
+const context={request_id:'morning-20261113-r1',plan_hash,generation,plan:{limits:{total_budget_seconds:3600}}};
+function fixture(){const db=new DatabaseSync(':memory:');installResearchRecovery(db,"test-install",now);return db;}
+function grant(overrides={}){return {schema_version:'research_recovery_grant_v1',grant_id:'11111111-1111-4111-8111-111111111111',request_id:context.request_id,generation,plan_hash,previous_sha256:null,authorization_reference:'owner-message-confirmed',effective_not_before:nextResearchContinuationAt(now),window_seconds:3600,failed_attempts_consume_success_budget:false,continuation_policy:'hourly_20_until_complete',...overrides};}
+const bytes=g=>Buffer.from(JSON.stringify(g));
+function approvedAppend(db,b,c,o){if(o.authorizationVerified)approveResearchRecoveryGrant(db,b,JSON.parse(b).authorization_reference,Math.min(o.now,now));return appendResearchRecoveryGrant(db,b,c,o);}
+
+test('grant preserves exact bytes and original context; duplicate exact bytes idempotent',()=>{const db=fixture(),b=bytes(grant());const stored=approvedAppend(db,b,context,{now,authorizationVerified:true});assert.equal(stored.already_stored,false);assert.deepEqual(Buffer.from(db.prepare('SELECT bytes FROM research_recovery_grants').get().bytes),b);assert.equal(approvedAppend(db,b,context,{now:now+1e7,authorizationVerified:true}).already_stored,true);assert.deepEqual(readResearchRecoveryHead(db,context.request_id).grant,grant());});
+test('authorization required and immutable bindings prevent cross-request recovery',()=>{const db=fixture();assert.throws(()=>approvedAppend(db,bytes(grant()),context,{now}),/unverified/);for(const patch of [{request_id:'other'},{plan_hash:'b'.repeat(64)},{generation:'new'},{window_seconds:3601},{effective_not_before:now}])assert.throws(()=>approvedAppend(db,bytes(grant(patch)),context,{now,authorizationVerified:true}));});
+test('chain must extend head and changed grant id cannot overwrite',()=>{const db=fixture();const first=approvedAppend(db,bytes(grant()),context,{now,authorizationVerified:true});assert.throws(()=>approvedAppend(db,bytes(grant({authorization_reference:'other-ref'})),context,{now,authorizationVerified:true}),/id_used/);const second=grant({grant_id:'22222222-2222-4222-8222-222222222222'});assert.throws(()=>approvedAppend(db,bytes(second),context,{now,authorizationVerified:true}),/head_changed/);second.previous_sha256=first.sha256;approvedAppend(db,bytes(second),context,{now,authorizationVerified:true});assert.equal(db.prepare('SELECT count(*) n FROM research_recovery_grants').get().n,2);});
+test('next :20 window never backdates and hourly continuation stays active',()=>{assert.equal(nextResearchContinuationAt(Date.parse('2026-11-13T01:20:00Z')),Date.parse('2026-11-13T02:20:00Z'));const head={grant:grant(),sha256:'b'.repeat(64)};assert.equal(researchRecoveryWindow(head,now).active,false);assert.equal(researchRecoveryWindow(head,grant().effective_not_before).active,true);assert.equal(researchRecoveryWindow(head,grant().effective_not_before+3600000).active,true);});
+test('only authenticated known failures release success quota; unknown retains reservation',()=>{const base={kind:'model',operation_key:'research',phase:'acknowledged',reserved_seconds:180,elapsed_seconds:189.45,result_archive:'a'.repeat(64),result_file:'b'.repeat(64)};const classify=op=>({authenticated:true,archive_sha256:op.result_archive,file_sha256:op.result_file,outcome:op.outcome});const result=researchRecoveryAccounting([{...base,outcome:'failed'},{...base,phase:'unknown',outcome:'failed'},{...base,outcome:'success',elapsed_seconds:100}],classify);assert.equal(result.failed_seconds,189.45);assert.equal(result.success_seconds,100);assert.equal(result.reserved_seconds,189.45);assert.equal(result.failed_attempts['["model","research"]'],1);assert.equal(result.successful_attempts['["model","research"]'],1);assert.equal(researchRecoveryAccounting([base],()=>({authenticated:false,outcome:'failed'})).reserved_seconds,189.45);});
+test('missing actual time never becomes zero successful duration',()=>{const op={kind:'source',operation_key:'x',phase:'acknowledged',reserved_seconds:180,elapsed_seconds:null,result_archive:'a'.repeat(64),result_file:'b'.repeat(64)};const r=researchRecoveryAccounting([op],()=>({authenticated:true,archive_sha256:op.result_archive,file_sha256:op.result_file,outcome:'success'}));assert.equal(r.timing_unknown,true);assert.equal(r.reserved_seconds,180);});
+
+test('installation idempotent and partial/altered schema rejected',()=>{const db=fixture();assert.equal(installResearchRecovery(db,'again',now),false);db.exec('DROP TABLE research_recovery_operations');assert.throws(()=>installResearchRecovery(db,'again',now),/schema_mismatch/);});
+test('caller boolean cannot authorize and delayed exact approved append keeps intended schedule',()=>{const db=fixture(),b=bytes(grant());assert.throws(()=>appendResearchRecoveryGrant(db,b,context,{now,authorizationVerified:true}),/unverified/);approveResearchRecoveryGrant(db,b,grant().authorization_reference,now);const r=appendResearchRecoveryGrant(db,b,context,{now:now+7200000});assert.equal(r.grant.effective_not_before,grant().effective_not_before);const w=researchRecoveryWindow({grant:r.grant,sha256:r.sha256},now+7200000);assert.equal(w.active,true);assert.equal(w.window_start,grant().effective_not_before+3600000);});
+test('append-only operation windows support only same original binding',()=>{const db=fixture(),start=grant().effective_not_before,r={operation_id:'33333333-3333-4333-8333-333333333333',request_id:context.request_id,grant_id:'plan:'+plan_hash,window_start:start};assert.equal(recordResearchRecoveryOperation(db,r,start),true);assert.equal(recordResearchRecoveryOperation(db,r,start+1),false);assert.equal(recordResearchRecoveryOperation(db,{...r,window_start:start+3600000},start+3600001),true);assert.equal(db.prepare('SELECT count(*) n FROM research_recovery_operations').get().n,2);assert.throws(()=>recordResearchRecoveryOperation(db,{...r,grant_id:grant().grant_id},start+1),/conflict/);assert.throws(()=>recordResearchRecoveryOperation(db,{...r,window_start:start+7200000},start),/window/);});
+test('failed with missing elapsed remains unknown and reserved',()=>{const op={kind:'model',operation_key:'research',phase:'acknowledged',reserved_seconds:180,elapsed_seconds:null,result_archive:'a'.repeat(64),result_file:'b'.repeat(64)};const r=researchRecoveryAccounting([op],()=>({authenticated:true,archive_sha256:op.result_archive,file_sha256:op.result_file,outcome:'failed'}));assert.equal(r.reserved_seconds,180);assert.equal(r.timing_unknown,true);assert.equal(r.failed_attempts['["model","research"]'],undefined);assert.equal(r.unknown_attempts['["model","research"]'],1);});
+
+test('repeated offline approval remains idempotent after its start',()=>{const db=fixture(),b=bytes(grant());approveResearchRecoveryGrant(db,b,grant().authorization_reference,now);assert.equal(approveResearchRecoveryGrant(db,b,grant().authorization_reference,now+7200000).already_approved,true);});
+
+test('unknown outcome retains observed elapsed if greater than original reservation',()=>{
+ const op={kind:'source',operation_key:'same',phase:'unknown',reserved_seconds:180,elapsed_seconds:250};
+ const totals=researchRecoveryAccounting([op],()=>null);
+ assert.equal(totals.reserved_seconds,250);assert.equal(totals.failed_seconds,0);
+});
+
+test('hourly continuation window is independent of smaller successful-work quota',()=>{
+ const db=fixture(),small={...context,plan:{limits:{total_budget_seconds:900}}},original=JSON.stringify(small);
+ const result=approvedAppend(db,bytes(grant()),small,{now,authorizationVerified:true});
+ assert.equal(result.grant.window_seconds,3600);assert.equal(JSON.stringify(small),original);
+ assert.equal(small.plan.limits.total_budget_seconds,900);
+ assert.equal(researchRecoveryWindow(result,grant().effective_not_before+1800000).active,true);
+ db.close();
+});
+test('well formed grant without installed layer is explicitly rejected without creating tables',()=>{
+ const db=new DatabaseSync(':memory:'),before=db.prepare('SELECT name,sql FROM sqlite_master ORDER BY name').all();
+ assert.throws(()=>appendResearchRecoveryGrant(db,bytes(grant()),context,{now}),{researchControlCode:'recovery_layer_not_installed'});
+ assert.deepEqual(db.prepare('SELECT name,sql FROM sqlite_master ORDER BY name').all(),before);db.close();
+});
+
+const immediateGrant=(overrides={})=>grant({continuation_policy:'immediate_once_then_hourly_20_until_complete',effective_not_before:now,...overrides});
+test('immediate approval binds true now and Shanghai report date; exact retry is idempotent',()=>{
+ const db=fixture(),g=immediateGrant(),b=bytes(g);
+ for(const offset of [-1,1])assert.throws(()=>approveResearchRecoveryGrant(db,bytes(immediateGrant({effective_not_before:now+offset})),g.authorization_reference,now),/immediate_time/);
+ const wrongDate=immediateGrant({request_id:'morning-20261112-r1'});
+ assert.throws(()=>approveResearchRecoveryGrant(db,bytes(wrongDate),g.authorization_reference,now),/immediate_time/);
+ assert.equal(approveResearchRecoveryGrant(db,b,g.authorization_reference,now).already_approved,false);
+ assert.equal(approveResearchRecoveryGrant(db,b,g.authorization_reference,now+86400000).already_approved,true);
+ const another=immediateGrant({grant_id:'22222222-2222-4222-8222-222222222222',effective_not_before:now+1});
+ assert.throws(()=>approveResearchRecoveryGrant(db,bytes(another),g.authorization_reference,now+1),/immediate_used/);
+ assert.equal(approveResearchRecoveryGrant(db,bytes(grant()),g.authorization_reference,now).already_approved,false);
+ db.close();
+});
+test('delayed immediate intake retains exact initial time; approval timestamp mismatch rejected',()=>{
+ const db=fixture(),g=immediateGrant(),b=bytes(g);
+ approveResearchRecoveryGrant(db,b,g.authorization_reference,now);
+ const stored=appendResearchRecoveryGrant(db,b,context,{now:now+7200000});
+ assert.equal(stored.grant.effective_not_before,now);
+ assert.equal(readResearchRecoveryHead(db,context.request_id).created_at,now+7200000);
+ assert.deepEqual(Buffer.from(db.prepare('SELECT bytes FROM research_recovery_grants').get().bytes),b);
+ db.close();
+ const other=fixture();approveResearchRecoveryGrant(other,b,g.authorization_reference,now);
+ other.prepare('UPDATE research_recovery_authorizations SET approved_at=?').run(now-1);
+ assert.throws(()=>appendResearchRecoveryGrant(other,b,context,{now}),/not_before/);other.close();
+});
+test('immediate first window ends at next :20 then uses normal hourly windows',()=>{
+ const head={grant:immediateGrant(),sha256:'b'.repeat(64)},next=nextResearchContinuationAt(now);
+ const before=researchRecoveryWindow(head,now-1);assert.equal(before.active,false);
+ const first=researchRecoveryWindow(head,now);assert.equal(first.window_start,now);assert.equal(first.deadline,next);assert.equal(first.active,true);
+ assert.equal(researchRecoveryWindow(head,next-1).window_start,now);
+ const second=researchRecoveryWindow(head,next);assert.equal(second.window_start,next);assert.equal(second.deadline,next+3600000);assert.equal(second.active,true);
+ assert.equal(researchRecoveryWindow(head,next+3600000).window_start,next+3600000);
+ const aligned={grant:immediateGrant({effective_not_before:next}),sha256:head.sha256};
+ assert.equal(researchRecoveryWindow(aligned,next).deadline,next+3600000);
+});
+test('unaligned operation window requires stored exact immediate grant and first interval',()=>{
+ const db=fixture(),g=immediateGrant(),b=bytes(g),r={operation_id:'33333333-3333-4333-8333-333333333333',request_id:context.request_id,grant_id:g.grant_id,window_start:now};
+ assert.throws(()=>recordResearchRecoveryOperation(db,r,now),/window/);
+ approveResearchRecoveryGrant(db,b,g.authorization_reference,now);appendResearchRecoveryGrant(db,b,context,{now});
+ assert.equal(recordResearchRecoveryOperation(db,r,now),true);
+ assert.equal(recordResearchRecoveryOperation(db,r,now+1),false);
+ assert.throws(()=>recordResearchRecoveryOperation(db,{...r,window_start:now+1},now+1),/window/);
+ assert.throws(()=>recordResearchRecoveryOperation(db,{...r,request_id:'morning-20261112-r1'},now),/window/);
+ const next=nextResearchContinuationAt(now);
+ assert.throws(()=>recordResearchRecoveryOperation(db,r,next),/window/);
+ assert.equal(recordResearchRecoveryOperation(db,{...r,window_start:next},next),true);
+ db.close();
+});
+test('immediate approval uses Shanghai midnight, not UTC report date',()=>{
+ const db=fixture(),at=Date.parse('2026-11-12T16:00:00Z'),g=immediateGrant({effective_not_before:at});
+ assert.equal(approveResearchRecoveryGrant(db,bytes(g),g.authorization_reference,at).already_approved,false);
+ const other=fixture(),before=at-1;
+ assert.throws(()=>approveResearchRecoveryGrant(other,bytes(immediateGrant({effective_not_before:before})),g.authorization_reference,before),/immediate_time/);
+ db.close();other.close();
+});
+
+test('implicit v4 authority transitions append-only to approved grant and successor',()=>{
+ const db=fixture(),start=grant().effective_not_before;
+ const original=bytes({schema_version:'research_plan_v4',synthetic:'immutable plan'});
+ const originalHash=createHash('sha256').update(original).digest('hex');
+ for(const name of ['research_control_runs','research_control_policy'])db.exec(RESEARCH_CONTROL_SCHEMA[name]);
+ db.prepare('INSERT INTO research_control_runs(request_id,report_date,plan,plan_hash,owner_id,epoch,revision,lease_until,started_at,charged_seconds) VALUES(?,?,?,?,?,?,?,?,?,?)').run(context.request_id,'2026-11-13',original,originalHash,'owner',1,1,start,start,180);
+ db.prepare('INSERT INTO research_control_policy VALUES(1,?,?)').run(JSON.stringify({generation}),'original activation');
+ const ctx={...context,plan_hash:originalHash},r={operation_id:'33333333-3333-4333-8333-333333333333',request_id:context.request_id,grant_id:'plan:'+originalHash,window_start:start};
+ recordResearchRecoveryOperation(db,r,start);
+ const old=db.prepare('SELECT * FROM research_recovery_operations').get(),run=db.prepare('SELECT * FROM research_control_runs').get();
+ const g=grant({plan_hash:originalHash,effective_not_before:start+3600000});
+ approveResearchRecoveryGrant(db,bytes(g),g.authorization_reference,now);
+ const first=appendResearchRecoveryGrant(db,bytes(g),ctx,{now});
+ assert.throws(()=>recordResearchRecoveryOperation(db,{...r,grant_id:g.grant_id},start),/conflict/);
+ const next={...r,grant_id:g.grant_id,window_start:start+3600000};
+ assert.equal(recordResearchRecoveryOperation(db,next,next.window_start),true);
+ assert.equal(recordResearchRecoveryOperation(db,next,next.window_start+1),false);
+ assert.deepEqual(db.prepare('SELECT * FROM research_recovery_operations ORDER BY rowid LIMIT 1').get(),old);
+ assert.deepEqual(db.prepare('SELECT * FROM research_control_runs').get(),run);
+ const successor=grant({grant_id:'22222222-2222-4222-8222-222222222222',plan_hash:originalHash,previous_sha256:first.sha256,effective_not_before:start+7200000});
+ approveResearchRecoveryGrant(db,bytes(successor),successor.authorization_reference,now);
+ appendResearchRecoveryGrant(db,bytes(successor),ctx,{now:now+1});
+ assert.equal(recordResearchRecoveryOperation(db,{...next,grant_id:successor.grant_id,window_start:start+7200000},start+7200000),true);
+ assert.equal(db.prepare('SELECT count(*) n FROM research_recovery_operations').get().n,3);
+ db.close();
+});
+
+test('implicit to explicit migration rejects v3, wrong plan, generation and request',()=>{
+ for(const failure of ['v3','plan','generation','request']){
+  const db=fixture(),start=grant().effective_not_before;
+  const original=bytes({schema_version:failure==='v3'?'research_plan_v3':'research_plan_v4'});
+  const originalHash=createHash('sha256').update(original).digest('hex');
+  for(const name of ['research_control_runs','research_control_policy'])db.exec(RESEARCH_CONTROL_SCHEMA[name]);
+  db.prepare('INSERT INTO research_control_runs(request_id,report_date,plan,plan_hash,owner_id,epoch,revision,lease_until,started_at,charged_seconds) VALUES(?,?,?,?,?,?,?,?,?,?)').run(context.request_id,'2026-11-13',original,originalHash,'owner',1,1,start,start,180);
+  db.prepare('INSERT INTO research_control_policy VALUES(1,?,?)').run(JSON.stringify({generation:failure==='generation'?'different':generation}),'activation');
+  const r={operation_id:'33333333-3333-4333-8333-333333333333',request_id:failure==='request'?'morning-20261112-r1':context.request_id,grant_id:'plan:'+(failure==='plan'?'b'.repeat(64):originalHash),window_start:start};
+  recordResearchRecoveryOperation(db,r,start);
+  const g=grant({plan_hash:originalHash}),ctx={...context,plan_hash:originalHash};
+  approveResearchRecoveryGrant(db,bytes(g),g.authorization_reference,now);appendResearchRecoveryGrant(db,bytes(g),ctx,{now});
+  const before=db.prepare('SELECT * FROM research_recovery_operations').all();
+  assert.throws(()=>recordResearchRecoveryOperation(db,{...r,request_id:context.request_id,grant_id:g.grant_id,window_start:start+3600000},start+3600000),/conflict/,failure);
+  assert.deepEqual(db.prepare('SELECT * FROM research_recovery_operations').all(),before);
+  db.close();
+ }
+});
+
+test('legacy v3 explicit grants still resume across their approved successor',()=>{
+ const db=fixture(),start=grant().effective_not_before,ctx={...context,plan:{schema_version:'research_plan_v3',limits:{total_budget_seconds:3600}}};
+ const first=approvedAppend(db,bytes(grant()),ctx,{now,authorizationVerified:true});
+ const r={operation_id:'33333333-3333-4333-8333-333333333333',request_id:context.request_id,grant_id:first.grant.grant_id,window_start:start};
+ recordResearchRecoveryOperation(db,r,start);
+ const g=grant({grant_id:'22222222-2222-4222-8222-222222222222',previous_sha256:first.sha256});
+ const second=approvedAppend(db,bytes(g),ctx,{now:now+1,authorizationVerified:true});
+ assert.equal(recordResearchRecoveryOperation(db,{...r,grant_id:second.grant.grant_id,window_start:start+3600000},start+3600000),true);
+ assert.equal(db.prepare('SELECT count(*) n FROM research_recovery_operations').get().n,2);db.close();
+});

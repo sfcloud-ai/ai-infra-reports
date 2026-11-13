@@ -35,7 +35,7 @@ export async function researchClientMain(args){
   if(mode==='--submit'){
    requireThat(c.stage&&Object.keys(c.stage).sort().join()==='file_id,source_ts','Original host staging receipt required');
    const operation_id=await authority.before('submit',c.stage.file_id,bytes,c.stage.source_ts);
-   await callTool('mcp__codex_apps__slack_slack_send_message',{channel_id:c.scope.channel_id,message:`!ai-report submit-v2 ${c.upload.request_id} ${digest(bytes)} ${c.stage.source_ts} ${authority.permit_id}`,unfurl_app_links:false},operation_id);
+   await callTool('mcp__codex_apps__slack_slack_send_message',{channel_id:c.scope.channel_id,message:`!ai-report submit-v2 ${authority.publication_request_id} ${digest(bytes)} ${c.stage.source_ts} ${authority.permit_id}`,unfurl_app_links:false},operation_id);
    emit({type:'submission_attempt_finished',next_action:'read_original_host_publication_and_delivery'});return 0;
   }
   emit(await stageFile(bytes,c.scope.channel_id,callTool,{authority,research:mode==='--archive',observe:emit}));return 0;

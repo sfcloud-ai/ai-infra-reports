@@ -302,3 +302,76 @@ then the first new-output archive on the real daily run. Isolated fixtures alone
 are not live-provider acceptance evidence. An uncertain first archive preserves
 its original operation/file and enters recovery; it never authorizes a replacement
 upload or a fresh daily plan.
+
+## 分层预算与按小时接续（须显式部署与激活）
+
+`research_plan_v4` 使用 `successful_work_hourly_continuation_v1`，与 audit 1.4 对应。
+旧 v3 计划与失败记录不改写；旧任务只有追加经过宿主独立批准的 recovery grant 后才采用有效恢复预算。
+源码支持不代表已部署，先核实 `status.capabilities`，再使用新计划或恢复命令。
+该层已安装时，尚无任务和已有 v3 任务但未接纳 grant 的 status 都返回能力声明；
+能力声明本身不激活旧任务恢复。未安装时，合法 recovery_grant 返回持久拒绝
+`recovery_layer_not_installed`，不会隐式建表或留作无结论的 pending。
+
+新计划的 `limits` 精确包含 `max_attempts_per_source`、`max_attempts_per_model`、
+`source_attempt_timeout_seconds`、`model_stage_timeout_seconds`、`total_budget_seconds`。
+来源单次网络超时与模型阶段额度分开。失败和超时的次数、耗时、原输出持续保留，
+但只有原归档证明的明确失败可释放成功额度；`acknowledged` 本身不等于成功或失败。
+未核实结果继续预留额度并禁止盲目重放。成功额度跨小时累计，不因恢复或换 owner 重置。
+
+每个小时的 `:20` 接续同一请求；每个阶段在一个窗口内最多自动尝试两次，
+用完本窗口尝试后保留检查点，等待后续窗口。它不是总重试次数或总等待年龄截止。
+3600 秒是小时调度窗口，与原 `total_budget_seconds` 成功额度独立；
+原额度不足 3600 秒的合法计划也可接续，但原成功额度不会因此提高或重置。
+已成功阶段不为接续而重做。来源正文、检查点与真实失败先归档，后结算。
+
+模型恢复必须绑定同阶段的上一原 operation、已保存结果的 archive/file SHA256 以及
+前后两次真实输入哈希。补齐证据可产生新输入，但原 operation/input 与检查点链不能改写。恢复结果须保留已有完成内容与失败记录；未知结果先对账。
+不得把检查点保存、控制回执或进程存活代替真实研究、审计、Pages 或企微完成证据。
+新的预算规则不追认原定时链路成功，也不授予第二次正式投递许可。
+
+### 激活与旧任务补充授权
+
+停止 Publisher，保留备份，在原非 root 宿主账号下使用新 release 的
+`research-recovery-admin.mjs CONFIG --install REFERENCE`。工具持有原 Publisher
+独占锁并校验原配置和账本身份，仅追加 recovery 表，不迁移原计划或操作。
+未来 v4 任务只有该层已显式安装才可 claim；此前状态查询不会隐式安装。
+
+旧 v3 任务先构造 `research_recovery_grant_v1` 原 JSON 字节，绑定原
+request_id、generation、plan_hash、前 grant SHA 和真实授权引用。
+`effective_not_before` 为批准时之后首个实际可触发的小时 `:20`，
+`window_seconds=3600`、`continuation_policy=hourly_20_until_complete`、
+`failed_attempts_consume_success_budget=false`。使用
+`research-recovery-admin.mjs CONFIG --approve REFERENCE GRANT` 固定其 SHA 和原字节；
+然后恢复 Publisher，通过原正式客户端 `recovery_grant` action，
+args 为 `{grant_base64: 原字节的 base64}`，在原 owner/epoch/revision 下接纳。
+此控制命令不能自行批准预算，未经独立批准的哈希会拒绝。
+
+该 grant 提供有效恢复策略，原 v3 计划、started_at、charged_seconds、失败结果不变。
+新增有效预算将原来源上限用于单次请求，将原整轮额度用于成功研究和模型阶段，
+成功次数沿原额度，明确失败不扣成功额度。新 audit 1.4 在独立恢复归档记录
+采用时间、grant SHA、新验证器 SHA 与原输入 SHA，不把新提示词冒充原输入。
+
+新 v4 source 结果 JSON 必须带 request_id、operation_id、url、status 和真实
+elapsed_seconds；model 结果须带 request_id、operation_id、status（或
+stage_status）及真实 elapsed_seconds。二者须与原操作和归档一致。
+旧 v3 source 历史只能经同请求唯一 result_file 关联、URL 与实际耗时核实；
+一个历史文件不能释放多个操作的额度。未知结果、未知耗时不据此自动重试。
+
+### 用户明确授权的一次性立即恢复
+
+用户对原请求另行明确授权立即恢复时，可使用
+`continuation_policy=immediate_once_then_hourly_20_until_complete`，其余原请求、
+计划哈希、generation、前 grant 链保持不变。离线模板的
+`effective_not_before` 必须为 `null`，由
+`research-recovery-admin.mjs CONFIG --approve-now REFERENCE TEMPLATE`
+在原宿主锁内记录真实批准时刻并返回 `grant_base64`、SHA256 和 `approved_at`；
+将返回的精确字节经正式 `recovery_grant` 接纳，不手工倒填小时调度时刻。
+批准时的北京时间日期须与原 report_date 相同，每个原请求仅允许一次即时批准。
+同一精确批准字节可幂等核对；调用结果未知时先检查原批准记录，不重复生成新模板。
+首段从真实批准时刻持续至下一小时 `:20`，其后仍每小时 `:20` 接续。
+旧计划、首次开始时间、实际失败、已用成功额度及未知操作保护全部不变。
+
+旧 v3 来源原结果若绑定响应正文而非 JSON，只在同一已认证归档内存在唯一
+匹配原 operation_id 与正文 SHA 的元数据时分类。还须核实原 key/input SHA、
+URL identity、预留额度、单次尝试数、正文长度、真实耗时及 HTTP/退出码；
+缺失、不一致或无法判定仍是 unknown。新 v4 不使用此历史格式兼容路径。

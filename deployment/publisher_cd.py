@@ -26,6 +26,20 @@ CONFIG = Path("/etc/ai-report-publisher-cd.json")
 SHA = re.compile(r"[0-9a-f]{40}")
 TABLES = {"publisher_intake_scan", "publisher_inbox", "scope", "jobs", "ready_migrations", "notice_scope", "notices", "notice_commands", "notice_recovery_authorizations", "remote_native_runs", "remote_native_ops", "recovery_control_successors", "scheduled_handoffs", "scheduled_bridge_scope", "scheduled_status_replies", "job_replacement_audit"}
 
+RESEARCH_PAGE_SCHEMA = {
+    'research_page_rounds': 'CREATE TABLE research_page_rounds(request_id TEXT PRIMARY KEY,run_id TEXT NOT NULL,revision INTEGER NOT NULL,previous_evidence TEXT NOT NULL,added TEXT NOT NULL,opened_at INTEGER NOT NULL,permit TEXT,UNIQUE(run_id,revision))',
+    'research_page_staged': "CREATE TABLE research_page_staged(request_id TEXT PRIMARY KEY,report_date TEXT NOT NULL,hash TEXT NOT NULL,source_ts TEXT UNIQUE NOT NULL,file_id TEXT NOT NULL,bytes BLOB NOT NULL,phase TEXT NOT NULL DEFAULT 'staged',submit_ts TEXT)",
+}
+TABLES.update(RESEARCH_PAGE_SCHEMA)
+
+RESEARCH_RECOVERY_SCHEMA = {
+    'research_recovery_grants': 'CREATE TABLE research_recovery_grants(grant_id TEXT PRIMARY KEY,request_id TEXT NOT NULL,generation TEXT NOT NULL,plan_hash TEXT NOT NULL,previous_sha256 TEXT,sha256 TEXT UNIQUE NOT NULL,bytes BLOB NOT NULL,created_at INTEGER NOT NULL)',
+    'research_recovery_authorizations': 'CREATE TABLE research_recovery_authorizations(sha256 TEXT PRIMARY KEY,reference TEXT NOT NULL,bytes BLOB NOT NULL,approved_at INTEGER NOT NULL)',
+    'research_recovery_operations': 'CREATE TABLE research_recovery_operations(operation_id TEXT NOT NULL,request_id TEXT NOT NULL,grant_id TEXT NOT NULL,window_start INTEGER NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(operation_id,window_start))',
+    'research_recovery_installation': 'CREATE TABLE research_recovery_installation(id INTEGER PRIMARY KEY CHECK(id=1),reference TEXT NOT NULL,installed_at INTEGER NOT NULL)',
+}
+TABLES.update(RESEARCH_RECOVERY_SCHEMA)
+
 INTAKE_SCHEMA = {
     'publisher_intake_scan': 'CREATE TABLE publisher_intake_scan (\n   id INTEGER PRIMARY KEY CHECK(id=1), scope TEXT NOT NULL, watermark TEXT NOT NULL,\n   upper_bound TEXT, page_cursor TEXT)',
     'publisher_inbox': "CREATE TABLE publisher_inbox (\n   source_ts TEXT PRIMARY KEY, request_id TEXT NOT NULL, file_id TEXT NOT NULL,\n   hash TEXT NOT NULL, phase TEXT NOT NULL DEFAULT 'pending', attempts INTEGER NOT NULL DEFAULT 0,\n   next_at INTEGER NOT NULL DEFAULT 0, last_attempt INTEGER NOT NULL DEFAULT 0, diagnostic TEXT)",
@@ -373,6 +387,26 @@ def snapshot(path, settled=True):
                     or control_policy['archive_generation'] != archive_policy['generation']
                     or control_policy['publisher_scope_sha256'] != archive_policy['publisher_scope_sha256']):
                 raise ValueError('invalid_research_control_policy')
+        research_recovery = database.execute("SELECT type,name,sql FROM sqlite_master WHERE tbl_name LIKE 'research_recovery_%' ORDER BY name").fetchall()
+        if research_recovery:
+            expected = {('table', name, sql) for name, sql in RESEARCH_RECOVERY_SCHEMA.items()} | {
+                ('index', 'sqlite_autoindex_' + name + '_' + str(n), None)
+                for name, count in [('research_recovery_grants', 2), ('research_recovery_authorizations', 1),
+                                    ('research_recovery_operations', 1)] for n in range(1, count + 1)}
+            if set(research_recovery) != expected or not authority:
+                raise ValueError('unsupported_research_recovery_schema')
+            installations = database.execute('SELECT id,reference,installed_at FROM research_recovery_installation').fetchall()
+            if (len(installations) != 1 or installations[0][0] != 1
+                    or not isinstance(installations[0][1], str) or not installations[0][1].strip()
+                    or not isinstance(installations[0][2], int) or installations[0][2] < 0):
+                raise ValueError('incomplete_research_recovery_installation')
+        pages = database.execute("SELECT type,name,sql FROM sqlite_master WHERE tbl_name LIKE 'research_page_%' ORDER BY name").fetchall()
+        if pages:
+            expected = {('table', name, sql) for name, sql in RESEARCH_PAGE_SCHEMA.items()} | {
+                ('index', 'sqlite_autoindex_' + name + '_' + str(n), None)
+                for name in RESEARCH_PAGE_SCHEMA for n in (1, 2)}
+            if set(pages) != expected or not authority:
+                raise ValueError('unsupported_research_page_schema')
         replacement = database.execute("SELECT type,name,sql FROM sqlite_master WHERE tbl_name='job_replacement_audit'").fetchall()
         if replacement and set(replacement) != {
                 ("table", "job_replacement_audit", JOB_REPLACEMENT_SCHEMA),
@@ -394,6 +428,10 @@ def snapshot(path, settled=True):
             if settled and database.execute("SELECT count(*) FROM publisher_intake_scan WHERE upper_bound IS NOT NULL OR page_cursor IS NOT NULL").fetchone()[0]:
                 raise Deferred("unfinished_intake_scan")
         result = [["recovery_schema", recovery]] if recovery else []
+        if pages:
+            result.append(["research_page_schema", pages])
+        if research_recovery:
+            result.append(["research_recovery_schema", research_recovery])
         if intake:
             result.append(["intake_schema", intake])
         if journal:
@@ -409,6 +447,8 @@ def snapshot(path, settled=True):
             result.append([name, sql, [[{"base64": base64.b64encode(value).decode()} if isinstance(value, bytes) else value
                                       for value in row] for row in rows]])
         if settled:
+            if pages and database.execute("SELECT 1 FROM research_page_staged WHERE phase!='admitted'").fetchone():
+                raise Deferred('unfinished_page_submission')
             if submissions and (database.execute("SELECT 1 FROM slack_submission_events WHERE phase!='done' AND NOT coalesce(phase='fenced' AND json_extract(diagnostic,'$.stage')='research_publication' AND json_extract(diagnostic,'$.outcome')='rejected',0)").fetchone()
                                 or database.execute("SELECT 1 FROM slack_staged_bundles WHERE phase!='admitted'").fetchone()):
                 raise Deferred('unfinished_slack_submission')
@@ -683,7 +723,18 @@ def revision_runtime_required(database):
         return True
     for (raw,) in database.execute('SELECT bytes FROM jobs'):
         for item in json.loads(raw).get('files', []):
-            if item['path'].endswith('/report.json') and json.loads(base64.b64decode(item['base64'], validate=True)).get('schema_version') == '1.1':
+            if item['path'].endswith('/report.json') and json.loads(base64.b64decode(item['base64'], validate=True)).get('schema_version') in {'1.1', '1.2'}:
+                return True
+    return False
+
+
+def page_runtime_required(database):
+    # Persisted schema, not only optional authority tables, constrains rollback.
+    if database.execute("SELECT 1 FROM sqlite_master WHERE name='research_page_rounds'").fetchone():
+        return True
+    for (raw,) in database.execute('SELECT bytes FROM jobs'):
+        for item in json.loads(raw).get('files', []):
+            if item['path'].endswith('/report.json') and json.loads(base64.b64decode(item['base64'], validate=True)).get('schema_version') == '1.2':
                 return True
     return False
 
@@ -711,8 +762,10 @@ def compatibility(config, release, operation, expected):
     if snapshot(database) != expected:
         raise ValueError("state_changed_during_backup")
     with closing(sqlite3.connect(database)) as isolated:
+        needs_pages = page_runtime_required(isolated)
         needs_revision = revision_runtime_required(isolated)
         needs_repository_inputs = repository_inputs_runtime_required(isolated)
+        needs_layered_budget = isolated.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='research_recovery_installation'").fetchone() is not None
     copied = json.loads(Path(config["publisher_config"]).read_text())
     copied["state_dir"] = "/probe"
     (probe / "publisher.json").write_text(json.dumps(copied))
@@ -720,10 +773,14 @@ def compatibility(config, release, operation, expected):
         os.chown(path, config["uid"], config["gid"])
         path.chmod(0o700 if path.is_dir() else 0o600)
     script = "import{readFileSync}from'node:fs';import{HandoffState,handoffScope}from'./scripts/handoff-state.mjs';import{NoticeOutbox,notificationScope}from'./scripts/notice-outbox.mjs';import * as runtime from'./scripts/run-handoff.mjs';"
+    if needs_pages:
+        script += "const pages=await import('./scripts/research-page-authority.mjs');if(pages.PAGE_AUTHORITY_VERSION!==1)throw Error('page_authority_requires_compatible_release');"
     if needs_revision:
         script += "if(runtime.REVISION_NOTICES_VERSION!==1)throw Error('revision_ledger_requires_compatible_release');"
     if needs_repository_inputs:
         script += "const inputs=await import('./scripts/research-control.mjs');if(inputs.REPOSITORY_RESEARCH_INPUTS_VERSION!==1)throw Error('repository_inputs_require_compatible_release');"
+    if needs_layered_budget:
+        script += "const budget=await import('./scripts/research-control.mjs');if(budget.LAYERED_RESEARCH_BUDGET_VERSION!==1)throw Error('layered_budget_requires_compatible_release');"
     script += "const c=(runtime.validateLiveConfig??runtime.validateConfig)(JSON.parse(readFileSync('/probe/publisher.json')));const s=new HandoffState('/probe/handoff.sqlite',handoffScope(c));try{if(c.research_control||s.db.prepare(\"SELECT 1 FROM sqlite_master WHERE name='research_control_policy'\").get()){const authority=await import('./scripts/research-control.mjs');authority.assertResearchControl(s.db,c);}if(c.notification_destination)new NoticeOutbox(s,notificationScope(c));}finally{s.close();}"
     container(config, release, ["/node/bin/node", "--input-type=module", "-e", script], uid=config["uid"], readonly=True,
               extra=["--mount", "type=bind,src=" + str(probe) + ",dst=/probe"] + legacy_dependency_mount(config, release))
