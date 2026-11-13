@@ -1,9 +1,9 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "date": "2026-11-13",
-  "revision": 1,
+  "revision": 2,
   "title": "AI Infra 晨报 · 2026-11-13",
-  "subtitle": "部分晨报｜覆盖缺口：硬件、架构、具身、小模型、引擎。部分官方入口异常，代码与模型卡核验不完整。",
+  "subtitle": "部分晨报｜覆盖缺口：硬件、架构、小模型及部分官方博客。已补查具身训练与引擎代码；产线收益和稳定版适用性仍待验证。",
   "articles": [
     {
       "id": "model-serving-gpu",
@@ -25,9 +25,9 @@
     },
     {
       "id": "embodied-training",
-      "title": "制造业具身训练：发现线索尚未完成全文核验",
-      "summary": "已查LeRobot发布列表和NVIDIA发现页，不虚构工厂实测。",
-      "sha256": "5eb246583e0255659594953a42c2dd84f12d6a5a5b254ef84c838114dcd46d95"
+      "title": "BATCH：先对齐人的示范和机械臂动作，再训练跨场景操作",
+      "summary": "11月6日论文：两项ARX5实机任务验证时间对齐；代码未发布，不能承诺产线降本。",
+      "sha256": "430950e529f6b91e9703f29ce2af9efe49577c65c55c68e8d1ebda6a33956938"
     },
     {
       "id": "small-model-status",
@@ -37,9 +37,9 @@
     },
     {
       "id": "inference-engines",
-      "title": "推理引擎每日变动：技术文章已读，代码覆盖有缺口",
-      "summary": "vLLM、SGLang合并事件交叉引用；DeepInfer单独保留核查范围。",
-      "sha256": "0a550c48d8c90b28df5a5619979512da841c84feee9fb193b8903c3c0434dc3b"
+      "title": "推理引擎每日变动：共享CPU KV与显存释放确认",
+      "summary": "vLLM补齐共享元数据，SGLang等待全部流水线阶段；三家引擎分开核查。",
+      "sha256": "ad47d6098caadbe5929a25760b12d861f7cca12a55831ded2fa5f15d90e425a0"
     }
   ],
   "entries": [
@@ -82,18 +82,6 @@
       "article_id": "model-architecture-status"
     },
     {
-      "id": "2026-11-13-embodied-training-20261113",
-      "event_key": "embodied-training-20261113",
-      "title": "制造业具身训练：发现线索尚未完成全文核验",
-      "summary": "已查LeRobot发布列表和NVIDIA发现页，不虚构工厂实测。",
-      "source_urls": [
-        "https://api.github.com/repos/huggingface/lerobot/releases?per_page=3",
-        "https://developer.nvidia.com/blog/"
-      ],
-      "update_of": null,
-      "article_id": "embodied-training"
-    },
-    {
       "id": "2026-11-13-small-model-status-20261113",
       "event_key": "small-model-status-20261113",
       "title": "前沿小模型：不把17B激活误当小权重",
@@ -107,15 +95,38 @@
       "article_id": "small-model-status"
     },
     {
-      "id": "2026-11-13-inference-engines-20261113",
-      "event_key": "inference-engines-20261113",
-      "title": "推理引擎每日变动：技术文章已读，代码覆盖有缺口",
-      "summary": "vLLM、SGLang合并事件交叉引用；DeepInfer单独保留核查范围。",
+      "id": "2026-11-13-batch-temporal-alignment-2611-10148",
+      "event_key": "batch-temporal-alignment-2611-10148",
+      "title": "BATCH：先对齐人的示范和机械臂动作，再训练跨场景操作",
+      "summary": "11月6日论文：两项ARX5实机任务验证时间对齐；代码未发布，不能承诺产线降本。",
       "source_urls": [
-        "https://vllm.ai/blog/archive",
-        "https://www.sglang.io/blog",
-        "https://api.github.com/repos/deepseek-ai/DeepInfer/commits?per_page=5",
-        "https://github.com/deepseek-ai/DeepInfer"
+        "https://arxiv.org/html/2611.10148v1",
+        "https://arxiv.org/abs/2611.10148",
+        "https://batch-embodiment.github.io/"
+      ],
+      "update_of": null,
+      "article_id": "embodied-training"
+    },
+    {
+      "id": "2026-11-13-vllm-cpu-kv-compressor-sharing-65373",
+      "event_key": "vllm-cpu-kv-compressor-sharing-65373",
+      "title": "vLLM：CPU KV共享不能漏掉压缩器状态",
+      "summary": "最终补丁补齐共享声明与测试；作者原型性能不当成该单行补丁的独立收益。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/65373",
+        "https://github.com/vllm-project/vllm/commit/9a77b4201bc4551f7e23ce59758dcbe6410c9e10"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    },
+    {
+      "id": "2026-11-13-sglang-pp-memory-release-49798",
+      "event_key": "sglang-pp-memory-release-49798",
+      "title": "SGLang：显存释放成功必须等全部流水线阶段",
+      "summary": "跨TP忙闲汇总与逐PP结果确认，保留拒绝路径；不是训练吞吐提升证明。",
+      "source_urls": [
+        "https://github.com/sgl-project/sglang/pull/49798",
+        "https://github.com/sgl-project/sglang/commit/30593f940be2fa9d2b4468606007930374f71e36"
       ],
       "update_of": null,
       "article_id": "inference-engines"
@@ -124,14 +135,28 @@
   "images": [
     {
       "path": "assets/overview.png",
-      "sha256": "8b3df2ce4287b7193662bf5a658ef1f6744894a05130ce0b049eba6429d1da79",
-      "alt": "六方向晨报总览，一条已核候选与具体覆盖缺口"
+      "sha256": "54274978cfe97672ee761e8b4e77cfbaf01478eb104fe90e9410184c707f75da",
+      "alt": "六方向总览：四项进展与仍存在的覆盖缺口"
     },
     {
       "path": "assets/mechanism.png",
       "sha256": "9b1921c5879b6ea3a47b565beee45d42f1ef1f2980da10bea62715b8b144ca81",
-      "alt": "同一模型的通信、运行状态与KV读取机制原创简图"
+      "alt": "Inkling通信、运行状态与KV读取机制简图"
+    },
+    {
+      "path": "assets/embodied-alignment.png",
+      "sha256": "6ab755f7067e55268035c4e1548bd1b7f27e378d059fd5ec3dc6111fc8771326",
+      "alt": "BATCH人类与机器人演示时间对齐简化流程，非完整网络结构"
+    },
+    {
+      "path": "assets/engine-coordination.png",
+      "sha256": "081d0819c3fb7148e87dd556a722cf6ae3baa4177ba46aeb6098048273a51e63",
+      "alt": "共享CPU缓存元数据与流水线释放确认简图，非完整实现时序"
     }
   ],
-  "poster": "assets/overview.png"
+  "poster": "assets/overview.png",
+  "revision_notice": {
+    "kind": "material_update",
+    "summary": "补充BATCH具身训练与vLLM/SGLang代码证据，更新对应正文与海报，保留具体适用限制。"
+  }
 }

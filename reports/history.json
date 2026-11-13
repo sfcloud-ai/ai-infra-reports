@@ -1704,6 +1704,54 @@
       "revision": 2,
       "fingerprint": "f993dbedc27852b6bfbc197fbc8236e7892c1b9e1396038ad12edfa93cf808ac",
       "content_sha256": "26735e02bb19ec4c21677a07963849d41912a5f1e0b3dc74cac53dbecb4d83f9"
+    },
+    {
+      "id": "2026-11-13-embodied-training-20261113",
+      "event_key": "embodied-training-20261113",
+      "date": "2026-11-13",
+      "revision": 1,
+      "fingerprint": "d7c3b7c9885d3de645ea917ec10c02068c3d1f58ad3cab1f8ec4c995963d7207",
+      "content_sha256": "65b41e0469c15ff22659f1fa353935c70705d7cdb70920b50fd13c7b17152320"
+    },
+    {
+      "id": "2026-11-13-hardware-status-20261113",
+      "event_key": "hardware-status-20261113",
+      "date": "2026-11-13",
+      "revision": 1,
+      "fingerprint": "002bc7dc53387f17d8a12b101a75882211086e5fd9db0b833c8b3c44a9e31112",
+      "content_sha256": "36ebdba936207785f38cf84c3c05bc08cc1430b851fa4e0b15e2d5649e991ddc"
+    },
+    {
+      "id": "2026-11-13-inference-engines-20261113",
+      "event_key": "inference-engines-20261113",
+      "date": "2026-11-13",
+      "revision": 1,
+      "fingerprint": "fa8d7b4fac7b1f53ec95bb0aff77b31a7f54c8efaac4e5db73be9e0c4399f5e9",
+      "content_sha256": "8cd12a0d284635e7a80da5dae394344f353f651166ba978b23842f45c8e2f128"
+    },
+    {
+      "id": "2026-11-13-inkling2-small-day0-20261112",
+      "event_key": "inkling2-small-day0-20261112",
+      "date": "2026-11-13",
+      "revision": 1,
+      "fingerprint": "b8273bbeecef0387f85ada3f5c8da56af41a05ea08c1837b1eabb7552320baa7",
+      "content_sha256": "c4fe1bcaa94540ddbc4a63e839b9e68727f4b1f40baf6a57be73bdc832763426"
+    },
+    {
+      "id": "2026-11-13-model-architecture-status-20261113",
+      "event_key": "model-architecture-status-20261113",
+      "date": "2026-11-13",
+      "revision": 1,
+      "fingerprint": "23559400cb6e94ca4eea3f83385e628426fe59a9605b0317fc4166772b353f40",
+      "content_sha256": "a7993cab5ecb6894a5acfb4c51fbe354bb6c5037ece6fdbe6c5ab94d8932604d"
+    },
+    {
+      "id": "2026-11-13-small-model-status-20261113",
+      "event_key": "small-model-status-20261113",
+      "date": "2026-11-13",
+      "revision": 1,
+      "fingerprint": "22eb23a058b138087c926d2761ed5b8ca49b3024c6d92b915cec90786134bd91",
+      "content_sha256": "775cbef2eb96c12db99b3031a06e0b34378b3b8cf1eab1c9e308eae6b22d7057"
     }
   ]
 }
