@@ -1,5 +1,5 @@
 import {activePageResearch,pageModelKeyAllowed} from './research-page-budget.mjs';
-import {beginPageRound,currentPageRound,publicationPermit,pagePublicationBinding,appendPagePermit} from './research-page-authority.mjs';
+import {beginPageRound,currentPageRound,publicationPermit,pagePublicationBinding,appendPagePermit,pageAuthorityInstalled} from './research-page-authority.mjs';
 import {readResearchRecoveryHead,researchRecoveryWindow,researchRecoveryAccounting,recordResearchRecoveryOperation,appendResearchRecoveryGrant,assertResearchRecovery} from './research-recovery.mjs';
 import {isRepositoryResearchPlan,isLayeredResearchPlan,operationBudget,continuationWindow,LAYERED_BUDGET_POLICY,researchSecondsWithin,RESEARCH_SECONDS_EPSILON} from './research-budget.mjs';
 // Host authority for a disposable research client. Replies are observations;
@@ -56,12 +56,12 @@ function policy(c){
 export function assertResearchControl(db,c){
  const rows=db.prepare("SELECT name,sql FROM sqlite_master WHERE type='table' AND name LIKE 'research_control_%'").all();
  if(!c.research_control){requireThat(!rows.length,'Installed research authority cannot be removed');return false;}
- assertResearchArchive(db,c);assertResearchRecovery(db);const binding=policy(c);
+ assertResearchArchive(db,c);assertResearchRecovery(db);pageAuthorityInstalled(db);const binding=policy(c);
  requireThat(rows.length===Object.keys(RESEARCH_CONTROL_SCHEMA).length&&rows.every(r=>r.sql===RESEARCH_CONTROL_SCHEMA[r.name]),'Original research authority schema required');
  const installed=db.prepare('SELECT * FROM research_control_policy').all();requireThat(installed.length===1&&installed[0].id===1&&installed[0].binding===binding,'Original research authority binding required');return true;
 }
 export function installResearchControl(db,c,reference){
- assertResearchArchive(db,c);assertResearchRecovery(db);const binding=policy(c);
+ assertResearchArchive(db,c);assertResearchRecovery(db);pageAuthorityInstalled(db);const binding=policy(c);
  requireThat(c.research_control.protocol==='repository_inputs_v1','New authority requires repository-input protocol');
  requireThat(typeof reference==='string'&&reference.length>0&&reference.length<=512&&!db.prepare("SELECT 1 FROM sqlite_master WHERE name LIKE 'research_control_%'").get(),'Explicit first authority installation required');
  const first=c.research_control.first_report_date;
