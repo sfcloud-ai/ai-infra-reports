@@ -6,7 +6,7 @@ import {HandoffState,handoffScope} from '../scripts/handoff-state.mjs';
 import {installFence} from '../scripts/producer-admission-fence.mjs';
 import {installSubmission} from '../scripts/slack-submission.mjs';
 import {installResearchArchive,readResearchArchive,storeResearchArchive} from '../scripts/research-archive.mjs';
-import {installResearchControl,executeResearchControl} from '../scripts/research-control.mjs';
+import {installResearchControl,executeResearchControl,assertResearchControl} from '../scripts/research-control.mjs';
 import {queueResearchControl,advanceResearchControl,researchControlHealth} from '../scripts/research-control-inbox.mjs';
 import {digest} from '../scripts/archive.mjs';
 import {REPOSITORY_INPUT_PATHS} from '../scripts/repository-research-inputs.mjs';
@@ -177,4 +177,22 @@ for(const phase of ['sending','unknown'])test('committed compensation makes '+ph
  originalUnchanged(f);assert.deepEqual(f.db.prepare('SELECT * FROM research_control_events WHERE command_id=?').get(c.command_id),event);
  f.db.prepare('UPDATE research_archives SET bytes=? WHERE hash=?').run(Buffer.from('corrupt'),f.hash);
  assert.equal(researchControlHealth(f.db).blocked.length,1);assert.equal(researchControlHealth(f.db).warnings.length,0);
+});
+
+import {ARCHIVE_RECOVERY_SCHEMA,ARCHIVE_RECOVERY_VERSION} from '../scripts/research-archive-recovery.mjs';
+test('explicit begin installs permanent exact marker; receiving and stored preserve it',t=>{
+ const f=fixture(t);assert.equal(ARCHIVE_RECOVERY_VERSION,1);
+ const marker=()=>f.db.prepare("SELECT sql FROM sqlite_master WHERE name='research_control_archive_recovery'").get();
+ assert.equal(marker(),undefined);assert.equal(assertResearchControl(f.db,config),true);
+ const r=begin(f);assert.equal(marker().sql,ARCHIVE_RECOVERY_SCHEMA);
+ assert.deepEqual({...f.db.prepare('SELECT * FROM research_control_archive_recovery').get()},{id:1,version:1});assert.equal(assertResearchControl(f.db,config),true);
+ allChunks(f,r);assert.equal(commit(f,r).result.recovery.status,'stored');assert.equal(marker().sql,ARCHIVE_RECOVERY_SCHEMA);assert.equal(assertResearchControl(f.db,config),true);
+});
+test('rejected and transaction-rolled-back begin never install marker',t=>{
+ const f=fixture(t),marker=()=>f.db.prepare("SELECT 1 FROM sqlite_master WHERE name='research_control_archive_recovery'").get();
+ const args={operation_id:f.post.operation_id,archive_sha256:f.hash,file_id:file,total_bytes:f.bytes.length,reason:'original_post_unknown'};
+ assert.equal(f.execute(f.command('archive_recovery_begin',{...args,file_id:'FWRONG'})).status,'rejected');assert.equal(marker(),undefined);
+ const c=f.command('archive_recovery_begin',args);
+ assert.throws(()=>executeResearchControl(f.db,config,Buffer.from(JSON.stringify(c)),now,{onResult:()=>{throw Error('rollback begin');}}),/rollback begin/);
+ assert.equal(marker(),undefined);assert.equal(f.execute(c).status,'committed');assert(marker());
 });

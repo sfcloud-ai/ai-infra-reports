@@ -164,3 +164,12 @@ settle the original POST is refused after recovery starts; its historical row
 is never overwritten. Receipt loss is resolved through original commands and
 readback, not another upload or another recovery. No code capability or test
 result is evidence of a real checkpoint being stored.
+
+The first successful begin also installs a permanent version-1 capability fence
+in `research_control_archive_recovery`, atomically with that begin. Original
+policy, plans, operations and receipts are unchanged. A rejected or rolled-back
+begin installs nothing. Once receiving starts, including after storage completes,
+rollback to a runtime without this fence is prohibited: both CD's isolated
+compatibility probe and the older runtime's strict authority schema check reject
+it. Never remove the marker or recovery history to force a rollback. This is an
+explicit begin-time activation, not an automatic startup/CD ledger migration.

@@ -21,3 +21,10 @@ test('publisher CD durable intake schema matches the runtime exactly',()=>{
  assert.ifError(result.error);assert.equal(result.status,0,result.stderr);
  assert.deepEqual(JSON.parse(result.stdout),INTAKE_SCHEMA);
 });
+
+import {ARCHIVE_RECOVERY_SCHEMA} from '../scripts/research-archive-recovery.mjs';
+test('publisher CD archive recovery marker schema matches runtime exactly',()=>{
+ const result=spawnSync(process.platform==='win32'?'python':'python3',['-B','-c','import json; from deployment.publisher_cd import ARCHIVE_RECOVERY_SCHEMA; print(json.dumps(ARCHIVE_RECOVERY_SCHEMA))'],{encoding:'utf8',timeout:10000});
+ assert.ifError(result.error);assert.equal(result.status,0,result.stderr);
+ assert.equal(JSON.parse(result.stdout),ARCHIVE_RECOVERY_SCHEMA);
+});

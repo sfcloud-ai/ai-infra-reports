@@ -2,11 +2,32 @@
 // an uncertain POST, change its outcome, or create a replacement Slack file.
 import {digest} from './archive.mjs';
 import {storeResearchArchive} from './research-archive.mjs';
+export const ARCHIVE_RECOVERY_VERSION=1;
+export const ARCHIVE_RECOVERY_SCHEMA='CREATE TABLE research_control_archive_recovery(id INTEGER PRIMARY KEY CHECK(id=1),version INTEGER NOT NULL CHECK(version=1))';
 export const ARCHIVE_RECOVERY_TRANSPORT='authenticated_control_chunks_v1';
 const LIMIT=65536,CHUNK=1024;
 const exact=(v,k)=>v&&Object.keys(v).sort().join()===k.split(',').sort().join();
 const fail=code=>{throw Object.assign(Error(code),{researchControlCode:code});};
 const need=(value,code)=>{if(!value)fail(code);};
+// First explicit begin installs a permanent fail-closed release fence in its
+// transaction. Old runtimes reject this extra authority table, including when
+// launched by an old rollback driver that does not know the capability.
+export function assertArchiveRecoveryFence(db){
+ const row=db.prepare("SELECT type,sql FROM sqlite_master WHERE name='research_control_archive_recovery'").get();
+ if(!row){
+  need(!db.prepare("SELECT 1 FROM research_control_commands WHERE json_extract(bytes,'$.action')='archive_recovery_begin' AND json_extract(result,'$.status')='committed' LIMIT 1").get(),'archive_recovery_fence_missing');
+  return false;
+ }
+ need(row.type==='table'&&row.sql===ARCHIVE_RECOVERY_SCHEMA,'archive_recovery_fence_schema');
+ const versions=db.prepare('SELECT id,version FROM research_control_archive_recovery').all();
+ need(versions.length===1&&versions[0].id===1&&versions[0].version===ARCHIVE_RECOVERY_VERSION,'archive_recovery_fence_version');
+ return true;
+}
+function installArchiveRecoveryFence(db){
+ if(assertArchiveRecoveryFence(db))return;
+ db.exec(ARCHIVE_RECOVERY_SCHEMA);
+ db.prepare('INSERT INTO research_control_archive_recovery VALUES(1,?)').run(ARCHIVE_RECOVERY_VERSION);
+}
 function commands(db,id){return db.prepare("SELECT bytes,result FROM research_control_commands WHERE request_id=? AND json_extract(result,'$.status')='committed' AND json_extract(bytes,'$.action') LIKE 'archive_recovery_%' ORDER BY rowid").all(id).map(row=>({command:JSON.parse(Buffer.from(row.bytes)),result:JSON.parse(row.result)}));}
 function original(db,id,args){
  const op=db.prepare('SELECT * FROM research_control_ops WHERE request_id=? AND operation_id=?').get(id,args.operation_id);
@@ -42,6 +63,7 @@ export function applyArchiveRecovery(db,c,commandHash){
   original(db,c.request_id,a);
   need(!recoveryForOperation(db,c.request_id,a.operation_id),'archive_recovery_already_started');
   need(!db.prepare('SELECT 1 FROM research_archives WHERE request_id=? AND hash=?').get(c.request_id,a.archive_sha256),'archive_recovery_already_stored');
+  installArchiveRecoveryFence(db);
   return {recovery_id:c.command_id,transport:ARCHIVE_RECOVERY_TRANSPORT,status:'receiving',original_post_outcome:'unknown',...a};
  }
  need(typeof c.args.recovery_id==='string','archive_recovery_fields');

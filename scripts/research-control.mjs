@@ -1,4 +1,4 @@
-import {applyArchiveRecovery,readArchiveRecovery,recoveryForOperation,ARCHIVE_RECOVERY_TRANSPORT} from './research-archive-recovery.mjs';
+import {applyArchiveRecovery,readArchiveRecovery,recoveryForOperation,ARCHIVE_RECOVERY_TRANSPORT,assertArchiveRecoveryFence,ARCHIVE_RECOVERY_SCHEMA} from './research-archive-recovery.mjs';
 import {activePageResearch,pageModelKeyAllowed} from './research-page-budget.mjs';
 import {beginPageRound,currentPageRound,publicationPermit,pagePublicationBinding,appendPagePermit,pageAuthorityInstalled} from './research-page-authority.mjs';
 import {readResearchRecoveryHead,researchRecoveryWindow,researchRecoveryAccounting,recordResearchRecoveryOperation,appendResearchRecoveryGrant,assertResearchRecovery} from './research-recovery.mjs';
@@ -59,7 +59,8 @@ export function assertResearchControl(db,c){
  const rows=db.prepare("SELECT name,sql FROM sqlite_master WHERE type='table' AND name LIKE 'research_control_%'").all();
  if(!c.research_control){requireThat(!rows.length,'Installed research authority cannot be removed');return false;}
  assertResearchArchive(db,c);assertResearchRecovery(db);pageAuthorityInstalled(db);const binding=policy(c);
- requireThat(rows.length===Object.keys(RESEARCH_CONTROL_SCHEMA).length&&rows.every(r=>r.sql===RESEARCH_CONTROL_SCHEMA[r.name]),'Original research authority schema required');
+ const fenced=assertArchiveRecoveryFence(db),schema={...RESEARCH_CONTROL_SCHEMA,...(fenced?{research_control_archive_recovery:ARCHIVE_RECOVERY_SCHEMA}:{})};
+ requireThat(rows.length===Object.keys(schema).length&&rows.every(r=>r.sql===schema[r.name]),'Original research authority schema required');
  const installed=db.prepare('SELECT * FROM research_control_policy').all();requireThat(installed.length===1&&installed[0].id===1&&installed[0].binding===binding,'Original research authority binding required');return true;
 }
 export function installResearchControl(db,c,reference){
