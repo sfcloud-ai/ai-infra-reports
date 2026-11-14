@@ -1,0 +1,159 @@
+{
+  "schema_version": "1.2",
+  "date": "2026-11-14",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-11-14",
+  "subtitle": "部分晨报｜覆盖缺口：架构。GLM、Qwen 博客访问未完成，架构页待补。",
+  "articles": [
+    {
+      "id": "model-serving-gpu",
+      "title": "模型服务与 GPU 超配：远端 KV 池的提交边界",
+      "summary": "LMCache 新增 peer-write：预留、RDMA 写入、确认后可见。默认关闭，迟到写与隔离成本仍需解决。",
+      "sha256": "e913e2053edc92fb11a1593c316fb8c467b903e18b438259db4a1bff16e9cee3"
+    },
+    {
+      "id": "hardware-status",
+      "title": "硬件与算力平台：Python 串起 Jetson GPU 与 DLA",
+      "summary": "cuDLA Python 把预处理、DLA 执行、后处理接入同一 CUDA stream；硬件、模型布局与运行模式有明确边界。",
+      "sha256": "6ce2e8db4473b22c864bb4e00e4e73b38b8f8e298fd96c5d884270f786a80818"
+    },
+    {
+      "id": "embodied-training",
+      "title": "制造业具身智能训练：轨迹复用与闭环评测",
+      "summary": "SOMA 打通人体动作到机器人轨迹；Praxis-1 的 H100 微调例子提醒：loss 下降不等于操作成功率提升。",
+      "sha256": "51c9897c2a28092b695f8cb5b8e4acd0879e535b8bc12d9926742d4214105b72"
+    },
+    {
+      "id": "small-model-status",
+      "title": "前沿小模型：SmolVLM 500M 的输入契约修复",
+      "summary": "新的模板字符串分支避免普通消息文本被遗漏；这次变化在接入正确性，不是权重更新或榜单突破。",
+      "sha256": "5f57eeda2c0a7fced701d3f06851e7a1bb694eea36bb39918d0c74120eb73670"
+    },
+    {
+      "id": "inference-engines",
+      "title": "推理引擎每日变动：缓存生命周期与吞吐口径",
+      "summary": "vLLM 前移 KV 暖机回收，并拆解 Rubin 博客口径；SGLang 修复索引异步上传；DeepInfer 明确离线边界。",
+      "sha256": "baf360d730e2deeaada347ef730e25a157a740991b09e966260db9d64d12cdf5"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-11-14-lmcache-peer-write-6532",
+      "event_key": "lmcache-peer-write-6532",
+      "title": "LMCache：把同模型 KV 写入远端 DRAM 的提交协议",
+      "summary": "PR #6532 的 d760b7d0 提交增加 peer-write：先在远端 L1 预留对象，经 RDMA 写入，再由 finish/commit 确认可见；整批键全部成功才报告 store 成功，失败保留本地副本。RPC 回调唤醒存储循环，避免忙轮询。",
+      "source_urls": [
+        "https://api.github.com/repos/LMCache/LMCache/commits/d760b7d0f9d973e904ae6071a2824621bf84489c"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-11-14-nvidia-cudla-python-20261113",
+      "event_key": "nvidia-cudla-python-20261113",
+      "title": "cuDLA Python：在 Jetson 上串起 GPU 与 DLA",
+      "summary": "11 月 13 日技术文章介绍 cuda-bindings 13.3.0 引入的 cuDLA Python 接口。示例在 Jetson AGX Orin 上将 FP16、固定形状模型编译为 DLA loadable；读取描述符、分配并注册 GPU 缓冲区，在同一 CUDA stream 串起 GPU 预处理、DLA 推理和 GPU 后处理。",
+      "source_urls": [
+        "https://developer.nvidia.com/blog/run-native-dla-inference-in-python-on-nvidia-jetson-agx-orin-using-cudla/"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status"
+    },
+    {
+      "id": "2026-11-14-nvidia-soma-retargeter-v02-20261113",
+      "event_key": "nvidia-soma-retargeter-v02-20261113",
+      "title": "SOMA Retargeter：把人体动作变成可训练机器人轨迹",
+      "summary": "SOMA Retargeter v0.2 将 SOMA BVH 人体动作经比例缩放、Newton/Warp IK 和足部着地修正输出为根姿态与关节轨迹，再进入 SONIC 或 ProtoMotions 的策略训练与物理验证。提供 G1、H2、Booster T1、AgiBot X2 Ultra、AgiBot A3T3 配置。",
+      "source_urls": [
+        "https://developer.nvidia.com/blog/adapt-human-motion-for-robots-with-nvidia-soma-retargeter/"
+      ],
+      "update_of": null,
+      "article_id": "embodied-training"
+    },
+    {
+      "id": "2026-11-14-lerobot-praxis-5321",
+      "event_key": "lerobot-praxis-5321",
+      "title": "LeRobot Praxis-1：训练损失下降仍可能损伤闭环表现",
+      "summary": "11 月 11 日 #5321 合入 Praxis-1 适配，随后 #5325 修正文档名称与依赖。27.2B 总参数 MoE、约 3B 激活；冻结视频 VAE 与文本编码器，用连续 93 帧窗口联合训练视频和动作 flow-matching，并加 MoE 平衡项。DROID 单臂 checkpoint 的每个 context window 首次调用返回21个动作，后续24个，动作频率15 Hz。",
+      "source_urls": [
+        "https://api.github.com/repos/huggingface/lerobot/commits/4864a7ec6ad6ad5259d08f121f0c1b44983b4582",
+        "https://api.github.com/repos/huggingface/lerobot/commits/e581c1d5701f846788662079d4ac08835c96def9"
+      ],
+      "update_of": null,
+      "article_id": "embodied-training"
+    },
+    {
+      "id": "2026-11-14-smolvlm-500m-template-753c175",
+      "event_key": "smolvlm-500m-template-753c175",
+      "title": "SmolVLM 500M：修复字符串消息内容丢失",
+      "summary": "11 月 13 日 753c175 修改 chat template，新增 content is string 分支直接保留文本；原分支只按多模态块列表逐项判断类型。新分支保留原有 image/text 块路径，修复普通字符串消息被错误迭代的输入契约问题。",
+      "source_urls": [
+        "https://huggingface.co/HuggingFaceTB/SmolVLM-500M-Instruct/commit/753c1752602b5e739af7a7fa6947a635051897a3",
+        "https://huggingface.co/HuggingFaceTB/SmolVLM-500M-Instruct/raw/753c1752602b5e739af7a7fa6947a635051897a3/chat_template.json",
+        "https://huggingface.co/HuggingFaceTB/SmolVLM-500M-Instruct/raw/a7da5b986cb59b408707209984f360a5f4ad7e47/chat_template.json",
+        "https://huggingface.co/HuggingFaceTB/SmolVLM-500M-Instruct/raw/main/README.md",
+        "https://huggingface.co/api/models/HuggingFaceTB/SmolVLM-500M-Instruct/commits/main"
+      ],
+      "update_of": null,
+      "article_id": "small-model-status"
+    },
+    {
+      "id": "2026-11-14-vllm-pr-67485",
+      "event_key": "vllm-pr-67485",
+      "title": "vLLM：在 KV 容量预热前回收暖机占用",
+      "summary": "b73d3762 / #67485 在 KV sizing warmup 之前把扩展 KV 池缩回 min_committed_blocks。内核暖机可能提交几乎全部块，若立即执行容量测量，其临时缓冲区会遭遇额外压力。新增 eager 路径测试覆盖回收时机。",
+      "source_urls": [
+        "https://api.github.com/repos/vllm-project/vllm/commits/b73d37629f66290cf0c40f68b3b4db2ce248d31c"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    },
+    {
+      "id": "2026-11-14-sglang-pr-49633",
+      "event_key": "sglang-pr-49633",
+      "title": "SGLang：为 HiCache 索引搬运使用 pinned host 内存",
+      "summary": "0e509eaf / #49633 将 kernel backend 的 host indices 交给 async_h2d_tensor：条件允许时先 pin CPU tensor 再异步 H2D。统一 cache controller 与 unified pool 的索引搬运，避免 pageable host memory 让标记为 non_blocking 的路径仍出现同步等待。",
+      "source_urls": [
+        "https://api.github.com/repos/sgl-project/sglang/commits/0e509eaf4c7d20aae67c76bf1838ff9d5975d51e"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    },
+    {
+      "id": "2026-11-14-vllm-deepseek-v41-rubin-20261112",
+      "event_key": "vllm-deepseek-v41-rubin-20261112",
+      "title": "vLLM Rubin 技术文：吞吐口径与分离部署的真实边界",
+      "summary": "11 月 12 日 vLLM 技术文拆解 DeepSeek-V4.1-Flash 在 Vera Rubin NVL72 的内核、并行和远端状态设计。低延迟 TP8 与高吞吐 DEP32 使用不同配置；组合包含外部 FlashInfer 路径、自研融合、DSpark、P/D 及 Mooncake/Engram 数据路径。",
+      "source_urls": [
+        "https://raw.githubusercontent.com/vllm-project/vllm-project.github.io/main/_posts/2026-11-12-deepseek-v41-flash-vera-rubin.md",
+        "https://vllm.ai/blog/2026-11-12-deepseek-v41-flash-vera-rubin"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    }
+  ],
+  "images": [
+    {
+      "path": "assets/overview.png",
+      "sha256": "1f2dc2ee906026ceddfa3e15174de398b57c24f418f2aa658e32c8ed66473c2b",
+      "alt": "2026年11月14日晨报：远端KV、Jetson DLA、具身训练、SmolVLM输入修复与三引擎动态；架构页待补。"
+    }
+  ],
+  "poster": "assets/overview.png",
+  "page_delivery": {
+    "previous": null,
+    "added": [
+      "model-serving-gpu",
+      "hardware-status",
+      "embodied-training",
+      "small-model-status",
+      "inference-engines"
+    ],
+    "pending": [
+      {
+        "id": "model-architecture-status",
+        "reason": "GLM、Qwen 官方博客访问未完成，已核实模型资料保留待补"
+      }
+    ]
+  }
+}

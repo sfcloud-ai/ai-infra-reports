@@ -1752,6 +1752,30 @@
       "revision": 1,
       "fingerprint": "22eb23a058b138087c926d2761ed5b8ca49b3024c6d92b915cec90786134bd91",
       "content_sha256": "775cbef2eb96c12db99b3031a06e0b34378b3b8cf1eab1c9e308eae6b22d7057"
+    },
+    {
+      "id": "2026-11-13-batch-temporal-alignment-2611-10148",
+      "event_key": "batch-temporal-alignment-2611-10148",
+      "date": "2026-11-13",
+      "revision": 2,
+      "fingerprint": "a1bfa903b5ba886f57df88b39165bae32b7676641c49cd7abd9905d1939e1e94",
+      "content_sha256": "e1fb6b3a4d81f1fe294247dba331eb0181d0791a64bb3688d1c50237270ac8c5"
+    },
+    {
+      "id": "2026-11-13-sglang-pp-memory-release-49798",
+      "event_key": "sglang-pp-memory-release-49798",
+      "date": "2026-11-13",
+      "revision": 2,
+      "fingerprint": "03f33861e9e24e00f19501b3a18ad718f0a5e4ced87fdbd11d00527cbd4e5812",
+      "content_sha256": "c0df52b8c7fe5c9d4291703ecfc2ab6046e9f4fecc745c7fad879f044d2bf853"
+    },
+    {
+      "id": "2026-11-13-vllm-cpu-kv-compressor-sharing-65373",
+      "event_key": "vllm-cpu-kv-compressor-sharing-65373",
+      "date": "2026-11-13",
+      "revision": 2,
+      "fingerprint": "b62e1701bde7269b494eaf59f85b804f11c5cb80bd0c36521817d9e6f3500ae5",
+      "content_sha256": "1a051047f1874f0c8daecf9856da9da9f1562656a0161ca81e36c6d0d5aa8026"
     }
   ]
 }
