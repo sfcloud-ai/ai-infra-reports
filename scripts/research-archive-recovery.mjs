@@ -67,3 +67,14 @@ export function applyArchiveRecovery(db,c,commandHash){
  try{storeResearchArchive(db,{request_id:c.request_id,hash:a.archive_sha256,file_id:a.file_id,source_ts:event.source_ts},bytes);}catch(error){fail(error.researchRejection?.code??error.researchDeferred?.code??'archive_recovery_storage_failed');}
  return {recovery_id:state.begin.command_id,transport:ARCHIVE_RECOVERY_TRANSPORT,status:'stored',archive_sha256:a.archive_sha256,file_id:a.file_id,operation_id:a.operation_id,source_ts:event.source_ts,original_post_outcome:'unknown'};
 }
+
+// Only a committed compensation and its exact stored archive make a prior
+// unknown dispatch nonblocking. The original operation/event stay unchanged.
+export function storedRecoveryForOperation(db,id,operationId){
+ const begin=recoveryForOperation(db,id,operationId);if(!begin)return null;
+ const evidence=readArchiveRecovery(db,id,begin.command_id);
+ if(evidence.status!=='stored')return null;
+ const stored=db.prepare('SELECT bytes,file_id,source_ts FROM research_archives WHERE request_id=? AND hash=?').get(id,evidence.archive_sha256);
+ if(!stored||stored.file_id!==evidence.file_id||stored.source_ts!==evidence.source_ts||Buffer.from(stored.bytes).length!==evidence.total_bytes||digest(Buffer.from(stored.bytes))!==evidence.archive_sha256)return null;
+ return evidence;
+}

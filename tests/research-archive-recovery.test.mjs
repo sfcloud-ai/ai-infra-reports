@@ -7,7 +7,7 @@ import {installFence} from '../scripts/producer-admission-fence.mjs';
 import {installSubmission} from '../scripts/slack-submission.mjs';
 import {installResearchArchive,readResearchArchive,storeResearchArchive} from '../scripts/research-archive.mjs';
 import {installResearchControl,executeResearchControl} from '../scripts/research-control.mjs';
-import {queueResearchControl,advanceResearchControl} from '../scripts/research-control-inbox.mjs';
+import {queueResearchControl,advanceResearchControl,researchControlHealth} from '../scripts/research-control-inbox.mjs';
 import {digest} from '../scripts/archive.mjs';
 import {REPOSITORY_INPUT_PATHS} from '../scripts/repository-research-inputs.mjs';
 import {SCOPE,DAY} from './helpers/cloud-sender-fixture.mjs';
@@ -156,4 +156,25 @@ test('read-only recovery status cannot be requested as a mutation receipt',t=>{
  const f=fixture(t),r=begin(f),c=f.command('archive_recovery_status',{recovery_id:r},{owner_id:null,epoch:0,expected_revision:0});
  assert.equal(f.execute(c).status,'observed');
  const result=f.execute(f.command('receipt',{command_id:c.command_id},{owner_id:null,epoch:0,expected_revision:0}));assert.equal(result.status,'rejected');assert.equal(result.code,'receipt_requires_mutation');originalUnchanged(f);
+});
+
+test('nonlayered repository authority advertises its working archive recovery capability',t=>{
+ const f=fixture(t);
+ const result=f.execute(f.command('status',{offset:0},{owner_id:null,epoch:0,expected_revision:0}));
+ assert.equal(result.capabilities.archive_recovery,'authenticated_control_chunks_v1');
+ const r=begin(f);allChunks(f,r);assert.equal(commit(f,r).result.recovery.status,'stored');
+});
+for(const phase of ['sending','unknown'])test('committed compensation makes '+phase+' dispatch a visible nonblocking warning only after exact storage',t=>{
+ const f=fixture(t);
+ const row=f.db.prepare("SELECT bytes,result FROM research_control_commands WHERE request_id=? AND json_extract(bytes,'$.action')='reserve' AND json_extract(result,'$.operations[0].operation_id')=?").get(id,f.post.operation_id);
+ const c=JSON.parse(Buffer.from(row.bytes));queueResearchControl(f.db,{source_ts:'1793491204.000003',command_id:c.command_id,hash:digest(Buffer.from(row.bytes)),bytes:Buffer.from(row.bytes)});
+ f.db.prepare("UPDATE research_control_events SET phase=?,reply_text=? WHERE command_id=?").run(phase,'!ai-research control-receipt '+row.result,c.command_id);
+ const event=f.db.prepare('SELECT * FROM research_control_events WHERE command_id=?').get(c.command_id);
+ assert.equal(researchControlHealth(f.db).blocked.length,1);
+ const r=begin(f);allChunks(f,r);assert.equal(researchControlHealth(f.db).blocked.length,1);
+ assert.equal(commit(f,r).result.recovery.status,'stored');
+ const health=researchControlHealth(f.db);assert.equal(health.blocked.length,0);assert.equal(health.warnings.length,1);assert.equal(health.warnings[0].recoveries[0].original_post_outcome,'unknown');
+ originalUnchanged(f);assert.deepEqual(f.db.prepare('SELECT * FROM research_control_events WHERE command_id=?').get(c.command_id),event);
+ f.db.prepare('UPDATE research_archives SET bytes=? WHERE hash=?').run(Buffer.from('corrupt'),f.hash);
+ assert.equal(researchControlHealth(f.db).blocked.length,1);assert.equal(researchControlHealth(f.db).warnings.length,0);
 });

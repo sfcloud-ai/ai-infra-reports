@@ -205,7 +205,7 @@ export async function handoffTick(state,config,slack,io){
   const blocked_reports=pending.filter(job=>['proposal_failed','proposing','proposal_unknown','sending','receipt_unknown'].includes(job.phase)||job.detail.recovery?.last_error).slice(0,16).map(job=>({request_id:job.id,phase:job.phase,...(job.detail.recovery?.last_error?{error:safeDiagnostic({diagnostic:job.detail.recovery.last_error},job.phase)}:{})}));
   const blocked_research=config.research_archive?state.db.prepare("SELECT source_ts,request_id,kind,phase,next_at,diagnostic FROM research_archive_events WHERE phase='pending' AND diagnostic IS NOT NULL ORDER BY source_ts LIMIT 16").all().map(({diagnostic,...row})=>({...row,error:JSON.parse(diagnostic)})):[];
   const control_health=config.research_control?researchControlHealth(state.db):{blocked:[],frozen:[]};
-  const blocked_control=control_health.blocked,frozen_control=control_health.frozen;
+  const blocked_control=control_health.blocked,frozen_control=control_health.frozen,control_warnings=control_health.warnings??[];
   const due=pending.filter(job=>job.phase!=='proposal_failed').map(job=>job.detail.recovery?.next_at).filter(t=>Number.isFinite(t)&&t>0);
   if(config.research_control){
    const controls=state.db.prepare("SELECT next_at FROM research_control_events WHERE phase IN ('pending','ready') LIMIT 1000").all();
@@ -232,7 +232,7 @@ export async function handoffTick(state,config,slack,io){
    }
   }
   const next_delay_ms=due.length?Math.max(1000,Math.min(120000,Math.min(...due)-now())):120000;
-  return {...(id?{request_id:id,phase:state.metadata(id).phase}:noticeResult??{phase:'idle'}),...(noticeResult?{notice:noticeResult}:{}),...(scheduled?{scheduled}:{}),...(inbox?{blocked_intake}:{}),errors,blocked_reports,blocked_research,blocked_control,frozen_control,healthy:errors.length===0&&blocked_reports.length===0&&blocked_intake.length===0&&blocked_research.length===0&&blocked_control.length===0,next_delay_ms};
+  return {...(id?{request_id:id,phase:state.metadata(id).phase}:noticeResult??{phase:'idle'}),...(noticeResult?{notice:noticeResult}:{}),...(scheduled?{scheduled}:{}),...(inbox?{blocked_intake}:{}),errors,blocked_reports,blocked_research,blocked_control,frozen_control,control_warnings,healthy:errors.length===0&&blocked_reports.length===0&&blocked_intake.length===0&&blocked_research.length===0&&blocked_control.length===0,next_delay_ms};
 }
 export async function runHandoff(configFile){
  requireThat(process.platform==="linux","Live publisher requires the reviewed Linux service layout");

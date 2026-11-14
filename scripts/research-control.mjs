@@ -306,7 +306,7 @@ function apply(db,c,now,config,commandHash){
  }
  if(c.action==='status'){
   need(exact(c.args,'offset')&&integer(c.args.offset,0,100000),'status_offset');
-  const capabilities=assertResearchRecovery(db)?{capabilities:{repository_plan_versions:['research_plan_v3','research_plan_v4'],budget_policy:LAYERED_BUDGET_POLICY,archive_recovery:ARCHIVE_RECOVERY_TRANSPORT}}:{};
+  const capabilities={capabilities:{...(config.research_control.protocol==='repository_inputs_v1'?{archive_recovery:ARCHIVE_RECOVERY_TRANSPORT}:{}),...(assertResearchRecovery(db)?{repository_plan_versions:['research_plan_v3','research_plan_v4'],budget_policy:LAYERED_BUDGET_POLICY}:{})}};
   if(!run)return {status:'not_found',run:null,...capabilities};
   const ops=db.prepare('SELECT * FROM research_control_ops WHERE request_id=? ORDER BY rowid LIMIT 2 OFFSET ?').all(c.request_id,c.args.offset);
   const budget=effectiveResearchBudget(db,run,JSON.parse(Buffer.from(run.plan)),now,cache);
