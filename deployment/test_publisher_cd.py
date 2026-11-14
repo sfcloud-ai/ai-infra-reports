@@ -1,6 +1,7 @@
 """公开来源、账本防重和排空回滚边界的无副作用回归。"""
 
 import hashlib
+import http.client
 import base64
 import datetime
 import errno
@@ -863,7 +864,7 @@ class ResearchRecoveryCdTests(unittest.TestCase):
             self.assertNotIn('config_opened', result.stderr)
             self.assertNotIn('state_opened', result.stderr)
             raise ValueError('candidate_incompatible')
-        with patch.object(cd,'container',side_effect=probe), patch.object(cd,'legacy_dependency_mount',return_value=[]), patch.object(os,'chown'):
+        with patch.object(cd,'container',side_effect=probe), patch.object(cd,'legacy_dependency_mount',return_value=[]), patch.object(os,'chown',create=True):
             with self.assertRaisesRegex(ValueError,'candidate_incompatible'):
                 cd.compatibility(config,self.root,operation,before)
         self.assertEqual(cd.snapshot(self.database),before)
@@ -889,7 +890,7 @@ class ResearchRecoveryCdTests(unittest.TestCase):
             self.assertNotIn('config_opened', result.stderr)
             self.assertNotIn('state_opened', result.stderr)
             raise ValueError('candidate_incompatible')
-        with patch.object(cd,'container',side_effect=probe), patch.object(cd,'legacy_dependency_mount',return_value=[]), patch.object(os,'chown'):
+        with patch.object(cd,'container',side_effect=probe), patch.object(cd,'legacy_dependency_mount',return_value=[]), patch.object(os,'chown',create=True):
             with self.assertRaisesRegex(ValueError,'candidate_incompatible'):
                 cd.compatibility(config,self.root,operation,before)
         self.assertEqual(cd.snapshot(self.database),before)
@@ -904,14 +905,14 @@ class ResearchRecoveryCdTests(unittest.TestCase):
             if installed:
                 self.install()
             before=cd.snapshot(self.database)
-            with patch.object(cd,'container',side_effect=probe), patch.object(cd,'legacy_dependency_mount',return_value=[]), patch.object(os,'chown'):
+            with patch.object(cd,'container',side_effect=probe), patch.object(cd,'legacy_dependency_mount',return_value=[]), patch.object(os,'chown',create=True):
                 cd.compatibility(config,self.root,operation,before)
             self.assertEqual(cd.snapshot(self.database),before)
         def mutation(config, release, arguments, **kwargs):
             mount=kwargs['extra'][1]; copied=Path(mount[len('type=bind,src='):-len(',dst=/probe')])/'handoff.sqlite'
             with connection(copied) as database:
                 database.execute("UPDATE research_recovery_authorizations SET bytes=?", (b'changed',))
-        with patch.object(cd,'container',side_effect=mutation), patch.object(cd,'legacy_dependency_mount',return_value=[]), patch.object(os,'chown'):
+        with patch.object(cd,'container',side_effect=mutation), patch.object(cd,'legacy_dependency_mount',return_value=[]), patch.object(os,'chown',create=True):
             with self.assertRaisesRegex(ValueError,'automatic_state_migration_not_supported'):
                 cd.compatibility(config,self.root,operation,before)
         self.assertEqual(cd.snapshot(self.database),before)
@@ -923,6 +924,145 @@ class ResearchRecoveryCdTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         result = subprocess.run([node,'--input-type=module','-e',"import{RESEARCH_RECOVERY_SCHEMA}from'./scripts/research-recovery.mjs';console.log(JSON.stringify(RESEARCH_RECOVERY_SCHEMA))"],cwd=root,capture_output=True,text=True,check=True)
         self.assertEqual(json.loads(result.stdout), cd.RESEARCH_RECOVERY_SCHEMA)
+
+
+class SourceResponse(io.BytesIO):
+    def __init__(self, data=b"", error=None):
+        super().__init__(data)
+        self.error = error
+    def getheader(self, name):
+        return getattr(self, "declared", None)
+    def read(self, count=-1):
+        result = super().read(count)
+        if not result and self.error:
+            raise self.error
+        return result
+
+
+class SourceDownloadTests(unittest.TestCase):
+    def setUp(self):
+        # Windows 只替换 POSIX 原子落盘原语；Linux 继续真实执行 fsync/rename。
+        if os.name == "nt":
+            writer = patch.object(cd, "atomic", side_effect=lambda path, data, **kwargs: path.write_bytes(data))
+            writer.start()
+            self.addCleanup(writer.stop)
+
+    def test_real_http_chunked_partial_counts_both_paths(self):
+        class Socket:
+            def __init__(self, wire):
+                self.wire = wire
+            def makefile(self, mode):
+                return io.BytesIO(self.wire)
+        class Adapter:
+            def __init__(self, response, readinto):
+                self.response, self.readinto = response, readinto
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                self.response.close()
+            def getheader(self, name):
+                return self.response.getheader(name)
+            def read(self, size):
+                if not self.readinto:
+                    return self.response.read(size)
+                buffer = bytearray(size)
+                count = self.response.readinto(buffer)
+                return bytes(buffer[:count])
+        for readinto in (False, True):
+            for complete in (0, 10, 70000):
+                with self.subTest(readinto=readinto, complete=complete):
+                    body = (f"{complete:x}\r\n".encode() + b"a" * complete + b"\r\n") if complete else b""
+                    wire = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n" + body + b"1000\r\n" + b"x" * 167
+                    response = http.client.HTTPResponse(Socket(wire))
+                    response.begin()
+                    with self.assertRaises(cd.SourceFetchError) as context:
+                        self.invoke(Adapter(response, readinto))
+                    self.assertEqual(context.exception.received, complete + 167)
+
+    def test_incomplete_exception_chain_deduplicates_cycles(self):
+        outer, inner = http.client.IncompleteRead(b"abc"), http.client.IncompleteRead(b"xy")
+        outer.__cause__ = inner
+        outer.__context__ = inner
+        inner.__context__ = outer
+        self.assertEqual(cd.incomplete_bytes(outer), 5)
+
+    def invoke(self, response, limit=100000):
+        with patch.object(cd.urllib.request, "build_opener") as opener:
+            opener.return_value.open.return_value = response
+            return cd.fetch("https://codeload.github.com/fixed", limit)
+
+    def test_complete_stream_and_limit(self):
+        self.assertEqual(self.invoke(SourceResponse(b"a" * 70000)), b"a" * 70000)
+        with self.assertRaisesRegex(ValueError, "source_response_too_large"):
+            self.invoke(SourceResponse(b"a" * 11), 10)
+
+    def test_declared_length_short_eof_is_not_success(self):
+        response = SourceResponse(b"abc")
+        response.declared = "10"
+        with self.assertRaises(cd.SourceFetchError) as context:
+            self.invoke(response)
+        self.assertEqual(context.exception.received, 3)
+        self.assertTrue(context.exception.retryable)
+
+    def test_partial_counts_prior_chunks_and_exception_bytes_without_leaking(self):
+        with self.assertRaises(cd.SourceFetchError) as context:
+            self.invoke(SourceResponse(b"a" * 65536, http.client.IncompleteRead(b"private", 123)))
+        self.assertEqual(context.exception.received, 65543)
+        self.assertEqual(context.exception.kind, "incomplete_read")
+        self.assertNotIn("private", str(context.exception))
+
+    def test_rejects_non_https_credentials_and_redirect(self):
+        for url in ("http://codeload.github.com/a", "https://secret@codeload.github.com/a", "https://evil.test/a"):
+            with self.assertRaisesRegex(ValueError, "unexpected_source_host"):
+                cd.fetch(url, 10)
+        with self.assertRaisesRegex(ValueError, "unexpected_source_redirect"):
+            cd.NoRedirect().redirect_request(None, None, None, None, None, "https://evil.test")
+
+    def test_transport_error_is_sanitized_and_not_blindly_retried(self):
+        with self.assertRaises(cd.SourceFetchError) as context:
+            self.invoke(SourceResponse(error=cd.urllib.error.URLError("secret-proxy")))
+        self.assertFalse(context.exception.retryable)
+        self.assertNotIn("secret-proxy", str(context.exception))
+
+    def test_one_failed_read_then_original_complete_archive(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with patch.object(cd, "fetch", side_effect=[cd.SourceFetchError("incomplete_read", 7, True), b"archive"]) as fetch, patch.object(cd, "archive_files", return_value={"one": (b"value", False)}) as archive, patch.object(cd.time, "sleep"):
+                self.assertEqual(len(cd.fetch_source("a" * 40, root)), 1)
+            self.assertEqual(fetch.call_count, 2)
+            self.assertEqual(fetch.call_args_list[0], fetch.call_args_list[1])
+            archive.assert_called_once_with(b"archive", "a" * 40)
+            record = json.loads((root / "source-attempts.json").read_text())
+            self.assertEqual([x["status"] for x in record["attempts"]], ["failed", "downloaded"])
+            self.assertEqual(record["attempts"][0]["bytes_received"], 7)
+            self.assertEqual(json.loads((root / "source-validation.json").read_text())["status"], "verified")
+
+    def test_two_failures_stop_without_archive_or_work(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with patch.object(cd, "fetch", side_effect=cd.SourceFetchError("timeout", 3, True)) as fetch, patch.object(cd, "archive_files") as archive, patch.object(cd.time, "sleep"):
+                with self.assertRaises(cd.SourceFetchError):
+                    cd.fetch_source("a" * 40, root)
+            self.assertEqual(fetch.call_count, 2)
+            archive.assert_not_called()
+            self.assertFalse((root / "work").exists())
+            self.assertEqual(len(json.loads((root / "source-attempts.json").read_text())["attempts"]), 2)
+
+    def test_bad_archive_not_retried_or_logged_verbatim(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with patch.object(cd, "fetch", return_value=b"bad") as fetch, patch.object(cd, "archive_files", side_effect=ValueError("private details")):
+                with self.assertRaises(ValueError):
+                    cd.fetch_source("a" * 40, root)
+            self.assertEqual(fetch.call_count, 1)
+            self.assertNotIn("private details", (root / "source-validation.json").read_text())
+
+    def test_nonretryable_failure_keeps_one_attempt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.object(cd, "fetch", side_effect=cd.SourceFetchError("transport_error", 0)) as fetch:
+                with self.assertRaises(cd.SourceFetchError):
+                    cd.fetch_source("a" * 40, Path(directory))
+            self.assertEqual(fetch.call_count, 1)
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ import base64
 from contextlib import closing
 import datetime
 import hashlib
+import http.client
 import io
 import json
 import os
@@ -16,6 +17,7 @@ import subprocess
 import sys
 import tarfile
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
@@ -194,16 +196,88 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         raise ValueError("unexpected_source_redirect")
 
 
+class SourceFetchError(Exception):
+    def __init__(self, kind, received, retryable=False):
+        super().__init__("public_source_read_failed")
+        self.kind, self.received, self.retryable = kind, received, retryable
+
+
+def incomplete_bytes(error):
+    # CPython 分块读取会包装异常：外层是已完成分块，内层是当前未完分块。
+    total, seen = 0, set()
+    while isinstance(error, http.client.IncompleteRead) and id(error) not in seen:
+        seen.add(id(error))
+        total += len(error.partial)
+        error = error.__cause__ if error.__cause__ is not None else error.__context__
+    return total
+
+
 def fetch(url, limit):
-    if urllib.parse.urlsplit(url).hostname not in ("api.github.com", "codeload.github.com"):
+    parsed = urllib.parse.urlsplit(url)
+    if (parsed.scheme != "https" or parsed.hostname not in ("api.github.com", "codeload.github.com")
+            or parsed.username is not None or parsed.password is not None or parsed.port not in (None, 443)):
         raise ValueError("unexpected_source_host")
     request = urllib.request.Request(url, headers={"User-Agent": "ai-infra-publisher-cd",
         "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"})
-    with urllib.request.build_opener(NoRedirect).open(request, timeout=30) as response:
-        raw = response.read(limit + 1)
-    if len(raw) > limit:
-        raise ValueError("source_response_too_large")
-    return raw
+    chunks, received = [], 0
+    try:
+        with urllib.request.build_opener(NoRedirect).open(request, timeout=30) as response:
+            declared = response.getheader("Content-Length")
+            if declared is not None and (not declared.isdecimal() or int(declared) > limit):
+                raise ValueError("source_response_too_large")
+            expected = int(declared) if declared is not None else None
+            while True:
+                part = response.read(min(65536, limit + 1 - received))
+                if not part:
+                    break
+                received += len(part)
+                if received > limit:
+                    raise ValueError("source_response_too_large")
+                chunks.append(part)
+            if expected is not None and received != expected:
+                raise SourceFetchError("incomplete_read", received, True)
+    except http.client.IncompleteRead as error:
+        # 计入本次异常携带的真实字节，但绝不把不完整正文用于解包。
+        raise SourceFetchError("incomplete_read", received + incomplete_bytes(error), True) from None
+    except (TimeoutError, ConnectionResetError) as error:
+        raise SourceFetchError("timeout" if isinstance(error, TimeoutError) else "connection_reset", received, True) from None
+    except urllib.error.URLError as error:
+        # 不输出可能含凭据、代理地址或响应正文的异常字符串。
+        retryable = isinstance(error.reason, (TimeoutError, ConnectionResetError))
+        raise SourceFetchError("transport_error", received, retryable) from None
+    return b"".join(chunks)
+
+
+def fetch_source(commit, operation):
+    if not SHA.fullmatch(commit):
+        raise ValueError("invalid_source_commit")
+    attempts = []
+    for attempt in (1, 2):
+        started = time.monotonic()
+        try:
+            raw = fetch("https://codeload.github.com/" + REPOSITORY + "/tar.gz/" + commit, 32 * 1024 * 1024)
+        except SourceFetchError as error:
+            attempts.append({"attempt": attempt, "status": "failed", "kind": error.kind,
+                "bytes_received": error.received, "elapsed_seconds": time.monotonic() - started})
+            save(operation / "source-attempts.json", {"commit": commit, "attempts": attempts})
+            # 只重试已确认未产生外部写入的读取；不拼接、不假称 Range 续传。
+            if not error.retryable or attempt == 2:
+                raise
+            time.sleep(2)
+            continue
+        attempts.append({"attempt": attempt, "status": "downloaded", "bytes_received": len(raw),
+            "sha256": hashlib.sha256(raw).hexdigest(), "elapsed_seconds": time.monotonic() - started})
+        save(operation / "source-attempts.json", {"commit": commit, "attempts": attempts})
+        try:
+            files = archive_files(raw, commit)
+        except Exception:
+            # 保留解包失败阶段，不回传未经审查的异常正文，也不重试坏归档。
+            save(operation / "source-validation.json", {"commit": commit, "status": "failed",
+                "kind": "archive_validation_failed", "sha256": hashlib.sha256(raw).hexdigest()})
+            raise
+        save(operation / "source-validation.json", {"commit": commit, "status": "verified",
+            "sha256": hashlib.sha256(raw).hexdigest(), "files": len(files)})
+        return files
 
 
 def github(path):
@@ -630,7 +704,7 @@ def stage(config, candidate, operation):
     require_same_filesystem(operation, Path(config["base"]) / "releases")
     if shutil.disk_usage(operation).free < 2 * 1024 ** 3:
         raise Deferred("insufficient_release_capacity")
-    files = archive_files(fetch("https://codeload.github.com/" + REPOSITORY + "/tar.gz/" + commit, 32 * 1024 * 1024), commit)
+    files = fetch_source(commit, operation)
     work = operation / "work"
     work.mkdir(mode=0o755)
     for name, (data, executable) in files.items():
