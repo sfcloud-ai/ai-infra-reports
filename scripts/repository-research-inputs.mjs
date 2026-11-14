@@ -56,7 +56,7 @@ export async function readRepositoryResearchInputs(plan,read=fetchRepositoryInpu
 }
 
 function repositoryTransferMetrics(stderr){
- const match=Buffer.isBuffer(stderr)||typeof stderr==='string'?String(stderr).match(/(?:^|\n)REPOSITORY_METRICS (\d{3}) ([0-9.]+) ([0-9.]+) ([0-9.]+) ([0-9.]+) ([0-9.]+)(?:\n|$)/):null;
+ const match=Buffer.isBuffer(stderr)||typeof stderr==='string'?String(stderr).match(/(?:^|\n)REPOSITORY_METRICS (\d{3}) ([0-9.]+) ([0-9.]+) ([0-9.]+) ([0-9.]+) ([0-9.]+)(?:\r?\n|$)/):null;
  if(!match)return {};
  const values=match.slice(1).map(Number);if(!values.every(Number.isFinite))return {};
  const [http_status,dns_seconds,tcp_seconds,tls_seconds,first_byte_seconds,total_seconds]=values;

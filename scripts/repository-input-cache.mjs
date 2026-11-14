@@ -16,8 +16,13 @@ export async function recoverRepositoryInputs(plan,root,{read=fetchRepositoryInp
  repositoryResearchInputs(plan);await directory(root);
  const binding=repositoryResearchInputsHash(plan),bindingPath=path.join(root,'.repository-inputs');
  try{
-  const handle=await open(bindingPath,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);
-  try{await handle.writeFile(binding);}finally{await handle.close();}
+  // Never expose a partial binding if interrupted during the first write.
+  const temporary=path.join(root,'.binding-'+randomUUID());
+  const handle=await open(temporary,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);
+  try{
+   try{await handle.writeFile(binding);await handle.sync();}finally{await handle.close();}
+   await link(temporary,bindingPath);
+  }finally{await unlink(temporary);}
  }catch(error){
   if(error.code!=='EEXIST')throw error;
   const handle=await open(bindingPath,constants.O_RDONLY|constants.O_NOFOLLOW);

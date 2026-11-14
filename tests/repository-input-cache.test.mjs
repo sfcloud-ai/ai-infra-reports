@@ -33,8 +33,8 @@ test('integrity failures never retried or persisted',{skip:process.platform==='w
 });
 test('transport diagnostics retain only safe numeric data and transient errors',async()=>{
  const environment={PATH:'/bin',https_proxy:'http://managed.invalid:3128'};
- for(const code of [28,22,60]){
-  await assert.rejects(fetchRepositoryInput(repositoryResearchInputs(plan)[0],{environment,run:async()=>{throw Object.assign(Error('secret'),{code,stderr:Buffer.from('secret token\nREPOSITORY_METRICS 000 0.1 0.2 0 0 30\n')});}}),error=>{
+ for(const newline of ['\n','\r\n'])for(const code of [28,22,60]){
+  await assert.rejects(fetchRepositoryInput(repositoryResearchInputs(plan)[0],{environment,run:async()=>{throw Object.assign(Error('secret'),{code,stderr:Buffer.from('secret token'+newline+'REPOSITORY_METRICS 000 0.1 0.2 0 0 30'+newline)});}}),error=>{
    assert.equal(error.retryable,code===28);assert.equal(error.diagnostic.total_seconds,30);assert(!JSON.stringify(error.diagnostic).includes('secret'));return true;
   });
  }
@@ -43,4 +43,13 @@ test('transport diagnostics retain only safe numeric data and transient errors',
 test('resumable cache explicitly rejects platforms without POSIX ownership',async()=>{
  const original=process.getuid;process.getuid=undefined;
  try{await assert.rejects(recoverRepositoryInputs(plan,path.resolve('unused-cache')),/requires POSIX/);}finally{process.getuid=original;}
+});
+
+test('interrupted temporary binding is ignored but a corrupt published binding fails closed',{skip:process.platform==='win32'?'POSIX ownership and permissions required':false},async t=>{
+ const root=await cache(t);
+ await writeFile(path.join(root,'.binding-interrupted'),'partial',{mode:0o600});
+ await recoverRepositoryInputs(plan,root,{read:async ref=>bytes.get(ref.path)});
+ assert.equal((await readFile(path.join(root,'.repository-inputs'))).length,64);
+ await writeFile(path.join(root,'.repository-inputs'),'partial');
+ await assert.rejects(recoverRepositoryInputs(plan,root,{read:()=>assert.fail()}),/invalid pinned inputs/);
 });
