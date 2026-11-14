@@ -743,7 +743,7 @@ test('uninstalled recovery layer returns durable well-formed rejection through i
 });
 test('installed capability is observable for both absent and existing legacy run before grant',()=>{
  const s=setup();try{
-  assert.equal(execute(s,command('status',{offset:0})).capabilities,undefined);
+  assert.deepEqual(execute(s,command('status',{offset:0})).capabilities,{archive_recovery:'authenticated_control_chunks_v1'});
   installResearchRecovery(s.db,'synthetic explicit installation');
   const absent=execute(s,command('status',{offset:0}));assert.equal(absent.status,'not_found');
   const run=start(s),original=Buffer.from(s.db.prepare('SELECT plan FROM research_control_runs').get().plan);

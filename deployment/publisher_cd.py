@@ -65,6 +65,8 @@ RESEARCH_ARCHIVE_SCHEMA = {
     'research_archive_heads': 'CREATE TABLE research_archive_heads(report_date TEXT PRIMARY KEY,hash TEXT NOT NULL)'
 }
 TABLES.update(RESEARCH_ARCHIVE_SCHEMA)
+ARCHIVE_RECOVERY_SCHEMA = 'CREATE TABLE research_control_archive_recovery(id INTEGER PRIMARY KEY CHECK(id=1),version INTEGER NOT NULL CHECK(version=1))'
+
 RESEARCH_CONTROL_SCHEMA = {
     'research_control_policy': 'CREATE TABLE research_control_policy(id INTEGER PRIMARY KEY CHECK(id=1),binding TEXT NOT NULL,evidence_reference TEXT NOT NULL)',
     'research_control_runs': 'CREATE TABLE research_control_runs(request_id TEXT PRIMARY KEY,report_date TEXT UNIQUE NOT NULL,plan BLOB NOT NULL,plan_hash TEXT NOT NULL,owner_id TEXT NOT NULL,epoch INTEGER NOT NULL,revision INTEGER NOT NULL,lease_until INTEGER NOT NULL,started_at INTEGER NOT NULL,charged_seconds REAL NOT NULL,inputs_hash TEXT,checkpoint_hash TEXT,permit TEXT)',
@@ -74,6 +76,7 @@ RESEARCH_CONTROL_SCHEMA = {
     'research_control_events': "CREATE TABLE research_control_events(source_ts TEXT PRIMARY KEY,command_id TEXT NOT NULL,hash TEXT NOT NULL,bytes BLOB NOT NULL,phase TEXT NOT NULL DEFAULT 'pending',attempts INTEGER NOT NULL DEFAULT 0,next_at INTEGER NOT NULL DEFAULT 0,reply_text TEXT,reply_ts TEXT,diagnostic TEXT)",
 }
 TABLES.update(RESEARCH_CONTROL_SCHEMA)
+TABLES.add("research_control_archive_recovery")
 
 
 # Authorized pre-publication corrections retain the complete original payload.
@@ -370,6 +373,13 @@ def snapshot(path, settled=True):
                 for name, count in [('research_control_runs', 2), ('research_control_ops', 1),
                                     ('research_control_commands', 1), ('research_control_submissions', 1),
                                     ('research_control_events', 1)] for n in range(1, count + 1)}
+            if any(row[1] == 'research_control_archive_recovery' for row in authority):
+                expected.add(('table', 'research_control_archive_recovery', ARCHIVE_RECOVERY_SCHEMA))
+                # Exact schema is checked before querying its version row.
+                if set(authority) != expected:
+                    raise ValueError('unsupported_research_control_schema')
+                if database.execute('SELECT id,version FROM research_control_archive_recovery').fetchall() != [(1, 1)]:
+                    raise ValueError('invalid_archive_recovery_marker')
             if set(authority) != expected or not research:
                 raise ValueError('unsupported_research_control_schema')
             records = database.execute('SELECT id,binding,evidence_reference FROM research_control_policy').fetchall()
@@ -748,6 +758,10 @@ def repository_inputs_runtime_required(database):
     return binding.get('protocol') == 'repository_inputs_v1'
 
 
+def archive_recovery_runtime_required(database):
+    return database.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='research_control_archive_recovery'").fetchone() is not None
+
+
 def compatibility(config, release, operation, expected):
     """仅打开隔离的账本副本，不提供生产凭据或网络。"""
     probe = operation / ("probe-" + uuid.uuid4().hex)
@@ -762,6 +776,7 @@ def compatibility(config, release, operation, expected):
     if snapshot(database) != expected:
         raise ValueError("state_changed_during_backup")
     with closing(sqlite3.connect(database)) as isolated:
+        needs_archive_recovery = archive_recovery_runtime_required(isolated)
         needs_pages = page_runtime_required(isolated)
         needs_revision = revision_runtime_required(isolated)
         needs_repository_inputs = repository_inputs_runtime_required(isolated)
@@ -773,6 +788,8 @@ def compatibility(config, release, operation, expected):
         os.chown(path, config["uid"], config["gid"])
         path.chmod(0o700 if path.is_dir() else 0o600)
     script = "import{readFileSync}from'node:fs';import{HandoffState,handoffScope}from'./scripts/handoff-state.mjs';import{NoticeOutbox,notificationScope}from'./scripts/notice-outbox.mjs';import * as runtime from'./scripts/run-handoff.mjs';"
+    if needs_archive_recovery:
+        script += "const recovery=await import('./scripts/research-archive-recovery.mjs');if(recovery.ARCHIVE_RECOVERY_VERSION!==1)throw Error('archive_recovery_requires_compatible_release');"
     if needs_pages:
         script += "const pages=await import('./scripts/research-page-authority.mjs');if(pages.PAGE_AUTHORITY_VERSION!==1)throw Error('page_authority_requires_compatible_release');"
     if needs_revision:

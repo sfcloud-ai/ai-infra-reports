@@ -925,5 +925,72 @@ class ResearchRecoveryCdTests(unittest.TestCase):
         self.assertEqual(json.loads(result.stdout), cd.RESEARCH_RECOVERY_SCHEMA)
 
 
+
+class ArchiveRecoveryCdTests(unittest.TestCase):
+    setUp = LedgerTests.setUp
+    install = ResearchRecoveryCdTests.install
+    config = ResearchRecoveryCdTests.config
+    def marker(self):
+        with connection(self.database) as database:
+            database.execute(cd.ARCHIVE_RECOVERY_SCHEMA)
+            database.execute('INSERT INTO research_control_archive_recovery VALUES(1,1)')
+
+    def test_archive_marker_exact_snapshot_and_row(self):
+        self.install()
+        before = cd.snapshot(self.database)
+        with connection(self.database) as database:
+            self.assertFalse(cd.archive_recovery_runtime_required(database))
+        self.marker()
+        after = cd.snapshot(self.database)
+        self.assertNotEqual(before, after)
+        with connection(self.database) as database:
+            self.assertTrue(cd.archive_recovery_runtime_required(database))
+            database.execute('DELETE FROM research_control_archive_recovery')
+        with self.assertRaisesRegex(ValueError, 'invalid_archive_recovery_marker'):
+            cd.snapshot(self.database)
+        with connection(self.database) as database:
+            database.execute('DROP TABLE research_control_archive_recovery')
+            database.execute(cd.ARCHIVE_RECOVERY_SCHEMA.replace('CHECK(version=1)', 'CHECK(version>0)'))
+            database.execute('INSERT INTO research_control_archive_recovery VALUES(1,1)')
+        with self.assertRaisesRegex(ValueError, 'unsupported_research_control_schema'):
+            cd.snapshot(self.database)
+
+    def test_archive_marker_probe_and_no_legacy_install(self):
+        self.install()
+        config, operation = self.config()
+        for installed in (False, True):
+            if installed:
+                self.marker()
+            before = cd.snapshot(self.database)
+            def probe(config, release, arguments, **kwargs):
+                self.assertEqual('ARCHIVE_RECOVERY_VERSION' in arguments[-1], installed)
+                mount = kwargs['extra'][1]
+                copied = Path(mount[len('type=bind,src='):-len(',dst=/probe')]) / 'handoff.sqlite'
+                self.assertEqual(cd.snapshot(copied), before)
+            with patch.object(cd, 'container', side_effect=probe), patch.object(cd, 'legacy_dependency_mount', return_value=[]), patch.object(os, 'chown'):
+                cd.compatibility(config, self.root, operation, before)
+            self.assertEqual(cd.snapshot(self.database), before)
+
+    def test_archive_marker_incompatible_candidate_rejected_before_state_open(self):
+        self.install(); self.marker()
+        scripts = self.root / 'scripts'; scripts.mkdir()
+        (scripts/'handoff-state.mjs').write_text("export class HandoffState{constructor(){throw Error('state_opened')}};export const handoffScope=x=>x;")
+        (scripts/'notice-outbox.mjs').write_text("export class NoticeOutbox{};export const notificationScope=x=>x;")
+        (scripts/'run-handoff.mjs').write_text("export function validateConfig(){throw Error('config_opened')}")
+        (scripts/'research-archive-recovery.mjs').write_text('export const ARCHIVE_RECOVERY_VERSION=0;')
+        config, operation = self.config(); before = cd.snapshot(self.database)
+        def probe(config, release, arguments, **kwargs):
+            result = subprocess.run(['node','--input-type=module','-e',arguments[-1]], cwd=release, capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('archive_recovery_requires_compatible_release', result.stderr)
+            self.assertNotIn('config_opened', result.stderr)
+            self.assertNotIn('state_opened', result.stderr)
+            raise ValueError('candidate_incompatible')
+        with patch.object(cd,'container',side_effect=probe), patch.object(cd,'legacy_dependency_mount',return_value=[]), patch.object(os,'chown'):
+            with self.assertRaisesRegex(ValueError,'candidate_incompatible'):
+                cd.compatibility(config,self.root,operation,before)
+        self.assertEqual(cd.snapshot(self.database),before)
+
+
 if __name__ == "__main__":
     unittest.main()

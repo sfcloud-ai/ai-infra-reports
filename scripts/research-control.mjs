@@ -1,3 +1,4 @@
+import {applyArchiveRecovery,readArchiveRecovery,recoveryForOperation,ARCHIVE_RECOVERY_TRANSPORT,assertArchiveRecoveryFence,ARCHIVE_RECOVERY_SCHEMA} from './research-archive-recovery.mjs';
 import {activePageResearch,pageModelKeyAllowed} from './research-page-budget.mjs';
 import {beginPageRound,currentPageRound,publicationPermit,pagePublicationBinding,appendPagePermit,pageAuthorityInstalled} from './research-page-authority.mjs';
 import {readResearchRecoveryHead,researchRecoveryWindow,researchRecoveryAccounting,recordResearchRecoveryOperation,appendResearchRecoveryGrant,assertResearchRecovery} from './research-recovery.mjs';
@@ -58,7 +59,8 @@ export function assertResearchControl(db,c){
  const rows=db.prepare("SELECT name,sql FROM sqlite_master WHERE type='table' AND name LIKE 'research_control_%'").all();
  if(!c.research_control){requireThat(!rows.length,'Installed research authority cannot be removed');return false;}
  assertResearchArchive(db,c);assertResearchRecovery(db);pageAuthorityInstalled(db);const binding=policy(c);
- requireThat(rows.length===Object.keys(RESEARCH_CONTROL_SCHEMA).length&&rows.every(r=>r.sql===RESEARCH_CONTROL_SCHEMA[r.name]),'Original research authority schema required');
+ const fenced=assertArchiveRecoveryFence(db),schema={...RESEARCH_CONTROL_SCHEMA,...(fenced?{research_control_archive_recovery:ARCHIVE_RECOVERY_SCHEMA}:{})};
+ requireThat(rows.length===Object.keys(schema).length&&rows.every(r=>r.sql===schema[r.name]),'Original research authority schema required');
  const installed=db.prepare('SELECT * FROM research_control_policy').all();requireThat(installed.length===1&&installed[0].id===1&&installed[0].binding===binding,'Original research authority binding required');return true;
 }
 export function installResearchControl(db,c,reference){
@@ -89,9 +91,9 @@ export function migrateResearchControl(db,c,reference){
 export function decodeResearchControl(bytes){
  need(Buffer.isBuffer(bytes)&&bytes.length>0&&'!ai-research control v2 '.length+bytes.toString('base64').length<=5000,'control_wire_limit_split_reservations_or_reduce_plan');
  let c;try{c=JSON.parse(new TextDecoder('utf8',{fatal:true}).decode(bytes));}catch{refuse('control_json');}
- need(exact(c,'schema_version,command_id,request_id,action,owner_id,epoch,expected_revision,args')&&c.schema_version==='research_control_v2'&&string(c.command_id,UUID)&&typeof c.request_id==='string'&&/^morning-\d{8}-r1$/.test(c.request_id)&&['claim','renew','inputs','checkpoint','reserve','resume','settle','permit','page_begin','page_permit','recovery_grant','status','upload_status','receipt'].includes(c.action)&&integer(c.epoch,0,1000000)&&integer(c.expected_revision,0,10000000)&&c.args&&typeof c.args==='object'&&!Array.isArray(c.args),'control_identity');
+ need(exact(c,'schema_version,command_id,request_id,action,owner_id,epoch,expected_revision,args')&&c.schema_version==='research_control_v2'&&string(c.command_id,UUID)&&typeof c.request_id==='string'&&/^morning-\d{8}-r1$/.test(c.request_id)&&['claim','renew','inputs','checkpoint','reserve','resume','settle','permit','page_begin','page_permit','recovery_grant','status','upload_status','receipt','archive_recovery_status','archive_recovery_begin','archive_recovery_chunk','archive_recovery_commit'].includes(c.action)&&integer(c.epoch,0,1000000)&&integer(c.expected_revision,0,10000000)&&c.args&&typeof c.args==='object'&&!Array.isArray(c.args),'control_identity');
  canonicalRequestDate(c.request_id);
- need(['status','upload_status','receipt'].includes(c.action)?c.owner_id===null:string(c.owner_id,UUID),'control_owner');return c;
+ need(['status','upload_status','receipt','archive_recovery_status'].includes(c.action)?c.owner_id===null:string(c.owner_id,UUID),'control_owner');return c;
 }
 export function decodeResearchPlan(encoded,id){
  need(typeof encoded==='string'&&encoded.length<=10000,'plan_size');const bytes=Buffer.from(encoded,'base64');need(bytes.toString('base64')===encoded,'plan_encoding');
@@ -278,7 +280,7 @@ function budgetObservation(budget){
  return observation;
 }
 export function researchOperationDispatchValid(db,run,op,now){
- if(op.kind==='native')return true;
+ if(op.kind==='native')return !recoveryForOperation(db,run.request_id,op.operation_id);
  const plan=JSON.parse(Buffer.from(run.plan)),budget=researchContinuationAuthority(db,run,plan,now);
  const scope=activePageResearch(db,run,plan);
  if(!scope.active||(op.kind==='model'&&!pageModelKeyAllowed(scope,op.operation_key)))return false;
@@ -289,9 +291,12 @@ export function researchOperationDispatchValid(db,run,op,now){
 function view(run){return run?{request_id:run.request_id,report_date:run.report_date,owner_id:run.owner_id,epoch:run.epoch,revision:run.revision,lease_until:run.lease_until,started_at:run.started_at,charged_seconds:run.charged_seconds,plan_hash:run.plan_hash,inputs_hash:run.inputs_hash,checkpoint_hash:run.checkpoint_hash,permit:run.permit?JSON.parse(run.permit):null}:null;}
 const load=(db,id)=>db.prepare('SELECT * FROM research_control_runs WHERE request_id=?').get(id);
 function owner(run,c,now){need(run,'run_not_found');need(run.owner_id===c.owner_id&&run.epoch===c.epoch,'owner_fenced');need(run.revision===c.expected_revision,'revision_conflict');need(run.lease_until>now,'lease_expired');}
-function apply(db,c,now,config){
+function apply(db,c,now,config,commandHash){
  const cache=commandCache();
  let run=load(db,c.request_id);
+ if(c.action==='archive_recovery_status'){
+  need(exact(c.args,'recovery_id'),'archive_recovery_fields');return {status:'observed',recovery:readArchiveRecovery(db,c.request_id,c.args.recovery_id)};
+ }
  if(c.action==='upload_status'){
   need(exact(c.args,'archive_sha256,permit_id')&&string(c.args.archive_sha256,HASH)&&(c.args.permit_id===null||string(c.args.permit_id,UUID)),'upload_status_fields');
   if(!run)return {status:'not_found',run:null};
@@ -302,7 +307,7 @@ function apply(db,c,now,config){
  }
  if(c.action==='status'){
   need(exact(c.args,'offset')&&integer(c.args.offset,0,100000),'status_offset');
-  const capabilities=assertResearchRecovery(db)?{capabilities:{repository_plan_versions:['research_plan_v3','research_plan_v4'],budget_policy:LAYERED_BUDGET_POLICY}}:{};
+  const capabilities={capabilities:{...(config.research_control.protocol==='repository_inputs_v1'?{archive_recovery:ARCHIVE_RECOVERY_TRANSPORT}:{}),...(assertResearchRecovery(db)?{repository_plan_versions:['research_plan_v3','research_plan_v4'],budget_policy:LAYERED_BUDGET_POLICY}:{})}};
   if(!run)return {status:'not_found',run:null,...capabilities};
   const ops=db.prepare('SELECT * FROM research_control_ops WHERE request_id=? ORDER BY rowid LIMIT 2 OFFSET ?').all(c.request_id,c.args.offset);
   const budget=effectiveResearchBudget(db,run,JSON.parse(Buffer.from(run.plan)),now,cache);
@@ -311,7 +316,7 @@ function apply(db,c,now,config){
  if(c.action==='receipt'){
   need(exact(c.args,'command_id')&&string(c.args.command_id,UUID),'receipt_identity');
   const prior=db.prepare('SELECT hash,result,bytes FROM research_control_commands WHERE request_id=? AND command_id=?').get(c.request_id,c.args.command_id);
-  need(!prior||!['status','upload_status','receipt'].includes(JSON.parse(Buffer.from(prior.bytes)).action),'receipt_requires_mutation');
+  need(!prior||!['status','upload_status','receipt','archive_recovery_status'].includes(JSON.parse(Buffer.from(prior.bytes)).action),'receipt_requires_mutation');
   return {status:prior?'observed':'not_found',original_command_id:c.args.command_id,original_hash:prior?.hash??null,original_result:prior?{...JSON.parse(prior.result),dispatch_granted:false}:null};
  }
  if(c.action==='claim'){
@@ -339,8 +344,10 @@ function apply(db,c,now,config){
   // result. A later takeover cannot erase a resumed executor's late evidence.
   if(!(original&&original.owner_id===c.owner_id&&original.epoch===c.epoch)&&!resumed)owner(run,c,now);
  }else owner(run,c,now);
- const plan=JSON.parse(Buffer.from(run.plan));const budget=effectiveResearchBudget(db,run,plan,now,cache);let grants=[];
- if(c.action==='page_begin'){
+ const plan=JSON.parse(Buffer.from(run.plan));const budget=effectiveResearchBudget(db,run,plan,now,cache);let grants=[],recovery=null;
+ if(['archive_recovery_begin','archive_recovery_chunk','archive_recovery_commit'].includes(c.action)){
+  recovery=applyArchiveRecovery(db,c,commandHash);
+ }else if(c.action==='page_begin'){
   need(budget?.window.active,'research_continuation_not_due');
   beginPageRound(db,run,c.args,now);
  }else if(c.action==='recovery_grant'){
@@ -411,6 +418,7 @@ function apply(db,c,now,config){
   need(exact(c.args,'operation_id')&&string(c.args.operation_id,UUID),'resume_fields');
   const op=db.prepare('SELECT * FROM research_control_ops WHERE request_id=? AND operation_id=?').get(c.request_id,c.args.operation_id);
   need(op&&op.phase==='intent','resume_original_intent');
+  need(!recoveryForOperation(db,c.request_id,op.operation_id),'archive_recovery_preserves_original_unknown');
   if(!budget)need(researchOperationDispatchValid(db,run,op,now),'research_deadline');
   const events=[];
   for(const event of db.prepare('SELECT source_ts,phase,reply_text FROM research_control_events WHERE reply_text IS NOT NULL').iterate()){
@@ -431,6 +439,7 @@ function apply(db,c,now,config){
  }else if(c.action==='settle'){
   need(exact(c.args,'operation_id,outcome,elapsed_seconds,archive_sha256,file_sha256,native_result')&&string(c.args.operation_id,UUID)&&['acknowledged','unknown'].includes(c.args.outcome),'settle_fields');
   const op=db.prepare('SELECT * FROM research_control_ops WHERE request_id=? AND operation_id=?').get(c.request_id,c.args.operation_id);need(op&&op.phase!=='acknowledged','operation_unsettled');
+  need(!recoveryForOperation(db,c.request_id,op.operation_id),'archive_recovery_preserves_original_unknown');
   const elapsed=c.args.elapsed_seconds;need(elapsed===null||typeof elapsed==='number'&&Number.isFinite(elapsed)&&elapsed>=0&&elapsed<=86400,'elapsed_evidence');
   if(c.args.outcome==='acknowledged'){
    if(op.kind==='native'){
@@ -465,7 +474,7 @@ function apply(db,c,now,config){
  }
  const lease=run.owner_id===c.owner_id&&run.epoch===c.epoch&&run.lease_until>now?now+LEASE_MS:run.lease_until;
  db.prepare('UPDATE research_control_runs SET revision=revision+1,lease_until=? WHERE request_id=?').run(lease,c.request_id);
- return {status:'committed',run:view(load(db,c.request_id)),page_round:currentPageRound(db,c.request_id),dispatch_granted:grants.length>0,operations:grants};
+ return {status:'committed',run:view(load(db,c.request_id)),page_round:currentPageRound(db,c.request_id),dispatch_granted:grants.length>0,operations:grants,...(recovery?{recovery}: {})};
 }
 export function executeResearchControl(db,config,bytes,now=Date.now(),{onResult=()=>{},publicationCheck=null}={}){
  need(assertResearchControl(db,config),'authority_disabled');const c=decodeResearchControl(bytes),hash=digest(bytes);
@@ -477,7 +486,7 @@ export function executeResearchControl(db,config,bytes,now=Date.now(),{onResult=
   try{
    need(config.research_control.protocol==='repository_inputs_v1'||['status','upload_status','receipt'].includes(c.action),'authority_migration_required');
    if(['permit','page_permit'].includes(c.action)){const check=publicationChecks.get(publicationCheck);need(check?.command_hash===hash,'publication_validation_required');need(!check.code,check.code);}
-   result=apply(db,c,now,config);db.exec('RELEASE command');
+   result=apply(db,c,now,config,hash);db.exec('RELEASE command');
   }catch(e){if(!e.researchControlCode)throw e;db.exec('ROLLBACK TO command; RELEASE command');result={status:'rejected',code:e.researchControlCode,run:view(load(db,c.request_id)),dispatch_granted:false};}
   result={command_id:c.command_id,command_sha256:hash,request_id:c.request_id,...result};
   need(Buffer.byteLength(JSON.stringify(result))<=16000,'control_result_limit');

@@ -1,3 +1,4 @@
+import {storedRecoveryForOperation} from './research-archive-recovery.mjs';
 import {isRepositoryResearchPlan,isLayeredResearchPlan,operationBudget} from './research-budget.mjs';
 import {acceptReadCommand,canonicalRequestDate,requireThat} from './report-handoff.mjs';
 import {digest} from './archive.mjs';
@@ -20,7 +21,7 @@ export function queueResearchControl(db,event){
 }
 export function researchControlHealth(db){
  const rows=db.prepare("SELECT source_ts,command_id,phase,next_at,diagnostic,reply_text FROM research_control_events WHERE phase IN ('pending','ready','sending','unknown') ORDER BY source_ts").iterate();
- const blocked=[],frozen=[];
+ const blocked=[],frozen=[],warnings=[];
  const migrated=JSON.parse(db.prepare('SELECT binding FROM research_control_policy WHERE id=1').get().binding).protocol==='repository_inputs_v1';
  for(const {diagnostic,reply_text,...row} of rows){
   let error=diagnostic?JSON.parse(diagnostic):null;
@@ -30,6 +31,12 @@ export function researchControlHealth(db){
    error??={stage:'research_control',code:'dispatch_receipt_unknown',outcome:'unknown',retryable:false};
    const original=db.prepare('SELECT request_id FROM research_control_commands WHERE command_id=?').get(row.command_id);
    const run=original&&original.request_id===reply.request_id?db.prepare('SELECT plan FROM research_control_runs WHERE request_id=?').get(original.request_id):null;
+   const unresolved=(reply.operations??[]).filter(op=>db.prepare('SELECT phase FROM research_control_ops WHERE operation_id=?').get(op.operation_id)?.phase==='intent');
+   const recovered=migrated&&run?unresolved.map(op=>storedRecoveryForOperation(db,original.request_id,op.operation_id)):[];
+   if(recovered.length&&recovered.every(Boolean)){
+    if(warnings.length<16)warnings.push({...row,request_id:original.request_id,error,reason:'archive_compensated_original_dispatch_unknown',recoveries:recovered});
+    continue;
+   }
    if(migrated&&run&&JSON.parse(Buffer.from(run.plan)).schema_version==='research_plan_v2'){
     if(frozen.length<16)frozen.push({...row,request_id:original.request_id,error,reason:'retired_plan_read_only'});
     continue;
@@ -37,7 +44,7 @@ export function researchControlHealth(db){
   }
   if(error&&blocked.length<16)blocked.push({...row,error});
  }
- return {blocked,frozen};
+ return {blocked,frozen,warnings};
 }
 export function pendingResearchControls(db){return researchControlHealth(db).blocked;}
 export async function advanceResearchControl(state,config,slack,now=Date.now()){
