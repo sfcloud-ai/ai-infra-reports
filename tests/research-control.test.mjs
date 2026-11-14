@@ -481,7 +481,8 @@ test('input CLI rebuilds a deleted disposable cache from the original plan witho
   for(let attempt=0;attempt<2;attempt++){
    const child=run();assert.equal(child.status,0,child.stderr);assert.equal(JSON.parse(child.stdout).persistent_cloud_state_required,false);
    for(const [name,bytes] of repositoryFiles)assert.deepEqual(await readFile(join(cache,repositoryInputCachePath(name))),bytes);
-   assert.equal(run().status,1,'an existing cache must not be overwritten');
+   assert.equal(run().status,process.platform==='win32'?1:0,'Windows keeps one-shot behavior; POSIX reuses verified cache');
+   await writeFile(join(cache,'prompts/audit.md'),'tampered');assert.equal(run().status,1,'changed cached bytes fail closed');
    await rm(cache,{recursive:true});
   }
  }finally{await rm(dir,{recursive:true,force:true});}
