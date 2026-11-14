@@ -1776,6 +1776,70 @@
       "revision": 2,
       "fingerprint": "b62e1701bde7269b494eaf59f85b804f11c5cb80bd0c36521817d9e6f3500ae5",
       "content_sha256": "1a051047f1874f0c8daecf9856da9da9f1562656a0161ca81e36c6d0d5aa8026"
+    },
+    {
+      "id": "2026-11-14-lerobot-praxis-5321",
+      "event_key": "lerobot-praxis-5321",
+      "date": "2026-11-14",
+      "revision": 1,
+      "fingerprint": "3dbe15175ad4ebec1ec605e03305a5f2af439593279f62ac64b44803967987d7",
+      "content_sha256": "c45fd11eecc3d5eff66348fa99f22eae9fda22747f3b57f095af4cf172e242d7"
+    },
+    {
+      "id": "2026-11-14-lmcache-peer-write-6532",
+      "event_key": "lmcache-peer-write-6532",
+      "date": "2026-11-14",
+      "revision": 1,
+      "fingerprint": "8b750e9e19055f4d12d09fb92ae85ca4f19de6a1ed363d77499112b7e41b73f8",
+      "content_sha256": "c1315e9620393e441a14f997073bd53ba940d8bca20bcb3630d68acf84f0f5db"
+    },
+    {
+      "id": "2026-11-14-nvidia-cudla-python-20261113",
+      "event_key": "nvidia-cudla-python-20261113",
+      "date": "2026-11-14",
+      "revision": 1,
+      "fingerprint": "c339691cf3ffce308cd7ac34d50251d1ba2fccca7dc698442ee8b6873fa30e34",
+      "content_sha256": "de48f1dbc85c688969a834fe6d786bb16f7fd3b52eac31ecb57c52b5f6f95413"
+    },
+    {
+      "id": "2026-11-14-nvidia-soma-retargeter-v02-20261113",
+      "event_key": "nvidia-soma-retargeter-v02-20261113",
+      "date": "2026-11-14",
+      "revision": 1,
+      "fingerprint": "af211227fd33560be33e0179703f2b70c89b0403b36863141deed2ed65acd9aa",
+      "content_sha256": "d93aa9c18c87c1fde98f24809f53f989554bcc6dd128f3ba3a09cc48068a09f1"
+    },
+    {
+      "id": "2026-11-14-sglang-pr-49633",
+      "event_key": "sglang-pr-49633",
+      "date": "2026-11-14",
+      "revision": 1,
+      "fingerprint": "1524112b51af5f5566e1e65f5e6fedad68dd88f1730d13e357e03626da78e6b9",
+      "content_sha256": "99149be0da9ba9f6ddcc8565b3d018ee72086d25c43e6e61bf5a9a4a23262007"
+    },
+    {
+      "id": "2026-11-14-smolvlm-500m-template-753c175",
+      "event_key": "smolvlm-500m-template-753c175",
+      "date": "2026-11-14",
+      "revision": 1,
+      "fingerprint": "36f826e22feacabaeadd084e5bfe169be00079a73017d4e0c879b82513f816b7",
+      "content_sha256": "36bdc59fb8a14fb1d892c5890884f1cccb8aab0924033283e38daf7a62023fbb"
+    },
+    {
+      "id": "2026-11-14-vllm-deepseek-v41-rubin-20261112",
+      "event_key": "vllm-deepseek-v41-rubin-20261112",
+      "date": "2026-11-14",
+      "revision": 1,
+      "fingerprint": "4a74fe3dad438b96e9ec345713fe56f5fb454398c01398047d71145f2a8828a0",
+      "content_sha256": "39fe7e8af318070d23a4a9945643b956ea69b5e0ed75d9f9f0bd657694dc433f"
+    },
+    {
+      "id": "2026-11-14-vllm-pr-67485",
+      "event_key": "vllm-pr-67485",
+      "date": "2026-11-14",
+      "revision": 1,
+      "fingerprint": "b103b3712dbc0bb9a6099ea2522cd26f13c2ca2ff1cec89e3e8ba8bb6c165fc5",
+      "content_sha256": "eefe4676be6807600caa8051a2f4b5381ed72f604bcae78938efad1e72bd2033"
     }
   ]
 }

@@ -1279,9 +1279,9 @@
     {
       "schema_version": "1.2",
       "date": "2026-11-14",
-      "revision": 1,
+      "revision": 2,
       "title": "AI Infra 晨报 · 2026-11-14",
-      "subtitle": "部分晨报｜覆盖缺口：架构。GLM、Qwen 博客访问未完成，架构页待补。",
+      "subtitle": "远端 KV、异构算力、模型架构、具身训练、小模型与三引擎动态。",
       "articles": [
         {
           "id": "model-serving-gpu",
@@ -1296,6 +1296,13 @@
           "summary": "cuDLA Python 把预处理、DLA 执行、后处理接入同一 CUDA stream；硬件、模型布局与运行模式有明确边界。",
           "sha256": "6ce2e8db4473b22c864bb4e00e4e73b38b8f8e298fd96c5d884270f786a80818",
           "path": "reports/2026-11-14/articles/hardware-status.md"
+        },
+        {
+          "id": "model-architecture-status",
+          "title": "模型架构与适配：双机容量与混合状态边界",
+          "summary": "GLM 双机实测出现并发拐点；Qwen、GLM 的 KV、循环状态与查表权重需要分别预算。",
+          "sha256": "244260e6d522feff0764f2ee04567f0d2ad66600eaee5d58a1a767b5216de5cc",
+          "path": "reports/2026-11-14/articles/model-architecture-status.md"
         },
         {
           "id": "embodied-training",
@@ -1321,20 +1328,18 @@
       ],
       "poster": "assets/overview.png",
       "page_delivery": {
-        "previous": null,
+        "previous": {
+          "request_id": "morning-20261114-r1",
+          "bundle_sha256": "916b1e10423313d5293d302ae339b200f4b48b346a53b5c84177a7e9ce5b648f"
+        },
         "added": [
-          "model-serving-gpu",
-          "hardware-status",
-          "embodied-training",
-          "small-model-status",
-          "inference-engines"
+          "model-architecture-status"
         ],
-        "pending": [
-          {
-            "id": "model-architecture-status",
-            "reason": "GLM、Qwen 官方博客访问未完成，已核实模型资料保留待补"
-          }
-        ]
+        "pending": []
+      },
+      "revision_notice": {
+        "kind": "page_completion",
+        "summary": "补齐模型架构与适配：双机容量、混合状态与并发边界。"
       },
       "path": "reports/2026-11-14/"
     }
@@ -4393,7 +4398,7 @@
       "article_id": "model-serving-gpu",
       "fingerprint": "8b750e9e19055f4d12d09fb92ae85ca4f19de6a1ed363d77499112b7e41b73f8",
       "date": "2026-11-14",
-      "revision": 1
+      "revision": 2
     },
     {
       "id": "2026-11-14-nvidia-cudla-python-20261113",
@@ -4407,7 +4412,7 @@
       "article_id": "hardware-status",
       "fingerprint": "c339691cf3ffce308cd7ac34d50251d1ba2fccca7dc698442ee8b6873fa30e34",
       "date": "2026-11-14",
-      "revision": 1
+      "revision": 2
     },
     {
       "id": "2026-11-14-nvidia-soma-retargeter-v02-20261113",
@@ -4421,7 +4426,7 @@
       "article_id": "embodied-training",
       "fingerprint": "af211227fd33560be33e0179703f2b70c89b0403b36863141deed2ed65acd9aa",
       "date": "2026-11-14",
-      "revision": 1
+      "revision": 2
     },
     {
       "id": "2026-11-14-lerobot-praxis-5321",
@@ -4436,7 +4441,7 @@
       "article_id": "embodied-training",
       "fingerprint": "3dbe15175ad4ebec1ec605e03305a5f2af439593279f62ac64b44803967987d7",
       "date": "2026-11-14",
-      "revision": 1
+      "revision": 2
     },
     {
       "id": "2026-11-14-smolvlm-500m-template-753c175",
@@ -4454,7 +4459,7 @@
       "article_id": "small-model-status",
       "fingerprint": "36f826e22feacabaeadd084e5bfe169be00079a73017d4e0c879b82513f816b7",
       "date": "2026-11-14",
-      "revision": 1
+      "revision": 2
     },
     {
       "id": "2026-11-14-vllm-pr-67485",
@@ -4468,7 +4473,7 @@
       "article_id": "inference-engines",
       "fingerprint": "b103b3712dbc0bb9a6099ea2522cd26f13c2ca2ff1cec89e3e8ba8bb6c165fc5",
       "date": "2026-11-14",
-      "revision": 1
+      "revision": 2
     },
     {
       "id": "2026-11-14-sglang-pr-49633",
@@ -4482,7 +4487,7 @@
       "article_id": "inference-engines",
       "fingerprint": "1524112b51af5f5566e1e65f5e6fedad68dd88f1730d13e357e03626da78e6b9",
       "date": "2026-11-14",
-      "revision": 1
+      "revision": 2
     },
     {
       "id": "2026-11-14-vllm-deepseek-v41-rubin-20261112",
@@ -4497,7 +4502,21 @@
       "article_id": "inference-engines",
       "fingerprint": "4a74fe3dad438b96e9ec345713fe56f5fb454398c01398047d71145f2a8828a0",
       "date": "2026-11-14",
-      "revision": 1
+      "revision": 2
+    },
+    {
+      "id": "2026-11-14-nvidia-glm53-two-dgx-stations-20261113",
+      "event_key": "nvidia-glm53-two-dgx-stations-20261113",
+      "title": "GLM-5.3 双机部署：容量够了，并发仍有拐点",
+      "summary": "11 月 13 日 NVIDIA 给出 GLM-5.3 NVFP4 在两台 GB300 DGX Station 上的 vLLM TP2 部署。约 464GB checkpoint 分片常驻 GPU，关闭 CPU 权重卸载；SPEED-Bench Coding 实测总输出吞吐在并发16时为607.8 tok/s，并发32降为385.0 tok/s。",
+      "source_urls": [
+        "https://developer.nvidia.com/blog/when-one-gpu-isnt-enough-serving-glm-5-3-across-two-nvidia-dgx-stations-with-vllm/"
+      ],
+      "update_of": null,
+      "article_id": "model-architecture-status",
+      "fingerprint": "69512438836484a1db26fe797d6f4e2dce144b501afbacad0339d5456bcb3965",
+      "date": "2026-11-14",
+      "revision": 2
     }
   ]
 }
