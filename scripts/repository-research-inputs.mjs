@@ -29,13 +29,20 @@ export function repositoryInputCachePath(path){
  requireThat(REPOSITORY_INPUT_PATHS.includes(path),'Unknown repository input');
  return path==='reports/index.json'?'history.json':path.replace('ai_brief/resources/','');
 }
-export async function fetchRepositoryInput(input,{run=promisify(execFile),environment=process.env}={}){
+export async function fetchRepositoryInput(input,{run=promisify(execFile),environment=process.env,onDiagnostic=()=>{}}={}){
  // Use the existing managed proxy explicitly. No direct fallback, curl config,
  // redirects, inherited NO_PROXY, or automatic provider retries are allowed.
  try{
-  const {stdout}=await run('curl',['-q','--silent','--fail','--proto','=https','--max-redirs','0','--retry','0','--connect-timeout','15','--max-time','30','--max-filesize',String(8*1024*1024),input.url],{env:producerCurlEnvironment('managed_proxy',environment),encoding:'buffer',maxBuffer:8*1024*1024,timeout:35000,windowsHide:true});
+  const {stdout,stderr}=await run('curl',['-q','--silent','--fail','--proto','=https','--max-redirs','0','--retry','0','--connect-timeout','15','--max-time','30','--max-filesize',String(8*1024*1024),'--write-out','%{stderr}\nREPOSITORY_METRICS %{http_code} %{time_namelookup} %{time_connect} %{time_appconnect} %{time_starttransfer} %{time_total}\n',input.url],{env:producerCurlEnvironment('managed_proxy',environment),encoding:'buffer',maxBuffer:8*1024*1024,timeout:35000,windowsHide:true});
+  onDiagnostic(repositoryTransferMetrics(stderr));
   return stdout;
- }catch{throw Error('Pinned repository input unavailable through original managed proxy');}
+ }catch(cause){
+  const code=Number.isInteger(cause.code)?cause.code:null;
+  const error=Error('Pinned repository input unavailable through original managed proxy');
+  error.retryable=[5,6,7,18,28,52,55,56].includes(code);
+  error.diagnostic={...repositoryTransferMetrics(cause.stderr),kind:code===28?'timeout':code===22?'http_error':code===60?'tls_verification':code===null?'transport_configuration':'transport',curl_exit:code,retryable:error.retryable};
+  throw error;
+ }
 }
 export async function readRepositoryResearchInputs(plan,read=fetchRepositoryInput){
  const refs=repositoryResearchInputs(plan),files=new Map();let total=0;
@@ -46,4 +53,12 @@ export async function readRepositoryResearchInputs(plan,read=fetchRepositoryInpu
   files.set(ref.path,bytes);
  }
  return files;
+}
+
+function repositoryTransferMetrics(stderr){
+ const match=Buffer.isBuffer(stderr)||typeof stderr==='string'?String(stderr).match(/(?:^|\n)REPOSITORY_METRICS (\d{3}) ([0-9.]+) ([0-9.]+) ([0-9.]+) ([0-9.]+) ([0-9.]+)(?:\r?\n|$)/):null;
+ if(!match)return {};
+ const values=match.slice(1).map(Number);if(!values.every(Number.isFinite))return {};
+ const [http_status,dns_seconds,tcp_seconds,tls_seconds,first_byte_seconds,total_seconds]=values;
+ return {http_status,dns_seconds,tcp_seconds,tls_seconds,first_byte_seconds,total_seconds};
 }

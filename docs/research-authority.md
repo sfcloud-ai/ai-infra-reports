@@ -153,12 +153,24 @@ research/model time. Native provider cooldowns remain enforced.
 Pipe the original plan recovered from the authenticated host receipt to:
 
 ```text
-node scripts/research-inputs-cli.mjs /private/unused-disposable-cache
+node scripts/research-inputs-cli.mjs /private/disposable-input-cache
 ```
 
 It fetches through the configured managed HTTPS proxy with normal TLS checks,
-no direct fallback or provider retries, and verifies all six files before
-creating the cache. Prompt bytes are materialized as `prompts/*.md` and the
+no direct fallback, redirect or curl-level retries. It validates each file against
+its original plan hash before atomically publishing that file to a private
+0700/0600 disposable cache on POSIX platforms. The same cache can resume an interrupted read;
+its pinned repository/commit/path/hash binding and every byte hash are checked
+again on reuse. A changed plan, unsafe cache, or changed bytes fail closed.
+Only transient curl transport failures receive one bounded application-level
+retry (two attempts per missing file per invocation); HTTP, TLS verification,
+integrity and cache failures are not retried. The caller must still count
+invocations within its original attempt and time budget. No final success is
+emitted until all six files and the total size pass validation. Numeric transfer
+timings and typed failures go to stderr without raw stderr, credentials or proxy
+addresses. Windows retains the original one-shot full-set download into a new
+directory; it does not offer resumable cache reuse or claim POSIX permission
+guarantees. Prompt bytes are materialized as `prompts/*.md` and the
 index as `history.json`, matching the existing audit. The returned `inputs_hash` hashes
 the ordered list of repository, commit, path, byte hash and URL. Losing this
 directory requires a fresh host status read and Git fetch, not a replacement
