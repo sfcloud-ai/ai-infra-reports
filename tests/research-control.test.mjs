@@ -14,6 +14,8 @@ import {HandoffState,handoffScope} from '../scripts/handoff-state.mjs';
 import {installFence} from '../scripts/producer-admission-fence.mjs';
 import {installSubmission,advanceSubmission} from '../scripts/slack-submission.mjs';
 import {PublisherInbox} from '../scripts/publisher-inbox.mjs';
+import {propose} from '../scripts/propose.mjs';
+import {FakeGitHub} from './helpers/fake-github.mjs';
 import {encodeBundle} from '../scripts/report-handoff.mjs';
 import {installResearchArchive,storeResearchArchive} from '../scripts/research-archive.mjs';
 import {installResearchControl,migrateResearchControl,assertResearchControl,executeResearchControl,researchSourceIdentity,decodeResearchControl,preparePublicationCheck,RESEARCH_CONTROL_SCHEMA,researchOperationDispatchValid} from '../scripts/research-control.mjs';
@@ -241,7 +243,7 @@ test('native control parser binds the original tool parent and Publisher metadat
 test('publication permit requires original plan identity and a nonblocking audit for that date',async()=>{
  const s=setup();try{
   const run=start(s),bundle=await encodeBundle(FILES,id,'b'.repeat(40),'a'.repeat(40)),audit=auditSummary({readiness:'partial'});
-  for(const [bytes,review,code] of [[await encodeBundle(FILES,id,'a'.repeat(40),'a'.repeat(40)),audit,'publication_plan_binding'],[bundle,{...audit,date:'2026-11-02'},'publication_audit_blocked'],[bundle,{...audit,blockers:['unsupported fact']},'publication_audit_blocked']]){
+  for(const [bytes,review,code] of [[await encodeBundle(FILES,id,'b'.repeat(40),'c'.repeat(40)),audit,'publication_plan_binding'],[bundle,{...audit,date:'2026-11-02'},'publication_audit_blocked'],[bundle,{...audit,blockers:['unsupported fact']},'publication_audit_blocked']]){
    const originalAudit=Buffer.from(JSON.stringify(review)),hash=archive(s,{'bundle.json':bytes,'audit.json':originalAudit});
    assert.equal((await issuePermit(s,command('permit',{archive_sha256:hash,bundle_sha256:digest(bytes),audit_sha256:digest(originalAudit)},run))).code,code);
   }
@@ -528,12 +530,26 @@ test('reopened original host ledger recovers plan and operations after disposabl
   const found=execute(s,command('status',{offset:0}));assert.equal(found.status,'observed');assert.deepEqual(Buffer.from(found.plan_base64,'base64'),plan);assert.equal(found.run.charged_seconds,180);assert.equal(found.operations[0].operation_id,op.operation_id);assert.equal(found.operations[0].phase,'intent');
  }finally{s.close();await rm(dir,{recursive:true,force:true});}
 });
-test('real staging path accepts the original completed upload after takeover and fences unrelated envelopes',async()=>{
- const inputPlan=plan;
+test('r1 publication base advances independently through permit stage submit and exact-main proposal',async()=>{
+ const inputPlan=plan,files=new Map(FILES);
+ const reportPath=[...files.keys()].find(p=>p.endsWith('/report.json')),report=JSON.parse(files.get(reportPath));
+ // This isolated empty publication repository has no historical update targets.
+ for(const entry of report.entries)entry.update_of=null;
+ files.set(reportPath,Buffer.from(JSON.stringify(report)));
  const s=setup();try{
-  let run=start(s,inputPlan);const bytes=await encodeBundle(FILES,id,'b'.repeat(40),'a'.repeat(40)),hash=digest(bytes),audit=Buffer.from(JSON.stringify(auditSummary({readiness:'partial'})));
+  let run=start(s,inputPlan);const api=new FakeGitHub(),publicationBase=api.base;
+  assert.notEqual(publicationBase,JSON.parse(inputPlan).reports_commit_sha);
+  const originalRun={plan_hash:run.plan_hash,inputs_hash:run.inputs_hash,started_at:run.started_at,charged_seconds:run.charged_seconds};
+  const bytes=await encodeBundle(files,id,publicationBase,'a'.repeat(40)),hash=digest(bytes),audit=Buffer.from(JSON.stringify(auditSummary({readiness:'partial'},files)));
   const checkpoint=archive(s,{'bundle.json':bytes,'audit.json':audit});run=(await issuePermit(s,command('permit',{archive_sha256:checkpoint,bundle_sha256:hash,audit_sha256:digest(audit)},run))).run;
-  const permit=run.permit.permit_id;let completeOp;
+  assert.ok(run.permit);const permit=run.permit.permit_id;let completeOp;
+  assert.deepEqual(Object.fromEntries(Object.keys(originalRun).map(k=>[k,run[k]])),originalRun);
+  assert.deepEqual(Buffer.from(execute(s,command('status',{offset:0})).plan_base64,'base64'),inputPlan);
+  const replacement=await encodeBundle(files,id,'c'.repeat(40),'a'.repeat(40));
+  const replacementArchive=archive(s,{'bundle.json':replacement,'audit.json':audit});
+  const refused=await issuePermit(s,command('permit',{archive_sha256:replacementArchive,bundle_sha256:digest(replacement),audit_sha256:digest(audit)},run));
+  assert.equal(refused.code,'immutable_publication_permit');
+  assert.equal(execute(s,command('status',{offset:0})).run.permit.bundle_sha256,hash);
   for(const step of ['ticket','post','complete']){
    const input={archive_sha256:checkpoint,permit_id:permit,step,file_id:step==='ticket'?null:'FORIGINAL',source_ts:null,bytes:bytes.length,sha256:hash};
    const op={operation_id:randomUUID(),kind:'native',key:'permit:'+permit+':'+step,input_sha256:digest(Buffer.from(JSON.stringify(input))),input,max_seconds:0};
@@ -561,6 +577,12 @@ test('real staging path accepts the original completed upload after takeover and
   await inbox.scan(slack,clock+2000);const submitted=await advanceSubmission(s,config,slack,async()=>({...await remote(),observed_at:clock+2000}),clock+2000);assert.equal(submitted,undefined);
   assert.equal(s.metadata(id).hash,hash);assert.equal(s.metadata(id).source_ts,stage.ts);assert.equal(s.metadata(id).detail.submission_source_ts,submit.ts);
   assert.equal(s.db.prepare('SELECT count(*) n FROM jobs').get().n,1);assert.equal(s.db.prepare('SELECT phase FROM research_control_ops WHERE operation_id=?').get(op.operation_id).phase,'acknowledged');
+  const proposal=await propose(api,files,publicationBase);assert.equal(proposal.sha,api.pulls[0].head.sha);
+  const writes=api.calls.filter(c=>c.method!=='GET').length;api.refs.set('main','c'.repeat(40));
+  await assert.rejects(propose(api,files,publicationBase),e=>e.diagnostic?.code==='main_moved');
+  assert.equal(api.calls.filter(c=>c.method!=='GET').length,writes);
+  assert.deepEqual(Buffer.from(execute(s,command('status',{offset:0}),clock).plan_base64,'base64'),inputPlan);
+
  }finally{s.close();}
 });
 
