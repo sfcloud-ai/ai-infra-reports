@@ -123,3 +123,44 @@ In a missing-history migration, preserve the incident evidence and original
 authorization separately. Unknown historical consumption stays unknown. A new
 checkpoint records new observed facts; it never reconstructs an old installation
 identity or proves that a missing prior operation did not occur.
+
+## Explicit recovery of an uncertain archive POST
+
+`authenticated_control_chunks_v1` is a bounded recovery capability of the same
+`repository_inputs_v1` authority, not a replacement upload or research entry point.
+Use it only after reading the original complete operations and archive receipts.
+A missing archive or deleted Slack file does **not** establish that a POST failed.
+The original native operation and file remain immutable uncertainty evidence.
+This recovery does not send a report, settle source/model work, grant a permit,
+change the fixed plan, or reset the budget.
+
+After verifying the deployed capability, use the existing `--control` client,
+original request, current owner/epoch/revision and authenticated control channel:
+
+1. `archive_recovery_begin`: args `operation_id`, `archive_sha256`, `file_id`,
+   `total_bytes`, `reason: "original_post_unknown"`. The host requires the original
+   acknowledged ticket and uncertain POST with these exact bindings, no completion
+   operation, and no stored archive. The maximum recovered archive is 65,536 bytes.
+   Its original command ID becomes `recovery_id`; never start another recovery.
+2. `archive_recovery_chunk`: args `recovery_id`, `offset`, `content_base64`,
+   `chunk_sha256`. Use 1,024-byte aligned chunks (last chunk may be shorter).
+   Only original archive bytes are permitted. All successful chunks live in the
+   existing immutable control command ledger, not cloud state.
+3. `archive_recovery_status`: read-only args `recovery_id`, null owner/run.
+   Reconcile committed offsets after interruptions; exact same-offset bytes are
+   idempotent, changed bytes are rejected. Reconcile unknown commands with the
+   existing `receipt` action before continuing.
+4. `archive_recovery_commit`: args `recovery_id`. Within the original transaction,
+   the host checks every chunk, original aggregate hash, archive schema, input
+   exclusion, predecessor and capacity. The authenticated commit message provides
+   the storage source timestamp. The original file ID is retained as an incident
+   reference, **not** evidence that a Slack file upload succeeded.
+
+The archive receipt's `recovery` field names this transport, original POST and
+file, recovery ID, commit source and `original_post_outcome: "unknown"`. Read the
+stored manifest/files and authenticate complete hashes as usual. Never label
+this result as successful completion of the original upload. A late attempt to
+settle the original POST is refused after recovery starts; its historical row
+is never overwritten. Receipt loss is resolved through original commands and
+readback, not another upload or another recovery. No code capability or test
+result is evidence of a real checkpoint being stored.

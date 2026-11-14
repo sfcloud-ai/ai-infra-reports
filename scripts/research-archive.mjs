@@ -1,3 +1,4 @@
+import {archiveRecoveryEvidence} from './research-archive-recovery.mjs';
 import {isRepositoryResearchPlan,isLayeredResearchPlan,operationBudget} from './research-budget.mjs';
 // Private, immutable research checkpoints. This storage lane grants no research
 // ownership, publication permission, or budget; those require separate policy.
@@ -133,7 +134,7 @@ export function readResearchArchive(db,id,q){
  if(q.action==='receipt'){
   const stored=db.prepare('SELECT command_id,source_ts,file_id FROM research_archives WHERE request_id=? AND hash=?').get(id,q.hash);
   const events=db.prepare("SELECT source_ts,phase,diagnostic FROM research_archive_events WHERE kind='save' AND request_id=? AND hash=? ORDER BY source_ts DESC LIMIT 8").all(id,q.hash).map(r=>({...r,diagnostic:r.diagnostic?JSON.parse(r.diagnostic):null}));
-  return {...common,archive_sha256:q.hash,status:stored?'stored':events.length?events.every(r=>r.diagnostic?.outcome==='rejected')?'rejected':'pending':'not_found',stored:stored??null,events};
+  return {...common,archive_sha256:q.hash,status:stored?'stored':events.length?events.every(r=>r.diagnostic?.outcome==='rejected')?'rejected':'pending':'not_found',stored:stored??null,events,...(db.prepare("SELECT 1 FROM sqlite_master WHERE name='research_control_commands'").get()?{recovery:archiveRecoveryEvidence(db,id,q.hash)}:{})};
  }
  const hash=q.hash==='head'?head:q.hash;
  const row=hash?db.prepare('SELECT command_id,previous_hash,manifest,source_ts,file_id FROM research_archives WHERE request_id=? AND hash=?').get(id,hash):null;
