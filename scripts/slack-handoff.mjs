@@ -3,6 +3,11 @@ import {digest} from "./archive.mjs";
 import {requireThat,boundedBytes,MAX_BUNDLE,SHA,acceptControlFile} from "./report-handoff.mjs";
 import {operationError,rateLimitInfo} from "./github.mjs";
 import {localSlackCooldown,confirmedSlackRejection} from './handoff-recovery.mjs';
+// Slack escapes only these three characters in returned message text. Decode
+// exactly one layer on the observed side; never normalize the bound original.
+function controlReceiptTextMatches(observed,original){
+ return typeof observed==='string'&&typeof original==='string'&&(observed===original||observed.replace(/&(amp|lt|gt);/g,(_match,entity)=>({amp:'&',lt:'<',gt:'>'})[entity])===original);
+}
 export class SlackHandoff{
  constructor(config,token,fetcher=fetch,{now=Date.now,cooldowns}={}){this.config=config;this.token=token;this.fetcher=fetcher;this.now=now;this.cooldowns=cooldowns;}
  assertReady(method){
@@ -92,7 +97,7 @@ export class SlackHandoff{
  }
  async controlReceipt(thread,text){
   const {data}=await this.call("chat.postMessage",{channel:this.config.channel_id,thread_ts:thread,text,parse:"none",mrkdwn:false,unfurl_links:false,unfurl_media:false},true);
-  requireThat(data.channel===this.config.channel_id&&data.message?.thread_ts===thread&&data.message?.bot_id===this.config.bot_id&&data.message?.user===this.config.bot_user_id&&data.message?.text===text,"Slack receipt identity mismatch");
+  requireThat(data.channel===this.config.channel_id&&data.message?.thread_ts===thread&&data.message?.bot_id===this.config.bot_id&&data.message?.user===this.config.bot_user_id&&controlReceiptTextMatches(data.message?.text,text),"Slack receipt identity mismatch");
   return data.ts;
  }
  async findControlReceipt(thread,text){
@@ -112,7 +117,7 @@ export class SlackHandoff{
    requireThat(typeof cursor==='string'&&cursor.length<=1024&&!seen.has(cursor),'Invalid receipt pagination');seen.add(cursor);
   }
   requireThat(complete,'Incomplete receipt thread; no automatic resend');
-  const matches=[...messages.values()].filter(m=>m.thread_ts===thread&&m.text===text);
+  const matches=[...messages.values()].filter(m=>m.thread_ts===thread&&controlReceiptTextMatches(m.text,text));
   requireThat(matches.length===1,"Receipt absent or ambiguous; no automatic resend");
   const m=matches[0],c=this.config;
   requireThat(m.type==="message"&&(!m.subtype||m.subtype==="bot_message")&&m.user===c.bot_user_id&&m.bot_id===c.bot_id&&!m.edited&&!m.hidden&&(!m.channel||m.channel===c.channel_id)&&(!m.team||m.team===c.team_id)&&typeof m.ts==="string"&&/^\d{10}\.\d{6}$/.test(m.ts)&&m.ts>thread,"Receipt identity changed");
