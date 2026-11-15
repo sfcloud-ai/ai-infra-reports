@@ -1840,6 +1840,14 @@
       "revision": 1,
       "fingerprint": "b103b3712dbc0bb9a6099ea2522cd26f13c2ca2ff1cec89e3e8ba8bb6c165fc5",
       "content_sha256": "eefe4676be6807600caa8051a2f4b5381ed72f604bcae78938efad1e72bd2033"
+    },
+    {
+      "id": "2026-11-14-nvidia-glm53-two-dgx-stations-20261113",
+      "event_key": "nvidia-glm53-two-dgx-stations-20261113",
+      "date": "2026-11-14",
+      "revision": 2,
+      "fingerprint": "69512438836484a1db26fe797d6f4e2dce144b501afbacad0339d5456bcb3965",
+      "content_sha256": "35f197a02fd0660f7a0d4da62e9fab37709d7f542615bbf3848e189aa5f664b7"
     }
   ]
 }
