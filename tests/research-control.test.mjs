@@ -255,6 +255,117 @@ test('publication permit requires original plan identity and a nonblocking audit
 function queue(s,c,ts='1793491202.000001'){
  const bytes=Buffer.from(JSON.stringify(c));queueResearchControl(s.db,{source_ts:ts,command_id:c.command_id,hash:digest(bytes),bytes});return ts;
 }
+
+// Synthetic Slack envelopes around the real inbox formatter and client parser.
+// These tests make no provider calls and do not reconstruct production receipts.
+function nativeFixtureControl(s,inspect=()=>{}){
+ let sequence=100;
+ const scope={channel_id:SCOPE.channel_id,team_id:SCOPE.team_id,sender_user_id:SCOPE.sender_user_id,sender_attribution_text:SCOPE.sender_attribution_text,publisher_user_id:'UPUBLISHER',publisher_bot_id:'BPUBLISHER'};
+ return async bytes=>{
+  const c=JSON.parse(bytes),ts='1793491202.'+String(sequence++).padStart(6,'0');queue(s,c,ts);
+  let reply;
+  const error=await advanceResearchControl(s,config,{controlReceipt:async(source,text)=>{assert.equal(source,ts);reply=text;return '1793491209.000001';}},now);
+  assert.equal(error,undefined);assert.equal(typeof reply,'string');
+  if(c.action==='upload_status')assert.ok(Buffer.byteLength(reply)<=4000,`oversized upload status: ${Buffer.byteLength(reply)}`);
+  const messages=`=== THREAD PARENT MESSAGE ===\nFrom: Sender <sender@example.org> (${scope.sender_user_id})\nTime: now\nMessage TS: ${ts}\n${researchCommandText(bytes)}\n${scope.sender_attribution_text}\n\n=== THREAD REPLIES (1 total) ===\n\n--- Reply 1 of 1 ---\nFrom: Publisher <botuser-${scope.team_id}-${scope.publisher_bot_id}@slack-bots.com> (${scope.publisher_user_id})\nTime: now\nMessage TS: 1793491209.000001\n${reply}\n`;
+  const invocation={tool:CONTROL_THREAD_TOOL,arguments:{channel_id:scope.channel_id,message_ts:ts,limit:100,response_format:'detailed'},result:{content:[{type:'text',text:JSON.stringify({messages,pagination_info:'There are no more messages in this thread.\n'})}]}};
+  const result=verifyResearchControlReceipt(scope,bytes,ts,invocation,now);
+  inspect(c,result,reply,{scope,bytes,ts,invocation});return result;
+ };
+}
+
+test('bounded native upload receipts stage once, recover original file and grant submit once',async()=>{
+ const s=setup();try{
+  const run=start(s),bytes=await encodeBundle(FILES,id,'b'.repeat(40),'a'.repeat(40)),hash=digest(bytes),audit=Buffer.from(JSON.stringify(auditSummary()));
+  const archiveHash=archive(s,{'bundle.json':bytes,'audit.json':audit});
+  const permit=(await issuePermit(s,command('permit',{archive_sha256:archiveHash,bundle_sha256:hash,audit_sha256:digest(audit)},run))).run.permit;
+  const counts=new Set(),control=nativeFixtureControl(s,(c,result)=>{if(c.action==='upload_status')counts.add(result.operations.length);});
+  const create=()=>nativeResearchAuthority({request_id:id,owner_id:ownerA,archive_sha256:archiveHash,permit_id:permit.permit_id},control,()=>now);
+  const ticket={file_id:'F'+'A'.repeat(127),upload_url:'https://files.slack.com/upload/v1/synthetic-test-only'},stageTs='1793491205.000001';let nativeCalls=0,posts=0;
+  await stageFile(bytes,SCOPE.channel_id,async(tool,args)=>{
+   nativeCalls++;if(tool===PRODUCER_TOOLS.ticket)return ticket;
+   assert.equal(tool,PRODUCER_TOOLS.complete);assert.equal(args.file_id,ticket.file_id);
+   const original=message(args.initial_comment,stageTs,ticket.file_id),slack={historyPage:async()=>({messages:[original],next_cursor:null}),exactPublish:async()=>original,download:async()=>bytes};
+   const remote=async()=>({complete:true,observed_at:now,read_context:{scheduler_scope_sha256:'c'.repeat(64)},scheduler:null,scheduler_day_claim:null});
+   await new PublisherInbox(s,config).scan(slack,now);assert.equal(await advanceSubmission(s,config,slack,remote,now),undefined);
+   assert.equal(s.db.prepare('SELECT phase FROM slack_staged_bundles').get().phase,'staged');return {};
+  },{authority:create(),upload:async()=>{posts++;return {adapter:'producer_curl_managed_proxy_v1',file_id:ticket.file_id,url_sha256:producerTicket(ticket).url_sha256,bundle_sha256:hash,metrics:{curl_exit:0,http_status:200,upload_bytes:bytes.length,num_redirects:0,ssl_verify_result:0}};}});
+  assert.equal(nativeCalls,2);assert.equal(posts,1);
+  const recovered=await stageFile(bytes,SCOPE.channel_id,()=>assert.fail('must not upload again'),{authority:create()});
+  assert.equal(recovered.file_id,ticket.file_id);assert.equal(recovered.source_ts,stageTs);
+  const submit=await create().before('submit',ticket.file_id,bytes,stageTs);
+  assert.equal(s.db.prepare('SELECT phase FROM research_control_ops WHERE operation_id=?').get(submit).phase,'intent');
+  await assert.rejects(create().before('submit',ticket.file_id,bytes,stageTs),/Original host upload grant required/);
+  assert.equal(s.db.prepare('SELECT count(*) n FROM research_control_ops').get().n,4);
+  assert.deepEqual([...counts].sort(),[0,1,2,3,4]);
+ }finally{s.close();}
+});
+
+test('compact upload observation preserves unknown steps and exact resume input binding',async()=>{
+ for(const stopped of ['post','complete']){
+  const s=setup();try{
+   start(s);const bytes=Buffer.from('synthetic checkpoint bytes'),hash=digest(bytes),control=nativeFixtureControl(s);
+   const create=()=>nativeResearchAuthority({request_id:id,owner_id:ownerA,archive_sha256:hash},control,()=>now);
+   const authority=create();await authority.before('ticket',null,bytes);await authority.after('ticket','FORIGINAL',bytes);
+   const post=await authority.before('post','FORIGINAL',bytes);
+   let op=post;
+   if(stopped==='complete'){await authority.after('post','FORIGINAL',bytes);op=await authority.before('complete','FORIGINAL',bytes);}
+   const live=execute(s,command('status',{offset:0})).run;execute(s,command('settle',unknown(op),live));
+   const before=s.db.prepare('SELECT * FROM research_control_ops ORDER BY rowid').all();
+   await assert.rejects(create().recover(bytes),/requires reconciliation/);
+   await assert.rejects(create().before(stopped,'FORIGINAL',bytes),/requires reconciliation/);
+   await assert.rejects(create().recover(Buffer.from('different original bytes')),/Original upload bytes differ/);
+   assert.deepEqual(s.db.prepare('SELECT * FROM research_control_ops ORDER BY rowid').all(),before);
+  }finally{s.close();}
+ }
+});
+
+test('upload wire bound covers constructed maximum fields, all four steps and page permits',async()=>{
+ // Boundary fixture, not a reproduction of a live four-step publication.
+ for(const kind of ['archive','report','page']){
+  const s=setup();try{
+   start(s);installPageAuthority(s.db);
+   const archiveHash='a'.repeat(64),bundleHash='b'.repeat(64),permit={permit_id:randomUUID(),request_id:id,report_date:DAY,prompt_commit_sha:'c'.repeat(40),publisher_scope_sha256:'d'.repeat(64),archive_sha256:archiveHash,bundle_sha256:bundleHash,audit_sha256:'e'.repeat(64)};
+   s.db.prepare('UPDATE research_control_runs SET permit=?,epoch=1000000,revision=10000000,lease_until=?').run(JSON.stringify(permit),Number.MAX_SAFE_INTEGER);
+   if(kind==='page'){
+    permit.permit_id=randomUUID();permit.request_id=id.replace('-r1','-r9007199254740991');permit.page_ids=Object.keys(PAGE_CHECKS);
+    s.db.prepare('INSERT INTO research_page_rounds VALUES(?,?,?,?,?,?,?)').run(permit.request_id,id,Number.MAX_SAFE_INTEGER,'{}',JSON.stringify(permit.page_ids),now,JSON.stringify(permit));
+   }
+   const steps=kind==='archive'?['ticket','post','complete']:['ticket','post','complete','submit'],permitId=kind==='archive'?null:permit.permit_id,hash=kind==='archive'?archiveHash:bundleHash;
+   for(const step of steps){
+    const key=(permitId?'permit:'+permitId:'archive:'+archiveHash)+':'+step,input={archive_sha256:archiveHash,permit_id:permitId,step,file_id:step==='ticket'?null:'F'.repeat(128),source_ts:step==='submit'?'1793491205.000001':null,bytes:16*1024*1024,sha256:hash};
+    const result={file_id:'F'.repeat(128),source_ts:['complete','submit'].includes(step)?'1793491205.000001':null,sha256:hash,bytes:input.bytes};
+    s.db.prepare('INSERT INTO research_control_ops VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(randomUUID(),id,'native',key,digest(Buffer.from(JSON.stringify(input))),JSON.stringify(input),ownerA,1000000,0,'acknowledged',null,null,null,JSON.stringify(result));
+   }
+   let size=0;const control=nativeFixtureControl(s,(c,r,text)=>{size=Buffer.byteLength(text);assert.equal(r.run.permit,undefined);assert.equal(r.permit?.permit_id??null,permitId);assert.equal(r.operations.length,steps.length);});
+   const original=s.db.prepare('SELECT * FROM research_control_ops ORDER BY rowid').all();
+   await control(Buffer.from(JSON.stringify({...command('upload_status',{archive_sha256:archiveHash,permit_id:permitId}),owner_id:null})));
+   assert.ok(size<=4000);assert.deepEqual(s.db.prepare('SELECT * FROM research_control_ops ORDER BY rowid').all(),original);
+  }finally{s.close();}
+ }
+});
+
+test('old oversized observations remain immutable; fresh command authenticates and split replies stay rejected',async()=>{
+ const s=setup();try{
+  start(s);const args={archive_sha256:'a'.repeat(64),permit_id:null},old={...command('upload_status',args),owner_id:null},bytes=Buffer.from(JSON.stringify(old));
+  const oldResult=JSON.stringify({command_id:old.command_id,command_sha256:digest(bytes),request_id:id,status:'observed',padding:'x'.repeat(4400)});
+  s.db.prepare('INSERT INTO research_control_commands VALUES(?,?,?,?,?)').run(old.command_id,id,digest(bytes),bytes,oldResult);
+  queue(s,old,'1793491202.000001');const oldReply='!ai-research control-receipt '+JSON.stringify({source_ts:'1793491202.000001',...JSON.parse(oldResult)});
+  s.db.prepare("UPDATE research_control_events SET phase='unknown',reply_text=? WHERE command_id=?").run(oldReply,old.command_id);
+  const saved=s.db.prepare('SELECT * FROM research_control_events').get();
+  await nativeFixtureControl(s,(c,r,text,{scope,bytes,ts,invocation})=>{
+   assert.equal(r.status,'observed');assert.equal(r.dispatch_granted,undefined);
+   const split=structuredClone(invocation);split.result.content[0].text=split.result.content[0].text.replace('THREAD REPLIES (1 total)','THREAD REPLIES (2 total)');
+   assert.throws(()=>verifyResearchControlReceipt(scope,bytes,ts,split,now),/Original native Publisher receipt/);
+  })(Buffer.from(JSON.stringify({...command('upload_status',args),owner_id:null})));
+  assert.equal(s.db.prepare('SELECT result FROM research_control_commands WHERE command_id=?').get(old.command_id).result,oldResult);
+  assert.deepEqual(s.db.prepare('SELECT * FROM research_control_events WHERE command_id=?').get(old.command_id),saved);
+  // Even a separately queued replay must not send the old oversized bytes.
+  queue(s,old,'1793491203.000001');await advanceResearchControl(s,config,{controlReceipt:()=>assert.fail('oversized replay must not send')},now);
+  assert.equal(s.db.prepare('SELECT phase FROM research_control_events WHERE source_ts=?').get('1793491203.000001').phase,'pending');
+  assert.equal(s.db.prepare('SELECT result FROM research_control_commands WHERE command_id=?').get(old.command_id).result,oldResult);
+ }finally{s.close();}
+});
 test('source attempts cannot change identity through a forged key or reordered query',()=>{
  const s=setup();try{
   let run=start(s);const op=source('https://example.org/data?b=2&a=1');

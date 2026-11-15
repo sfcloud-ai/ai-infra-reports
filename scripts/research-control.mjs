@@ -306,7 +306,13 @@ function apply(db,c,now,config,commandHash){
   const scope=c.args.permit_id?'permit:'+c.args.permit_id:'archive:'+c.args.archive_sha256;
   if(c.args.permit_id){const permit=publicationPermit(db,run,c.args.permit_id);need(permit?.permit_id===c.args.permit_id&&permit.archive_sha256===c.args.archive_sha256,'upload_status_permit');}
   const ops=db.prepare("SELECT * FROM research_control_ops WHERE request_id=? AND kind='native' AND operation_key IN (?,?,?,?) ORDER BY rowid").all(c.request_id,...['ticket','post','complete','submit'].map(step=>scope+':'+step));
-  return {status:'observed',run:view(run),permit:publicationPermit(db,run,c.args.permit_id),operations:ops.map(op=>({...op,input:JSON.parse(op.input),native_result:op.native_result?JSON.parse(op.native_result):null}))};
+  // Upload recovery needs the complete step set, not duplicated run/SQL metadata.
+  // Keep original identities, hashes and phases: an unknown write stays unknown.
+  const {request_id,owner_id,epoch,revision,lease_until}=run;
+  return {status:'observed',run:{request_id,owner_id,epoch,revision,lease_until},permit:c.args.permit_id?publicationPermit(db,run,c.args.permit_id):null,operations:ops.map(op=>{
+   const {step,bytes,sha256}=JSON.parse(op.input);
+   return {operation_id:op.operation_id,operation_key:op.operation_key,input_hash:op.input_hash,phase:op.phase,input:{step,bytes,sha256},native_result:op.native_result?JSON.parse(op.native_result):null};
+  })};
  }
  if(c.action==='status'){
   need(exact(c.args,'offset')&&integer(c.args.offset,0,100000),'status_offset');
