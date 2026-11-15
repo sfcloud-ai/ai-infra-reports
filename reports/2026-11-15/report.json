@@ -1,0 +1,161 @@
+{
+  "schema_version": "1.2",
+  "date": "2026-11-15",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-11-15",
+  "subtitle": "缓存分组、FP64 计算、模板协议、动作时间轴、小模型核查与推理引擎。",
+  "articles": [
+    {
+      "id": "model-serving-gpu",
+      "title": "模型服务与 GPU 超配：缓存分组决定可卸载的边界",
+      "summary": "LMCache 适配新版 KVCacheGroup，分清可复用 KV、循环状态与 scratch，避免用统一缓存公式误算容量。",
+      "sha256": "fdc2311642a773e17cbce94964130514d1ca075fa38912e66e59abfbdfb09203"
+    },
+    {
+      "id": "hardware-status",
+      "title": "硬件与算力平台：整数 Tensor Core 承担 FP64 GEMM",
+      "summary": "cuBLAS 的 Ozaki-II 与复数 2M 路径改善特定科学计算；精度、矩阵形状与硬件决定是否适用。",
+      "sha256": "9781933594c3c54037ef4aa8a8685b07b0598fd44a4317b0cb68ecddcf4fdf50"
+    },
+    {
+      "id": "model-architecture-status",
+      "title": "模型与架构：补核 DeepSeek 模板的输入契约",
+      "summary": "补充 11 月 10 日记录：思考强度、工具参数和模板版本会改变输入编码；README 与实际文件不一致。",
+      "sha256": "16ade602ea7bcd6b010714320df87b23899d4b6d1360d9f416ca1486d0e00d36"
+    },
+    {
+      "id": "embodied-training",
+      "title": "制造业具身智能训练：动作插值辅助 API 的时间轴修复",
+      "summary": "GR00T 修复关节与末端姿态插值辅助 API 的乱序过滤；已验证 CPU 行为，尚未证明标准训练管线接入或收益。",
+      "sha256": "3c7954b9f4c4bc1fc0273cb288443cc9cf4ab54de0ddfad7fc55608c2adfde65"
+    },
+    {
+      "id": "small-model-status",
+      "title": "前沿小模型：卡片更新不等于新权重",
+      "summary": "核查 SmolVLM、Gemma 与微软模型入口，区分已报模板、许可元数据和真实模型能力变化。",
+      "sha256": "70ec579481c6746d7e250bf1795a7ea0c950cc7e41c9765b42c59ddde46dff0a"
+    },
+    {
+      "id": "inference-engines",
+      "title": "推理引擎每日变动：通信重叠与视觉峰值",
+      "summary": "vLLM 为纯 TP 增加双微批重叠；SGLang 分块限制图像预处理峰值；DeepInfer 保留实际核查范围。",
+      "sha256": "e78086a711e598c1e6299ccec9f179a2e754a3002b2d2ca1f167bacdd3685ea7"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-11-15-lmcache-kvcachegroup-6608",
+      "event_key": "lmcache-kvcachegroup-6608",
+      "title": "LMCache：按新的缓存组语义恢复 vLLM 接入",
+      "summary": "主线 bcafb031 / #6608 适配 vLLM KVCacheGroup：层规格来自 kv_cache_specs/distinct_specs，滑窗与 Mamba 模式从 manager_config.params 读取，prefix_cacheable=False 表示 scratch，只有 dcp_sharded 组才把每块 token 数乘 DCP。",
+      "source_urls": [
+        "https://api.github.com/repos/LMCache/LMCache/pulls/6608",
+        "https://api.github.com/repos/LMCache/LMCache/commits/bcafb031401d404a5dabae4853f5e23bf9e5685c"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-11-15-cublas-ozaki2-2m-20261113",
+      "event_key": "cublas-ozaki2-2m-20261113",
+      "title": "cuBLAS：把 FP64 矩阵乘映射到整数 Tensor Core",
+      "summary": "CUDA Toolkit 13.4.2 的 cuBLAS 用 Ozaki-II 将共享指数整数表示分解到互素模数，按模数执行整数 GEMM 后重构；复数 2M 路径将四次实矩阵乘降为两次。ADP 决定精度及路径，精度条件超出预算时回退原生 FP64。",
+      "source_urls": [
+        "https://developer.nvidia.com/blog/faster-scientific-simulations-with-new-fp64-algorithms-in-nvidia-cublas/",
+        "https://developer.nvidia.com/blog/feed/",
+        "https://www.nvidia.com/en-us/data-center/h100/",
+        "https://www.nvidia.com/en-us/data-center/h200/"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status"
+    },
+    {
+      "id": "2026-11-15-deepseek-v41-1017-jinja-08c8657",
+      "event_key": "deepseek-v41-1017-jinja-08c8657",
+      "title": "DeepSeek：模板已加入，输入协议要与权重一起固定",
+      "summary": "补充 11/10 未入选线索：核对实际 Jinja 模板的思考强度映射、工具参数约束、README 冲突与尚未落地的兼容补丁；原提交为 11/10，不是今日新模型。",
+      "source_urls": [
+        "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash-1017/raw/08c8657f02291e11b6f6b63e0e16014f8e748518/chat_template.jinja",
+        "https://huggingface.co/api/models/deepseek-ai/DeepSeek-V4.1-Flash-1017/commits/main",
+        "https://huggingface.co/api/models/deepseek-ai/DeepSeek-V4.1-Flash-1017/discussions/11",
+        "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash-1017/raw/08c8657f02291e11b6f6b63e0e16014f8e748518/README.md"
+      ],
+      "update_of": null,
+      "article_id": "model-architecture-status"
+    },
+    {
+      "id": "2026-11-15-groot-timestamp-3b49067",
+      "event_key": "groot-timestamp-3b49067",
+      "title": "GR00T：修复动作插值辅助 API 的乱序过滤",
+      "summary": "七日扩窗：主线 3b490679 修复关节与末端姿态的 interpolate 辅助 API，按累计最大时间戳过滤不递增样本，并同步移除对应姿态；[0,3,1,2,4] 中的 1、2 均被删除。直接构造动作 chunks 的 CPU 回归覆盖这一行为，未证明标准训练数据管线接入或训练标签收益。",
+      "source_urls": [
+        "https://api.github.com/repos/NVIDIA/Isaac-GR00T/commits/3b49067943eb1ab2eb2203b93d461c4390c78da3",
+        "https://api.github.com/repos/NVIDIA/Isaac-GR00T/pulls/809",
+        "https://raw.githubusercontent.com/NVIDIA/Isaac-GR00T/3b49067943eb1ab2eb2203b93d461c4390c78da3/README.md"
+      ],
+      "update_of": null,
+      "article_id": "embodied-training"
+    },
+    {
+      "id": "2026-11-15-small-model-status-20261115",
+      "event_key": "small-model-status-20261115",
+      "title": "前沿小模型：卡片更新不等于新权重",
+      "summary": "核查 SmolVLM、Gemma 与微软模型入口，区分已报模板、许可元数据和真实模型能力变化。",
+      "source_urls": [
+        "https://huggingface.co/api/models?author=HuggingFaceTB&direction=-1&full=true&limit=20&sort=lastModified",
+        "https://huggingface.co/api/models?author=microsoft&direction=-1&full=true&limit=20&sort=lastModified",
+        "https://huggingface.co/api/models?author=google&direction=-1&full=true&limit=20&sort=lastModified",
+        "https://huggingface.co/microsoft/FrogNano-4B-2609/raw/1844d06083df631f634e417938b3b8feda5f9f48/README.md",
+        "https://huggingface.co/api/models/microsoft/FrogNano-4B-2609/commits/main",
+        "https://huggingface.co/microsoft/FrogNano-4B-2609/raw/b90468c11a913c1916b4542b4b7a530ec42024a4/README.md",
+        "https://vllm.ai/blog/2026-11-12-inkling2-small"
+      ],
+      "update_of": null,
+      "article_id": "small-model-status"
+    },
+    {
+      "id": "2026-11-15-vllm-dbo-pure-tp-63483",
+      "event_key": "vllm-dbo-pure-tp-63483",
+      "title": "vLLM：纯 TP 下交叠两个微批的通信与计算",
+      "summary": "5e51c0ca / #63483 为 MRV2、单 DP rank、无 EP 的 TP 部署增加 all-reduce-overlap。两个微批各有通信器，TP all-reduce 在 comm stream 执行并让出给另一微批计算；拆分步骤使用 eager，视觉编码器在拆分之外。",
+      "source_urls": [
+        "https://api.github.com/repos/vllm-project/vllm/pulls/63483",
+        "https://api.github.com/repos/vllm-project/vllm/commits/5e51c0ca1041168de7aa9e096982aebaeebabd38"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    },
+    {
+      "id": "2026-11-15-sglang-qwen-vl-budget-50007",
+      "event_key": "sglang-qwen-vl-budget-50007",
+      "title": "SGLang：给 Qwen-VL 图像预处理分块并保留 CPU 回退",
+      "summary": "6932682e / #50007 用源像素×18B +目标像素×24B 估算预处理临时显存，按 512MiB 预算分块；输出转 CPU 再合并，单图超预算或块 OOM 时改用 CPU，空闲缓存超过 1GiB 时释放。",
+      "source_urls": [
+        "https://api.github.com/repos/sgl-project/sglang/pulls/50007",
+        "https://api.github.com/repos/sgl-project/sglang/commits/6932682eb2ea859a468f5e50377e9d8ed774eef9"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    }
+  ],
+  "images": [
+    {
+      "path": "assets/overview.png",
+      "sha256": "fb18e6b003603ce558e950477bf1e233b3a848f57aa3487af179205c90c8c62f",
+      "alt": "六主题总览：缓存分组、FP64计算、模板协议、动作时间轴、小模型核查与推理引擎"
+    }
+  ],
+  "poster": "assets/overview.png",
+  "page_delivery": {
+    "previous": null,
+    "added": [
+      "model-serving-gpu",
+      "hardware-status",
+      "model-architecture-status",
+      "embodied-training",
+      "small-model-status",
+      "inference-engines"
+    ],
+    "pending": []
+  }
+}
