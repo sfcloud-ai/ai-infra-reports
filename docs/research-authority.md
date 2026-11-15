@@ -89,6 +89,17 @@ receipts remain readable and their original bytes are retained.
 
 ## Starting or resuming a day
 
+`upload_status` returns every matching upload step with its original operation
+identity, input hash, phase, byte binding and native result. It includes the
+owner lease/revision and the requested permit once; unrelated run and SQL
+metadata remain available through `status`. Its complete wire receipt is bounded
+to 4000 UTF-8 bytes to avoid splitting one authenticated reply. The client still
+requires exactly one original Publisher reply. Historical command results and
+unknown events are unchanged: after upgrading, use a fresh read-only command ID
+to observe a previously oversized response. Do not replay an upload or combine
+message fragments. This bound applies to `upload_status`; other control actions
+retain their existing response contracts.
+
 1. Derive the original `morning-YYYYMMDD-r1` identity. Send a fresh `status`
    command and authenticate the native Publisher receipt. A found run supplies
    the original plan bytes, owner, epoch, revision, lease and charged budget.

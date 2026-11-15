@@ -52,9 +52,10 @@ export async function advanceResearchControl(state,config,slack,now=Date.now()){
  const row=db.prepare("SELECT * FROM research_control_events WHERE phase IN ('pending','ready') AND next_at<=? ORDER BY source_ts LIMIT 1").get(now);
  if(!row)return;
  try{
+  const uploadStatus=decodeResearchControl(Buffer.from(row.bytes)).action==='upload_status';
   if(row.phase==='pending'){
    const prepare=result=>{
-    const text='!ai-research control-receipt '+JSON.stringify({source_ts:row.source_ts,...result});requireThat(Buffer.byteLength(text)<=16384,'Bounded control receipt required');
+    const text='!ai-research control-receipt '+JSON.stringify({source_ts:row.source_ts,...result});requireThat(Buffer.byteLength(text)<=(uploadStatus?4000:16384),'Bounded control receipt required');
     db.prepare("UPDATE research_control_events SET phase='ready',reply_text=?,diagnostic=NULL WHERE source_ts=?").run(text,row.source_ts);
    };
    try{
@@ -73,6 +74,7 @@ export async function advanceResearchControl(state,config,slack,now=Date.now()){
    });
    if(!live){text='!ai-research control-receipt '+JSON.stringify({...result,dispatch_granted:false,grant_expired:true});db.prepare('UPDATE research_control_events SET reply_text=? WHERE source_ts=?').run(text,row.source_ts);}
   }
+  if(uploadStatus)requireThat(Buffer.byteLength(text)<=4000,'Bounded upload status receipt required');
   slack.assertReady?.('chat.postMessage');db.prepare("UPDATE research_control_events SET phase='sending' WHERE source_ts=?").run(row.source_ts);
   try{
    const ts=await slack.controlReceipt(row.source_ts,text);requireThat(/^\d{10}\.\d{6}$/.test(ts),'Control receipt timestamp required');
