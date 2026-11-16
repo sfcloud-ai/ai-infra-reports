@@ -1,4 +1,5 @@
 import {storedRecoveryForOperation} from './research-archive-recovery.mjs';
+import {boundedStatusReply,CONTROL_RECEIPT_BYTES} from './research-status-pages.mjs';
 import {isRepositoryResearchPlan,isLayeredResearchPlan,operationBudget} from './research-budget.mjs';
 import {acceptReadCommand,canonicalRequestDate,requireThat} from './report-handoff.mjs';
 import {digest} from './archive.mjs';
@@ -52,10 +53,13 @@ export async function advanceResearchControl(state,config,slack,now=Date.now()){
  const row=db.prepare("SELECT * FROM research_control_events WHERE phase IN ('pending','ready') AND next_at<=? ORDER BY source_ts LIMIT 1").get(now);
  if(!row)return;
  try{
-  const uploadStatus=decodeResearchControl(Buffer.from(row.bytes)).action==='upload_status';
+  const command=decodeResearchControl(Buffer.from(row.bytes)),boundedRead=['status','status_part','upload_status'].includes(command.action);
+  const wire=value=>'!ai-research control-receipt '+JSON.stringify({source_ts:row.source_ts,...value});
   if(row.phase==='pending'){
    const prepare=result=>{
-    const text='!ai-research control-receipt '+JSON.stringify({source_ts:row.source_ts,...result});requireThat(Buffer.byteLength(text)<=(uploadStatus?4000:16384),'Bounded control receipt required');
+    let text=wire(result);
+    if(command.action==='status'&&Buffer.byteLength(text)>CONTROL_RECEIPT_BYTES)text=wire(boundedStatusReply(db,command,result));
+    requireThat(Buffer.byteLength(text)<=(boundedRead?CONTROL_RECEIPT_BYTES:16384),'Bounded control receipt required');
     db.prepare("UPDATE research_control_events SET phase='ready',reply_text=?,diagnostic=NULL WHERE source_ts=?").run(text,row.source_ts);
    };
    try{
@@ -64,7 +68,14 @@ export async function advanceResearchControl(state,config,slack,now=Date.now()){
    }catch(error){if(!error.researchControlCode)throw error;prepare({command_id:row.command_id,command_sha256:row.hash,status:'rejected',code:error.researchControlCode,dispatch_granted:false});}
   }
   let text=db.prepare('SELECT reply_text FROM research_control_events WHERE source_ts=?').get(row.source_ts).reply_text;
-  const result=JSON.parse(text.slice('!ai-research control-receipt '.length));
+  let result=JSON.parse(text.slice('!ai-research control-receipt '.length));
+  // An old formatter may have prepared this unsent reply before a cooldown.
+  // Re-encode its immutable observation; never recompute it or touch unknowns.
+  if(row.phase==='ready'&&command.action==='status'&&Buffer.byteLength(text)>CONTROL_RECEIPT_BYTES){
+   result=boundedStatusReply(db,command,result);text=wire(result);
+   requireThat(Buffer.byteLength(text)<=CONTROL_RECEIPT_BYTES,'Bounded read-only control receipt required');
+   db.prepare("UPDATE research_control_events SET reply_text=?,diagnostic=NULL WHERE source_ts=? AND phase='ready'").run(text,row.source_ts);
+  }
   // A cooldown or delayed response cannot resurrect an expired dispatch grant.
   if(result.dispatch_granted){
    const run=db.prepare('SELECT * FROM research_control_runs WHERE request_id=?').get(result.request_id);
@@ -74,7 +85,7 @@ export async function advanceResearchControl(state,config,slack,now=Date.now()){
    });
    if(!live){text='!ai-research control-receipt '+JSON.stringify({...result,dispatch_granted:false,grant_expired:true});db.prepare('UPDATE research_control_events SET reply_text=? WHERE source_ts=?').run(text,row.source_ts);}
   }
-  if(uploadStatus)requireThat(Buffer.byteLength(text)<=4000,'Bounded upload status receipt required');
+  if(boundedRead)requireThat(Buffer.byteLength(text)<=CONTROL_RECEIPT_BYTES,'Bounded read-only control receipt required');
   slack.assertReady?.('chat.postMessage');db.prepare("UPDATE research_control_events SET phase='sending' WHERE source_ts=?").run(row.source_ts);
   try{
    const ts=await slack.controlReceipt(row.source_ts,text);requireThat(/^\d{10}\.\d{6}$/.test(ts),'Control receipt timestamp required');

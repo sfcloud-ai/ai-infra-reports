@@ -4,7 +4,8 @@ import {readFile} from 'node:fs/promises';
 import {createInterface} from 'node:readline';
 import {isAbsolute} from 'node:path';
 import {pathToFileURL} from 'node:url';
-import {researchClientScope,researchCommandText,verifyResearchControlReceipt,nativeResearchAuthority} from './research-control-client.mjs';
+import {researchClientScope,researchCommandText,verifyResearchControlReceipt,nativeResearchAuthority,controlCommand} from './research-control-client.mjs';
+import {readCompleteResearchStatus} from './research-status-pages.mjs';
 import {stageFile} from './slack-stage-cli.mjs';
 import {producerCurlEnvironment} from './producer-upload-adapters.mjs';
 import {requireThat} from './report-handoff.mjs';
@@ -19,11 +20,12 @@ export async function researchClientMain(args){
   if(mode==='--stage'||mode==='--archive')producerCurlEnvironment('managed_proxy');
   lines=createInterface({input:process.stdin,crlfDelay:Infinity});const iterator=lines[Symbol.asyncIterator]();
   const read=async()=>{const line=await iterator.next();requireThat(!line.done&&Buffer.byteLength(line.value)<=256*1024,'Bounded original tool result required');return JSON.parse(line.value);};
-  const control=async bytes=>{
+  const readControl=async bytes=>{
    emit({type:'control',channel_id:c.scope.channel_id,message:researchCommandText(bytes),next_action:'send_original_command_and_read_its_publisher_receipt'});
    const reply=await read();requireThat(reply.type==='control_result','Original control result required');
    return verifyResearchControlReceipt(c.scope,bytes,reply.source_ts,reply.invocation);
   };
+  const control=bytes=>readCompleteResearchStatus(bytes,readControl,(id,args)=>controlCommand(id,'status_part',args));
   const bytes=await readFile(file);
   if(mode==='--control'){emit({type:'control_observed',result:await control(bytes)});return 0;}
   const authority=nativeResearchAuthority(c.upload,control);

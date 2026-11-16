@@ -1,4 +1,5 @@
 import {applyArchiveRecovery,readArchiveRecovery,recoveryForOperation,ARCHIVE_RECOVERY_TRANSPORT,assertArchiveRecoveryFence,ARCHIVE_RECOVERY_SCHEMA} from './research-archive-recovery.mjs';
+import {statusPart,storedStatusBytes,STATUS_PART_BYTES,STATUS_RESULT_BYTES} from './research-status-pages.mjs';
 import {activePageResearch,pageModelKeyAllowed} from './research-page-budget.mjs';
 import {beginPageRound,currentPageRound,publicationPermit,pagePublicationBinding,appendPagePermit,pageAuthorityInstalled} from './research-page-authority.mjs';
 import {readResearchRecoveryHead,researchRecoveryWindow,researchRecoveryAccounting,recordResearchRecoveryOperation,appendResearchRecoveryGrant,assertResearchRecovery} from './research-recovery.mjs';
@@ -91,9 +92,9 @@ export function migrateResearchControl(db,c,reference){
 export function decodeResearchControl(bytes){
  need(Buffer.isBuffer(bytes)&&bytes.length>0&&'!ai-research control v2 '.length+bytes.toString('base64').length<=5000,'control_wire_limit_split_reservations_or_reduce_plan');
  let c;try{c=JSON.parse(new TextDecoder('utf8',{fatal:true}).decode(bytes));}catch{refuse('control_json');}
- need(exact(c,'schema_version,command_id,request_id,action,owner_id,epoch,expected_revision,args')&&c.schema_version==='research_control_v2'&&string(c.command_id,UUID)&&typeof c.request_id==='string'&&/^morning-\d{8}-r1$/.test(c.request_id)&&['claim','renew','inputs','checkpoint','reserve','resume','settle','permit','page_begin','page_permit','recovery_grant','status','upload_status','receipt','archive_recovery_status','archive_recovery_begin','archive_recovery_chunk','archive_recovery_commit'].includes(c.action)&&integer(c.epoch,0,1000000)&&integer(c.expected_revision,0,10000000)&&c.args&&typeof c.args==='object'&&!Array.isArray(c.args),'control_identity');
+ need(exact(c,'schema_version,command_id,request_id,action,owner_id,epoch,expected_revision,args')&&c.schema_version==='research_control_v2'&&string(c.command_id,UUID)&&typeof c.request_id==='string'&&/^morning-\d{8}-r1$/.test(c.request_id)&&['claim','renew','inputs','checkpoint','reserve','resume','settle','permit','page_begin','page_permit','recovery_grant','status','status_part','upload_status','receipt','archive_recovery_status','archive_recovery_begin','archive_recovery_chunk','archive_recovery_commit'].includes(c.action)&&integer(c.epoch,0,1000000)&&integer(c.expected_revision,0,10000000)&&c.args&&typeof c.args==='object'&&!Array.isArray(c.args),'control_identity');
  canonicalRequestDate(c.request_id);
- need(['status','upload_status','receipt','archive_recovery_status'].includes(c.action)?c.owner_id===null:string(c.owner_id,UUID),'control_owner');return c;
+ need(['status','status_part','upload_status','receipt','archive_recovery_status'].includes(c.action)?c.owner_id===null:string(c.owner_id,UUID),'control_owner');return c;
 }
 export function decodeResearchPlan(encoded,id){
  need(typeof encoded==='string'&&encoded.length<=10000,'plan_size');const bytes=Buffer.from(encoded,'base64');need(bytes.toString('base64')===encoded,'plan_encoding');
@@ -297,6 +298,12 @@ function owner(run,c,now){need(run,'run_not_found');need(run.owner_id===c.owner_
 function apply(db,c,now,config,commandHash){
  const cache=commandCache();
  let run=load(db,c.request_id);
+ if(c.action==='status_part'){
+  need(exact(c.args,'command_id,sha256,offset')&&string(c.args.command_id,UUID)&&string(c.args.sha256,HASH)&&integer(c.args.offset,0,STATUS_RESULT_BYTES-1)&&c.args.offset%STATUS_PART_BYTES===0,'status_part_fields');
+  let bytes;try{bytes=storedStatusBytes(db,c.request_id,c.args.command_id);}catch{refuse('status_part_original');}
+  need(digest(bytes)===c.args.sha256&&c.args.offset<bytes.length,'status_part_binding');
+  return statusPart(bytes,c.args.offset);
+ }
  if(c.action==='archive_recovery_status'){
   need(exact(c.args,'recovery_id'),'archive_recovery_fields');return {status:'observed',recovery:readArchiveRecovery(db,c.request_id,c.args.recovery_id)};
  }
@@ -325,7 +332,7 @@ function apply(db,c,now,config,commandHash){
  if(c.action==='receipt'){
   need(exact(c.args,'command_id')&&string(c.args.command_id,UUID),'receipt_identity');
   const prior=db.prepare('SELECT hash,result,bytes FROM research_control_commands WHERE request_id=? AND command_id=?').get(c.request_id,c.args.command_id);
-  need(!prior||!['status','upload_status','receipt','archive_recovery_status'].includes(JSON.parse(Buffer.from(prior.bytes)).action),'receipt_requires_mutation');
+  need(!prior||!['status','status_part','upload_status','receipt','archive_recovery_status'].includes(JSON.parse(Buffer.from(prior.bytes)).action),'receipt_requires_mutation');
   return {status:prior?'observed':'not_found',original_command_id:c.args.command_id,original_hash:prior?.hash??null,original_result:prior?{...JSON.parse(prior.result),dispatch_granted:false}:null};
  }
  if(c.action==='claim'){
@@ -493,7 +500,7 @@ export function executeResearchControl(db,config,bytes,now=Date.now(),{onResult=
   if(prior){need(prior.hash===hash&&prior.request_id===c.request_id,'command_identity_conflict');const result={...JSON.parse(prior.result),replayed:true,dispatch_granted:false};onResult(result);db.exec('COMMIT');return result;}
   let result;db.exec('SAVEPOINT command');
   try{
-   need(config.research_control.protocol==='repository_inputs_v1'||['status','upload_status','receipt'].includes(c.action),'authority_migration_required');
+   need(config.research_control.protocol==='repository_inputs_v1'||['status','status_part','upload_status','receipt'].includes(c.action),'authority_migration_required');
    if(['permit','page_permit'].includes(c.action)){const check=publicationChecks.get(publicationCheck);need(check?.command_hash===hash,'publication_validation_required');need(!check.code,check.code);}
    result=apply(db,c,now,config,hash);db.exec('RELEASE command');
   }catch(e){if(!e.researchControlCode)throw e;db.exec('ROLLBACK TO command; RELEASE command');result={status:'rejected',code:e.researchControlCode,run:view(load(db,c.request_id)),dispatch_granted:false};}
