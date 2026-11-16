@@ -97,14 +97,35 @@ to 4000 UTF-8 bytes to avoid splitting one authenticated reply. The client still
 requires exactly one original Publisher reply. Historical command results and
 unknown events are unchanged: after upgrading, use a fresh read-only command ID
 to observe a previously oversized response. Do not replay an upload or combine
-message fragments. This bound applies to `upload_status`; other control actions
-retain their existing response contracts.
+message fragments. `status` and its read-only `status_part` transport also keep
+each complete wire reply within 4000 UTF-8 bytes; other control actions retain
+their existing response contracts.
+
+An oversized `status` observation is transmitted as 2000-byte parts of its
+original JSON result stored in `research_control_commands`. Each part binds
+the original command ID/hash, request, full-result SHA256 and total byte count,
+plus its byte offset, chunk hash and next byte offset. `status_part` takes exactly
+`command_id`, `sha256` and `offset` and reads that immutable original status
+result; it cannot select a mutation, another request, or freshly computed state.
+The normal research CLI authenticates every original single-reply tool envelope,
+then validates the offsets, hashes, bounded length, UTF-8 and complete JSON before
+returning the logical observation. It assembles protocol payload bytes, never
+tool-result envelopes. Missing, reordered or substituted parts fail closed.
+These byte offsets are separate from the logical operation `next_offset` below.
+Different operation pages remain separate observations: compare their run
+revision/epoch and reconcile concurrent changes rather than claim a single
+atomic ledger snapshot. Old unknown/sent replies and their stored results remain
+unchanged; use a fresh status command after an oversized or unknown old reply.
+An oversized reply still in `ready` is provably unsent: on upgrade it is encoded
+as the first part of its original stored result, without recomputing the status
+or changing its command, snapshot, cooldown deadline or replay semantics.
 
 1. Derive the original `morning-YYYYMMDD-r1` identity. Send a fresh `status`
    command and authenticate the native Publisher receipt. A found run supplies
    the original plan bytes, owner, epoch, revision, lease and charged budget.
-   Follow `next_offset` for operations; pages contain one operation so the plan
-   and source URL still fit one bounded reply.
+   Follow the completed result's `next_offset` for operations; each logical page
+   contains one operation. The CLI retrieves byte parts automatically when the
+   complete plan, permit, budget, page state and operation exceed one wire reply.
 2. For a v3 plan, read the five public prompt files and report index from their
    original full Git commits, verifying every byte hash. Recover needed new
    research results from the host's checkpoint chain and verify their hashes.

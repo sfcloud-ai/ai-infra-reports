@@ -8,7 +8,8 @@ import {mkdtemp,rm,writeFile,readFile,mkdir} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {pathToFileURL,fileURLToPath} from 'node:url';
-import {spawnSync} from 'node:child_process';
+import {spawn,spawnSync} from 'node:child_process';
+import {createInterface} from 'node:readline';
 import {REQUIRED_RESEARCH_CHECKS} from '../scripts/research-coverage.mjs';
 import {HandoffState,handoffScope} from '../scripts/handoff-state.mjs';
 import {installFence} from '../scripts/producer-admission-fence.mjs';
@@ -17,11 +18,12 @@ import {PublisherInbox} from '../scripts/publisher-inbox.mjs';
 import {propose} from '../scripts/propose.mjs';
 import {FakeGitHub} from './helpers/fake-github.mjs';
 import {encodeBundle} from '../scripts/report-handoff.mjs';
-import {installResearchArchive,storeResearchArchive} from '../scripts/research-archive.mjs';
+import {installResearchArchive,storeResearchArchive,decodeResearchArchive} from '../scripts/research-archive.mjs';
 import {installResearchControl,migrateResearchControl,assertResearchControl,executeResearchControl,researchSourceIdentity,decodeResearchControl,preparePublicationCheck,RESEARCH_CONTROL_SCHEMA,researchOperationDispatchValid} from '../scripts/research-control.mjs';
 import {advanceResearchControl,queueResearchControl,pendingResearchControls,researchControlHealth} from '../scripts/research-control-inbox.mjs';
 import {handoffTick} from '../scripts/run-handoff.mjs';
 import {nativeResearchAuthority,researchCommandText,verifyResearchControlReceipt,CONTROL_THREAD_TOOL} from '../scripts/research-control-client.mjs';
+import {readCompleteResearchStatus} from '../scripts/research-status-pages.mjs';
 import {stageFile} from '../scripts/slack-stage-cli.mjs';
 import {PRODUCER_TOOLS,producerTicket} from '../scripts/producer-upload.mjs';
 import {digest,validateArchive} from '../scripts/archive.mjs';
@@ -266,13 +268,137 @@ function nativeFixtureControl(s,inspect=()=>{}){
   let reply;
   const error=await advanceResearchControl(s,config,{controlReceipt:async(source,text)=>{assert.equal(source,ts);reply=text;return '1793491209.000001';}},now);
   assert.equal(error,undefined);assert.equal(typeof reply,'string');
-  if(c.action==='upload_status')assert.ok(Buffer.byteLength(reply)<=4000,`oversized upload status: ${Buffer.byteLength(reply)}`);
+  if(['status','status_part','upload_status'].includes(c.action))assert.ok(Buffer.byteLength(reply)<=4000,`oversized read-only status: ${Buffer.byteLength(reply)}`);
   const messages=`=== THREAD PARENT MESSAGE ===\nFrom: Sender <sender@example.org> (${scope.sender_user_id})\nTime: now\nMessage TS: ${ts}\n${researchCommandText(bytes)}\n${scope.sender_attribution_text}\n\n=== THREAD REPLIES (1 total) ===\n\n--- Reply 1 of 1 ---\nFrom: Publisher <botuser-${scope.team_id}-${scope.publisher_bot_id}@slack-bots.com> (${scope.publisher_user_id})\nTime: now\nMessage TS: 1793491209.000001\n${reply}\n`;
   const invocation={tool:CONTROL_THREAD_TOOL,arguments:{channel_id:scope.channel_id,message_ts:ts,limit:100,response_format:'detailed'},result:{content:[{type:'text',text:JSON.stringify({messages,pagination_info:'There are no more messages in this thread.\n'})}]}};
   const result=verifyResearchControlReceipt(scope,bytes,ts,invocation,now);
   inspect(c,result,reply,{scope,bytes,ts,invocation});return result;
  };
 }
+
+test('native status pages retain long v4 state and freeze each original command result',async()=>{
+ // Constructed size boundary, using the real inbox and unchanged native verifier.
+ const s=setup();try{
+  let run=start(s,layeredPlan());installPageAuthority(s.db);
+  const operations=[source('https://example.org/'+('segment/'.repeat(180))),source('https://example.org/second')];
+  run=execute(s,command('reserve',{operations},run)).run;
+  const permit={permit_id:randomUUID(),request_id:id,report_date:DAY,prompt_commit_sha:'c'.repeat(40),publisher_scope_sha256:'d'.repeat(64),archive_sha256:'e'.repeat(64),bundle_sha256:'f'.repeat(64),audit_sha256:'a'.repeat(64)};
+  s.db.prepare('UPDATE research_control_runs SET permit=? WHERE request_id=?').run(JSON.stringify(permit),id);
+  const pagePermit={...permit,permit_id:randomUUID(),request_id:id.replace('-r1','-r2'),page_ids:Object.keys(PAGE_CHECKS)};
+  s.db.prepare('INSERT INTO research_page_rounds VALUES(?,?,?,?,?,?,?)').run(pagePermit.request_id,id,2,'{}',JSON.stringify(pagePermit.page_ids),now,JSON.stringify(pagePermit));
+  const originalOps=s.db.prepare('SELECT * FROM research_control_ops ORDER BY rowid').all();
+  let changed=false,partCount=0;
+  const read=nativeFixtureControl(s,(c,result,text,{scope,bytes,ts,invocation})=>{
+   assert.ok(Buffer.byteLength(text)<=4000);
+   if(result.status==='status_part')partCount++;
+   const forged=structuredClone(invocation);forged.result.content[0].text=forged.result.content[0].text.replace('(UPUBLISHER)','(UOTHER)');
+   assert.throws(()=>verifyResearchControlReceipt(scope,bytes,ts,forged,now),/Original native Publisher receipt/);
+   if(c.action==='status'&&!changed){changed=true;run=execute(s,command('renew',{},run)).run;}
+  });
+  const next=(requestId,args)=>Buffer.from(JSON.stringify({...command('status_part',args),request_id:requestId,owner_id:null}));
+  let offset=0,firstCommand;const seen=[];
+  do{
+   const c=command('status',{offset}),bytes=Buffer.from(JSON.stringify(c));
+   firstCommand??=c;
+   const result=await readCompleteResearchStatus(bytes,read,next),{source_ts,...logical}=result;
+   assert.ok(source_ts);assert.deepEqual(logical,JSON.parse(s.db.prepare('SELECT result FROM research_control_commands WHERE command_id=?').get(c.command_id).result));
+   assert.deepEqual(result.run.permit,permit);assert.deepEqual(JSON.parse(result.page_round.permit),pagePermit);
+   assert.equal(result.plan_base64,layeredPlan().toString('base64'));assert.ok(result.effective_budget);
+   if(offset===0)assert.equal(result.run.revision,run.revision-1);
+   seen.push(...result.operations.map(op=>op.operation_id));offset=result.next_offset;
+  }while(offset!==null);
+  assert.deepEqual(seen,operations.map(op=>op.operation_id));assert.ok(partCount>=4);
+  assert.deepEqual(s.db.prepare('SELECT * FROM research_control_ops ORDER BY rowid').all(),originalOps);
+  // Historical oversized/unknown transport is retained, never patched or resent.
+  const priorResult=s.db.prepare('SELECT result FROM research_control_commands WHERE command_id=?').get(firstCommand.command_id).result;
+  const oldTs=queue(s,firstCommand,'1793491203.000001');
+  s.db.prepare("UPDATE research_control_events SET phase='unknown',reply_text=? WHERE source_ts=?").run('!ai-research control-receipt '+JSON.stringify({source_ts:oldTs,...JSON.parse(priorResult)}),oldTs);
+  const oldEvent=s.db.prepare('SELECT * FROM research_control_events WHERE source_ts=?').get(oldTs);
+  assert.ok(Buffer.byteLength(oldEvent.reply_text)>4000);
+  const replayed=await readCompleteResearchStatus(Buffer.from(JSON.stringify(firstCommand)),read,next);
+  assert.equal(replayed.replayed,true);assert.equal(replayed.dispatch_granted,false);
+  assert.equal(s.db.prepare('SELECT result FROM research_control_commands WHERE command_id=?').get(firstCommand.command_id).result,priorResult);
+  assert.deepEqual(s.db.prepare('SELECT * FROM research_control_events WHERE source_ts=?').get(oldTs),oldEvent);
+  const output=Buffer.from('new output'),checkpoint=Buffer.from(JSON.stringify({schema_version:'research_archive_v1',command_id:randomUUID(),request_id:id,report_date:DAY,previous_sha256:null,files:[{path:'new.txt',sha256:digest(output),content_base64:output.toString('base64')}]}));
+  const authority=nativeResearchAuthority({request_id:id,owner_id:ownerA,archive_sha256:digest(checkpoint)},bytes=>readCompleteResearchStatus(bytes,read,next),()=>now);
+  await authority.validateArchive(decodeResearchArchive(checkpoint));
+  assert.deepEqual(s.db.prepare('SELECT * FROM research_control_ops ORDER BY rowid').all(),originalOps);
+ }finally{s.close();}
+});
+
+test('an oversized legacy ready status resumes after cooldown without changing its snapshot or unknown events',async()=>{
+ for(const replayed of [false,true]){
+  const s=setup();try{
+   const run=start(s,layeredPlan()),op=source('https://example.org/'+('segment/'.repeat(180)));
+   execute(s,command('reserve',{operations:[op]},run));
+   const c=command('status',{offset:0}),original=execute(s,c),ts=queue(s,c);
+   // Construct the old formatter's persisted ready state after a known-unsent cooldown.
+   const oldText=source_ts=>'!ai-research control-receipt '+JSON.stringify({source_ts,...original,...(replayed?{replayed:true,dispatch_granted:false}:{})});
+   assert.ok(Buffer.byteLength(oldText(ts))>4000);
+   s.db.prepare("UPDATE research_control_events SET phase='ready',reply_text=?,attempts=1,next_at=?,diagnostic=? WHERE source_ts=?").run(oldText(ts),now+60000,JSON.stringify({stage:'research_control',code:'slack_cooldown',outcome:'not_started',retryable:true}),ts);
+   const oldTs=queue(s,c,'1793491201.000001');
+   s.db.prepare("UPDATE research_control_events SET phase='unknown',reply_text=? WHERE source_ts=?").run(oldText(oldTs),oldTs);
+   const oldEvent=s.db.prepare('SELECT * FROM research_control_events WHERE source_ts=?').get(oldTs);
+   const oldCommand=s.db.prepare('SELECT * FROM research_control_commands WHERE command_id=?').get(c.command_id);
+   const oldRun=s.db.prepare('SELECT * FROM research_control_runs WHERE request_id=?').get(id);
+   const oldOps=s.db.prepare('SELECT * FROM research_control_ops ORDER BY rowid').all();
+   await advanceResearchControl(s,config,{controlReceipt:()=>assert.fail('cooldown must remain enforced')},now);
+   let reply;
+   assert.equal(await advanceResearchControl(s,config,{controlReceipt:async(source,text)=>{assert.equal(source,ts);assert.ok(Buffer.byteLength(text)<=4000);reply=JSON.parse(text.slice('!ai-research control-receipt '.length));return '1793491262.000001';}},now+60000),undefined);
+   assert.equal(reply.status,'status_part');assert.equal(reply.status_part.command_id,c.command_id);
+   assert.equal(reply.status_part.sha256,digest(Buffer.from(oldCommand.result)));assert.equal(reply.status_part.offset,0);
+   assert.equal(reply.replayed,replayed?true:undefined);assert.equal(reply.dispatch_granted,replayed?false:undefined);
+   assert.equal(s.db.prepare('SELECT phase FROM research_control_events WHERE source_ts=?').get(ts).phase,'sent');
+   assert.deepEqual(s.db.prepare('SELECT * FROM research_control_events WHERE source_ts=?').get(oldTs),oldEvent);
+   assert.deepEqual(s.db.prepare('SELECT * FROM research_control_commands WHERE command_id=?').get(c.command_id),oldCommand);
+   assert.deepEqual(s.db.prepare('SELECT * FROM research_control_runs WHERE request_id=?').get(id),oldRun);
+   assert.deepEqual(s.db.prepare('SELECT * FROM research_control_ops ORDER BY rowid').all(),oldOps);
+   assert.deepEqual(pendingResearchControls(s.db),[]);
+  }finally{s.close();}
+ }
+});
+
+test('the actual control CLI consumes authenticated status parts before completing',async()=>{
+ const s=setup(),dir=await mkdtemp(join(tmpdir(),'status-parts-cli-'));let child;
+ try{
+  const run=start(s,layeredPlan()),op=source('https://example.org/'+('segment/'.repeat(180)));
+  execute(s,command('reserve',{operations:[op]},run));
+  const scope={channel_id:SCOPE.channel_id,team_id:SCOPE.team_id,sender_user_id:SCOPE.sender_user_id,sender_attribution_text:SCOPE.sender_attribution_text,publisher_user_id:'UPUBLISHER',publisher_bot_id:'BPUBLISHER'};
+  const c=command('status',{offset:0}),bytes=Buffer.from(JSON.stringify(c)),client=join(dir,'client.json'),input=join(dir,'command.json');
+  await writeFile(client,JSON.stringify({scope}));await writeFile(input,bytes);
+  child=spawn(process.execPath,['scripts/research-client-cli.mjs',client,input,'--control'],{stdio:['pipe','pipe','pipe']});
+  const ended=new Promise(resolve=>child.once('close',resolve));let stderr='';child.stderr.on('data',data=>stderr+=data);
+  const lines=createInterface({input:child.stdout,crlfDelay:Infinity});let envelope,completed,queries=0;
+  const read=nativeFixtureControl(s,(command,result,text,original)=>{envelope={type:'control_result',source_ts:original.ts,invocation:original.invocation};assert.ok(['status','status_part'].includes(command.action));});
+  for await(const line of lines){
+   const value=JSON.parse(line);
+   if(value.type==='control'){
+    queries++;const commandBytes=Buffer.from(value.message.slice('!ai-research control v2 '.length),'base64');
+    await read(commandBytes);child.stdin.write(JSON.stringify(envelope)+'\n');
+   }else{completed=value;child.stdin.end();}
+  }
+  assert.equal(await ended,0,stderr);assert.equal(completed.type,'control_observed');assert.equal(completed.result.operations[0].operation_id,op.operation_id);
+  assert.equal(completed.result.plan_base64,layeredPlan().toString('base64'));assert.ok(queries>1);
+  assert.equal(s.db.prepare('SELECT count(*) n FROM research_control_ops').get().n,1);
+ }finally{child?.kill();s.close();await rm(dir,{recursive:true,force:true});}
+});
+
+test('status parts reject cross-request, non-status, changed hash and invalid offsets',()=>{
+ const s=setup();try{
+  const run=start(s),c=command('status',{offset:0}),observed=execute(s,c);
+  const bytes=Buffer.from(s.db.prepare('SELECT result FROM research_control_commands WHERE command_id=?').get(c.command_id).result);
+  const args={command_id:c.command_id,sha256:digest(bytes),offset:0};
+  const part=overrides=>({...command('status_part',{...args,...overrides}),owner_id:null});
+  assert.equal(execute(s,part({})).status,'status_part');
+  assert.equal(execute(s,part({offset:1})).code,'status_part_fields');
+  assert.equal(execute(s,part({offset:14000})).code,'status_part_binding');
+  assert.equal(execute(s,part({sha256:'0'.repeat(64)})).code,'status_part_binding');
+  assert.equal(execute(s,{...part({}),request_id:'morning-20261102-r1'}).code,'status_part_original');
+  const mutation=command('renew',{},run);execute(s,mutation);
+  assert.equal(execute(s,part({command_id:mutation.command_id})).code,'status_part_original');
+  assert.deepEqual(JSON.parse(s.db.prepare('SELECT result FROM research_control_commands WHERE command_id=?').get(c.command_id).result),observed);
+ }finally{s.close();}
+});
 
 test('bounded native upload receipts stage once, recover original file and grant submit once',async()=>{
  const s=setup();try{
