@@ -1848,6 +1848,62 @@
       "revision": 2,
       "fingerprint": "69512438836484a1db26fe797d6f4e2dce144b501afbacad0339d5456bcb3965",
       "content_sha256": "35f197a02fd0660f7a0d4da62e9fab37709d7f542615bbf3848e189aa5f664b7"
+    },
+    {
+      "id": "2026-11-15-cublas-ozaki2-2m-20261113",
+      "event_key": "cublas-ozaki2-2m-20261113",
+      "date": "2026-11-15",
+      "revision": 1,
+      "fingerprint": "09fcb8b80491b25d1b848c7af9a511ce9ff0540d83c3162f6ef119dd9e5d20dc",
+      "content_sha256": "410d61ebfdd082887d5122a702c1acd3c87a85ed9ffa46d61080bd60c05380d6"
+    },
+    {
+      "id": "2026-11-15-deepseek-v41-1017-jinja-08c8657",
+      "event_key": "deepseek-v41-1017-jinja-08c8657",
+      "date": "2026-11-15",
+      "revision": 1,
+      "fingerprint": "24deb3533f30811a37334f6e29f512ac16e1eeae9ab3fb9f23f3136ae27a60b4",
+      "content_sha256": "b0e7946edfa81be81b94267c0f67e4e7df829da7d5da78ee3be11d396a300771"
+    },
+    {
+      "id": "2026-11-15-groot-timestamp-3b49067",
+      "event_key": "groot-timestamp-3b49067",
+      "date": "2026-11-15",
+      "revision": 1,
+      "fingerprint": "90d1d8b8b2c7aab2e98d6ba3e74ada398b50cf27b24f842a688f8cd1e8998f99",
+      "content_sha256": "346ac78bd15926104853b1465590e880b2d35ff3de9234e9aab124bb870fcc3d"
+    },
+    {
+      "id": "2026-11-15-lmcache-kvcachegroup-6608",
+      "event_key": "lmcache-kvcachegroup-6608",
+      "date": "2026-11-15",
+      "revision": 1,
+      "fingerprint": "ec19db74ac660f591f8ee7da4497883839f6f5b49bf81d1b245a0d54da0414c0",
+      "content_sha256": "d7302452a8a9adba6483a1f6047d5fef628c3f05df01765a5d9066522c4c3077"
+    },
+    {
+      "id": "2026-11-15-sglang-qwen-vl-budget-50007",
+      "event_key": "sglang-qwen-vl-budget-50007",
+      "date": "2026-11-15",
+      "revision": 1,
+      "fingerprint": "a4d2bb6d70ea432d00900960e62fa9c23008be600b0efba04c260b6c6330dd90",
+      "content_sha256": "dd66718b2d9f2c2f07c92c68d6bba8302c0038254ef205be0e8caa597cda99c0"
+    },
+    {
+      "id": "2026-11-15-small-model-status-20261115",
+      "event_key": "small-model-status-20261115",
+      "date": "2026-11-15",
+      "revision": 1,
+      "fingerprint": "affc8a4912db6ca435e1d47c97222b3a93ff6b209be5da30f92c14bfe14294b3",
+      "content_sha256": "3279043b974dc9c53f1a3e3ec070669f2fbaceffa9cb968ad8a1f22df931f75d"
+    },
+    {
+      "id": "2026-11-15-vllm-dbo-pure-tp-63483",
+      "event_key": "vllm-dbo-pure-tp-63483",
+      "date": "2026-11-15",
+      "revision": 1,
+      "fingerprint": "7176faf600029110d4dc5b6ca6414a42e413826f7803b25bfb70874fd96e4264",
+      "content_sha256": "08f793042a9cc2699a0565c7e69c72c30d07c25e73e1643a68a1d0ba72e476cd"
     }
   ]
 }
