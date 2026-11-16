@@ -1,0 +1,157 @@
+{
+  "schema_version": "1.2",
+  "date": "2026-11-16",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-11-16",
+  "subtitle": "准入调度、运行清单、长上下文激活、远端训练数据、小模型核查与引擎正确性。",
+  "articles": [
+    {
+      "id": "model-serving-gpu",
+      "title": "模型服务与 GPU 超配：减少准入判断的重复计算",
+      "summary": "SGLang 复用统一内存准入中的需求与定价，改善主机路径；独立吞吐对比没有收益，不能据此承诺超配倍率。",
+      "sha256": "7f03b2eb765fb0e1105b18d1c661de5b59e05417fdebd58882a9489e7b8930e9"
+    },
+    {
+      "id": "hardware-status",
+      "title": "硬件与算力平台：配方正确还要核对运行清单",
+      "summary": "AICR 把固定版本的 H100/GKE 部署配方与 AI 工作负载清单连接起来；清单 Ready 并不证明模型成功执行。",
+      "sha256": "bc0175d011b9291b2e1f6a1aeba5f96051945ce4aa25cacb6c13f0f7ed917c86"
+    },
+    {
+      "id": "model-architecture-status",
+      "title": "模型与架构：实验 Qwen 路径切分长上下文激活",
+      "summary": "GR/PLE 的 token 行切分降低特定 H20 配置的 prefill 开销；它不等于 Qwen4-Max 官方模型已支持本地运行。",
+      "sha256": "fe5b51b1c2f325b8276be5ea4bb67953101f8a54c35fdf2abb04db2bba8c54d2"
+    },
+    {
+      "id": "embodied-training",
+      "title": "制造业具身智能训练：远端数据配置贯通训练与评测",
+      "summary": "LeRobot 为 Lance 数据集传递 endpoint/region 等连接选项，覆盖元数据、train/eval 切分和 worker 重开；尚无训练收益或工厂验证。",
+      "sha256": "d1df2064f7838df8b3bb54d4792aa830af58a24a510d10acad522311fb1f64a7"
+    },
+    {
+      "id": "small-model-status",
+      "title": "前沿小模型：模板修复不等于新权重或新 SOTA",
+      "summary": "核对 SmolVLM、Microsoft 与 Gemma：256M 模板补上字符串消息路径；没有据此新增质量、吞吐或显存结论。",
+      "sha256": "f4dbccd250986b93a2e728170bded30c9b5fbd0a400e99e0a89573101a54dbdb"
+    },
+    {
+      "id": "inference-engines",
+      "title": "推理引擎每日变动：先修复缓存状态与注意力映射",
+      "summary": "vLLM 阻止错误 Mamba 整块命中，SGLang 修复宽 GQA 组的 KV head 映射；DeepInfer 保留已查范围与离线边界。",
+      "sha256": "47ac91a8d8cbe45d20ead7053750fed2d92450e1196c36c38e3b08360dae1043"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-11-16-sglang-admission-50311",
+      "event_key": "sglang-admission-50311",
+      "title": "SGLang：减少统一内存准入的重复主机计算",
+      "summary": "a51b0e2b / #50311 在单次准入中复用完整需求及容量定价，feasible 只判可行而不构造完整分配计划；空池 decode 长度缓存随容量变化失效。",
+      "source_urls": [
+        "https://api.github.com/repos/sgl-project/sglang/pulls/50311",
+        "https://api.github.com/repos/sgl-project/sglang/commits/a51b0e2b848fd5161813bbdec5ecdde5ac3cc6f2"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-11-16-nvidia-aicr-runtime-inventory-20261111",
+      "event_key": "nvidia-aicr-runtime-inventory-20261111",
+      "title": "AICR：把平台版本配方与实际 AI 工作负载清单相连",
+      "summary": "七日补读：AICR v1.2.0 固定 k8s-aibom 1.6.2，H100 GKE/COS inference 配方生成版本固定的部署包，再按 namespace opt-in 为识别到的工作负载生成带证据位置和置信级别的 AIBOM。",
+      "source_urls": [
+        "https://developer.nvidia.com/blog/validating-gpu-platforms-with-runtime-ai-inventory-via-the-nvidia-dsx-ai-factory/",
+        "https://developer.nvidia.com/blog/feed/"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status"
+    },
+    {
+      "id": "2026-11-16-sglang-qwen4exp-sp-43048",
+      "event_key": "sglang-qwen4exp-sp-43048",
+      "title": "Qwen4Exp 实验路径：按 token 行切分 GR/PLE 激活",
+      "summary": "e4c3f001 / #43048 复用 --enable-layernorm-sp，在 prefill 的 GR/PLE 路径切分 token 行；GDN/attention 恢复完整行计算，TP 部分输出 SUM reduce-scatter。PLE 先按物理 CUDA Graph bucket 补齐再切分。",
+      "source_urls": [
+        "https://api.github.com/repos/sgl-project/sglang/pulls/43048",
+        "https://api.github.com/repos/sgl-project/sglang/commits/e4c3f001d6bc8cb43e778b6b27d562af550db8c9"
+      ],
+      "update_of": null,
+      "article_id": "model-architecture-status"
+    },
+    {
+      "id": "2026-11-16-lerobot-lance-storage-4794",
+      "event_key": "lerobot-lance-storage-4794",
+      "title": "LeRobot：远端 Lance 连接配置贯通训练数据读取",
+      "summary": "七日补读：2f05d8f64d / #4794 将 storage_options 贯通元数据本地化、dataset factory、train/eval 切分与 reader 重开/序列化；复制选项避免调用方后续修改影响连接，并将路由选项纳入元数据缓存身份。",
+      "source_urls": [
+        "https://api.github.com/repos/huggingface/lerobot/pulls/4794",
+        "https://api.github.com/repos/huggingface/lerobot/commits/2f05d8f64d"
+      ],
+      "update_of": null,
+      "article_id": "embodied-training"
+    },
+    {
+      "id": "2026-11-16-small-model-status-20261116",
+      "event_key": "small-model-status-20261116",
+      "title": "前沿小模型：模板修复不等于新权重或新 SOTA",
+      "summary": "核对 SmolVLM、Microsoft 与 Gemma：256M 模板补上字符串消息路径；没有据此新增质量、吞吐或显存结论。",
+      "source_urls": [
+        "https://huggingface.co/api/models?author=HuggingFaceTB&direction=-1&full=true&limit=20&sort=lastModified",
+        "https://huggingface.co/api/models?author=microsoft&direction=-1&full=true&limit=20&sort=lastModified",
+        "https://huggingface.co/api/models?author=google&direction=-1&full=true&limit=20&sort=lastModified",
+        "https://huggingface.co/HuggingFaceTB/SmolVLM-256M-Instruct/raw/main/README.md",
+        "https://huggingface.co/api/models/HuggingFaceTB/SmolVLM-256M-Instruct/commits/main",
+        "https://huggingface.co/HuggingFaceTB/SmolVLM-256M-Instruct/raw/7e3e67edbbed1bf9888184d9df282b700a323964/chat_template.json",
+        "https://huggingface.co/HuggingFaceTB/SmolVLM-256M-Instruct/raw/d039ab0d4b9311b617e8ffec1d06c8464364aeb3/chat_template.json",
+        "https://huggingface.co/microsoft/FrogNano-4B-2609/raw/main/README.md"
+      ],
+      "update_of": null,
+      "article_id": "small-model-status"
+    },
+    {
+      "id": "2026-11-16-vllm-mamba-align-67717",
+      "event_key": "vllm-mamba-align-67717",
+      "title": "vLLM：阻止 Mamba 中途状态冒充完整缓存块",
+      "summary": "75f3967a / #67717 修复 Mamba align 前缀缓存：从块中部恢复并跨过块末时，内部状态不一定对应块末；新路径记录 chunk 范围与非块末状态，在 cache_full_blocks 前限制 block mask，释放时清理记录。",
+      "source_urls": [
+        "https://api.github.com/repos/vllm-project/vllm/pulls/67717",
+        "https://api.github.com/repos/vllm-project/vllm/commits/75f3967ac127cb5cf36b2fee7b7377dca5725d51"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    },
+    {
+      "id": "2026-11-16-sglang-gqa-head-mapping-47802",
+      "event_key": "sglang-gqa-head-mapping-47802",
+      "title": "SGLang：修复宽 GQA 分组跨错 KV head",
+      "summary": "40723a52 / #47802 为每个 KV head 分配整数个16-head tile，再按该组起点生成 query head 索引并遮蔽尾部。GLM-4-32B的48Q/2KV形成24头分组，旧连续tile会使24–31号query头读错KV。",
+      "source_urls": [
+        "https://api.github.com/repos/sgl-project/sglang/pulls/47802",
+        "https://api.github.com/repos/sgl-project/sglang/commits/40723a52ded9229e221a437254f34bc8a3327251"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    }
+  ],
+  "images": [
+    {
+      "path": "assets/overview.png",
+      "sha256": "1f7952cd18bcbe5515a434dd4c8b8095cc1edfe5b71296eeb156aa1975a17933",
+      "alt": "六主题总览：准入调度、运行清单、长上下文激活、远端训练输入、小模型核查与引擎正确性"
+    }
+  ],
+  "poster": "assets/overview.png",
+  "page_delivery": {
+    "previous": null,
+    "added": [
+      "model-serving-gpu",
+      "hardware-status",
+      "model-architecture-status",
+      "embodied-training",
+      "small-model-status",
+      "inference-engines"
+    ],
+    "pending": []
+  }
+}
