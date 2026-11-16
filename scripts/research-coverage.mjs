@@ -1,4 +1,5 @@
 import {pageCoverageValid} from './research-page-coverage.mjs';
+import {DISCOVERY_CONTRACT,DISCOVERY_CHECKS,discoveryCoverageBound} from './research-discovery.mjs';
 import {isLayeredResearchPlan,auditBudget,LAYERED_BUDGET_POLICY} from './research-budget.mjs';
 // The host checks the trusted audit declaration and its exact original inputs.
 // Source semantics and article quality still require independent content review.
@@ -9,12 +10,15 @@ export const REQUIRED_RESEARCH_CHECKS=Object.freeze([
 ]);
 const sameSet=(a,b)=>Array.isArray(a)&&a.every(x=>typeof x==='string')&&new Set(a).size===a.length&&a.length===b.length&&a.every(x=>b.includes(x));
 export function requiredCoverageValid(audit,plan,bundle,previous=null,metadata=null){
+ const discovery=audit?.coverage_contract===DISCOVERY_CONTRACT;
+ const required=discovery?[...REQUIRED_RESEARCH_CHECKS,...DISCOVERY_CHECKS]:REQUIRED_RESEARCH_CHECKS;
  const pageScoped=audit?.page_scope!==undefined;
  if(pageScoped&&!pageCoverageValid(audit,bundle,previous,metadata))return false;
- if(audit?.schema_version!==(isLayeredResearchPlan(plan)?'1.4':'1.3')||audit.coverage_contract!=='daily_required_v1'||audit.delivery_allowed!==false
-  ||!sameSet(audit.required_checks,REQUIRED_RESEARCH_CHECKS)||(!pageScoped&&!sameSet(audit.coverage_unchecked,[]))
+ if(audit?.schema_version!==(isLayeredResearchPlan(plan)?'1.4':'1.3')||![DISCOVERY_CONTRACT,'daily_required_v1'].includes(audit.coverage_contract)||audit.delivery_allowed!==false
+  ||!sameSet(audit.required_checks,required)||(!pageScoped&&!sameSet(audit.coverage_unchecked,[]))
   ||!Array.isArray(audit.coverage_checked)||!Array.isArray(audit.coverage_incomplete)
-  ||!sameSet([...audit.coverage_checked,...audit.coverage_incomplete],REQUIRED_RESEARCH_CHECKS))return false;
+  ||!sameSet([...audit.coverage_checked,...audit.coverage_incomplete],required))return false;
+ if(discovery&&(!isLayeredResearchPlan(plan)||!/^[a-f0-9]{64}$/.test(audit.evidence_metadata_sha256??''))||!discoveryCoverageBound(audit,metadata))return false;
  const gaps=audit.coverage_incomplete.length;
  if(gaps?(audit.readiness!=='partial'||!Number.isSafeInteger(audit.selected_count)||audit.selected_count<1)
   :!['ready','zero_items'].includes(audit.readiness)||!Number.isSafeInteger(audit.selected_count)

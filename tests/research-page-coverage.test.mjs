@@ -30,6 +30,7 @@ test('permit coverage binds original inputs, draft bytes, and opt-in without wea
  audit.inputs.draft_sha256='d'.repeat(64);assert.equal(requiredCoverageValid(audit,plan,b),false);
 });
 import {pageCoverageValid} from '../scripts/research-page-coverage.mjs';
+import {DISCOVERY_CONTRACT,DISCOVERY_CHECKS} from '../scripts/research-discovery.mjs';
 function successor(){
  const first=fixture();const evidence={request_id:'morning-20261113-r1',bundle_sha256:'a'.repeat(64),audit_sha256:'b'.repeat(64),archive_sha256:'c'.repeat(64),report_commit:'d'.repeat(40)};
  const prior={page_scope:first.audit.page_scope,limits:{run_seconds:3600},started_at:'original',budget_policy:LAYERED_BUDGET_POLICY,inputs:{prompt_commit:'f'.repeat(40),history_commit:'e'.repeat(40),prompt_hashes:{},history_sha256:'a'.repeat(64)},sources:[{id:'original',status:'ok'}],checks:Object.fromEntries(Object.values(PAGE_CHECKS).flat().map(k=>[k,{status:k==='model_serving'?'checked':'not_checked'}])),model_calls:['research','editor'].map(stage=>({stage,attempt_records:[{outcome:'success',elapsed_seconds:20}]}))};
@@ -39,6 +40,40 @@ function successor(){
  const previous={evidence,report:first.report,audit:{...first.audit,audit_valid:true,delivery_allowed:false,readiness:'partial',blockers:[],evidence_metadata_sha256:'e'.repeat(64)},metadata:prior};return {audit,report,previous,metadata};
 }
 test('successor requires authenticated original metadata and retains original pages and operations',()=>{const f=successor();assert.equal(pageCoverageValid(f.audit,bundle(f.report),f.previous,f.metadata),true);assert.equal(pageCoverageValid(f.audit,bundle(f.report)),false);});
+test('v2 continuation appends discovery and preserves original query and contract bytes',()=>{
+ const f=successor(),old=f.previous.metadata;
+ for(const object of [f.audit,f.previous.audit,f.metadata,old])object.coverage_contract=DISCOVERY_CONTRACT;
+ const queries=DISCOVERY_CHECKS.slice(0,3).map((family,i)=>({id:'query-'+i,family,mode:'current',query:'Synthetic query '+i}));
+ old.discovery={queries:structuredClone(queries)};
+ f.metadata.discovery={queries:[...structuredClone(queries),{id:'query-3',family:'discovery_data_path',mode:'current',query:'Synthetic data path query'}]};
+ for(const family of DISCOVERY_CHECKS.slice(0,3)){
+  old.checks[family]={status:'checked'};f.metadata.checks[family]={status:'checked'};
+ }
+ f.audit.coverage_checked.push(...DISCOVERY_CHECKS);
+ assert.equal(pageCoverageValid(f.audit,bundle(f.report),f.previous,f.metadata),true);
+ f.metadata.discovery.queries[0].query='Rewritten old search';
+ assert.equal(pageCoverageValid(f.audit,bundle(f.report),f.previous,f.metadata),false);
+ f.metadata.discovery.queries[0].query=queries[0].query;old.coverage_contract='daily_required_v1';
+ assert.equal(pageCoverageValid(f.audit,bundle(f.report),f.previous,f.metadata),false);
+});
+test('v2 pending discovery retries preserve the same source attempts and old query',()=>{
+ const f=successor(),old=f.previous.metadata;
+ for(const object of [f.audit,f.previous.audit,f.metadata,old])object.coverage_contract=DISCOVERY_CONTRACT;
+ const query={id:'failed-search',family:'discovery_data_path',mode:'current',source_id:'search',attempt:1,response_sha256:null,results:[]};
+ old.discovery={queries:[query]};f.metadata.discovery={queries:[structuredClone(query),{...query,id:'retry',attempt:2,response_sha256:'a'.repeat(64)}]};
+ for(const family of DISCOVERY_CHECKS.slice(0,3)){old.checks[family]={status:'checked',source_ids:[]};f.metadata.checks[family]=structuredClone(old.checks[family]);}
+ old.checks.discovery_data_path={status:'failed',source_ids:['search']};f.metadata.checks.discovery_data_path={status:'no_qualifying_items',source_ids:['search']};
+ const source={id:'search',url:'https://api.github.com/search/issues?q=GPU+RDMA',attempts:1,status:'failed',elapsed_seconds:3,content_sha256:null,attempt_records:[{status:'failed',elapsed_seconds:3}]};
+ old.sources.push(source);f.metadata.sources.push({...source,attempts:2,status:'ok',elapsed_seconds:5,content_sha256:'a'.repeat(64),attempt_records:[...structuredClone(source.attempt_records),{status:'ok',elapsed_seconds:2}]});
+ f.audit.coverage_checked.push(...DISCOVERY_CHECKS);
+ assert.equal(pageCoverageValid(f.audit,bundle(f.report),f.previous,f.metadata),true);
+ f.metadata.sources.at(-1).attempt_records[0].elapsed_seconds=0;
+ assert.equal(pageCoverageValid(f.audit,bundle(f.report),f.previous,f.metadata),false);
+ f.metadata.sources.at(-1).attempt_records[0].elapsed_seconds=3;f.metadata.sources.at(-1).elapsed_seconds=1;
+ assert.equal(pageCoverageValid(f.audit,bundle(f.report),f.previous,f.metadata),false);
+ f.metadata.sources.at(-1).elapsed_seconds=null;f.metadata.sources.at(-1).attempt_records.at(-1).elapsed_seconds=null;
+ assert.equal(pageCoverageValid(f.audit,bundle(f.report),f.previous,f.metadata),true);
+});
 for(const [name,change] of Object.entries({
  'dropped old source':f=>f.metadata.sources=[],
  'changed old attempt':f=>f.metadata.model_calls[0].attempt_records[0].elapsed_seconds=0,

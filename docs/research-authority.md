@@ -1,5 +1,27 @@
 # Research recovery from the original host
 
+## Community discovery coverage
+
+The Brief validator's `daily_required_v2` declaration keeps the nineteen fixed
+checks and adds memory capacity/tiering, scheduling/isolation, compute/kernel/
+driver throughput, and communication/data-path discovery. It binds actual
+budgeted GET queries and original structured search responses to candidate
+decisions; an arbitrary GitHub URL cannot satisfy a discovery check. The first
+three checks belong to the service page, and data-path discovery to hardware.
+An unfinished discovery check follows the existing pending-page rules.
+
+This host checks the trusted validator's declaration against archived metadata,
+the full versioned check set, and original plan input hashes. It does not parse
+the pinned prompt or independently repeat factual research. The Brief validator
+selects v2 from the hash-verified frozen audit prompt. Existing schemas, v1
+audits, permits, and frozen input plans retain their original meanings; only a
+new period using the new prompt opts into v2. Page continuations preserve the
+original contract and discovery-record prefix and append actual new evidence.
+An unfinished discovery source may append attempts under its original ID and
+budget; its prior response hashes and query decisions remain frozen. Other
+retained sources and checks for already published pages remain unchanged.
+Neither deployment nor synthetic tests prove a future daily run completed.
+
 The cloud execution is disposable. The Publisher's original SQLite database
 owns the exact plan, input hashes, selected checkpoints, owner lease, operation
 intents, attempts, elapsed charges and publication permit. New research outputs
@@ -72,7 +94,9 @@ even an empty authority rejects an old runtime before opening the ledger.
 ## Required coverage before publication
 
 Every new daily permit requires the original validator's `schema_version=1.3`
-summary and `coverage_contract=daily_required_v1`. All six research directions
+(legacy budget) or `1.4` (layered budget)
+summary and its frozen coverage contract (`daily_required_v1` for historical inputs,
+`daily_required_v2` for the new prompt marker). All six research directions
 and thirteen official source groups must be present. The host rejects an older
 summary, missing/duplicate checks, unchecked directions, a substituted draft or
 prompt/history bytes, and changed attempt/time limits before storing a permit.

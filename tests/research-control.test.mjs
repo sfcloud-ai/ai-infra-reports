@@ -11,6 +11,8 @@ import {pathToFileURL,fileURLToPath} from 'node:url';
 import {spawn,spawnSync} from 'node:child_process';
 import {createInterface} from 'node:readline';
 import {REQUIRED_RESEARCH_CHECKS} from '../scripts/research-coverage.mjs';
+import {DISCOVERY_CHECKS,DISCOVERY_CONTRACT} from '../scripts/research-discovery.mjs';
+import {auditBudget,LAYERED_BUDGET_POLICY} from '../scripts/research-budget.mjs';
 import {HandoffState,handoffScope} from '../scripts/handoff-state.mjs';
 import {installFence} from '../scripts/producer-admission-fence.mjs';
 import {installSubmission,advanceSubmission} from '../scripts/slack-submission.mjs';
@@ -228,6 +230,31 @@ test('publication rejects downgraded, incomplete, re-bound or over-budget audit 
   const audit=Buffer.from(JSON.stringify(valid)),hash=archive(s,{'bundle.json':bundle,'audit.json':audit});
   assert.equal((await issuePermit(s,command('permit',{archive_sha256:hash,bundle_sha256:digest(bundle),audit_sha256:digest(audit)},run))).status,'committed');
  }finally{s.close();}
+});
+
+test('malformed archived discovery is a rejected permit, never a pending retry',async()=>{
+ for(const malformed of ['null source','unknown status']){
+  const s=setup();try{
+   const p=JSON.parse(layeredPlan()),run=start(s,Buffer.from(JSON.stringify(p))),bundle=await encodeBundle(FILES,id,'b'.repeat(40),'a'.repeat(40));
+   const required=[...REQUIRED_RESEARCH_CHECKS,...DISCOVERY_CHECKS];
+   const metadata={schema_version:'1.4',coverage_contract:DISCOVERY_CONTRACT,
+    discovery:{queries:DISCOVERY_CHECKS.map((family,i)=>({id:'q'+i,family,mode:'current',source_id:'s'+i,results:[]}))},
+    sources:DISCOVERY_CHECKS.map((_,i)=>({id:'s'+i,status:'ok'})),
+    checks:Object.fromEntries(DISCOVERY_CHECKS.map((family,i)=>[family,{status:'checked',source_ids:['s'+i]}]))};
+   if(malformed==='null source')metadata.sources.push(null);else metadata.checks.discovery_memory.status='nonsense';
+   const raw=Buffer.from(JSON.stringify(metadata));
+   const audit=Buffer.from(JSON.stringify(auditSummary({schema_version:'1.4',coverage_contract:DISCOVERY_CONTRACT,
+    required_checks:required,coverage_checked:required,budget_policy:LAYERED_BUDGET_POLICY,limits:auditBudget(p),evidence_metadata_sha256:digest(raw)})));
+   const hash=archive(s,{'bundle.json':bundle,'audit.json':audit,'metadata.json':raw});
+   queue(s,command('permit',{archive_sha256:hash,bundle_sha256:digest(bundle),audit_sha256:digest(audit)},run));
+   let reply;
+   await advanceResearchControl(s,config,{controlReceipt:async(_ts,text)=>{reply=JSON.parse(text.slice('!ai-research control-receipt '.length));return '1793491209.000001';}},now);
+   assert.equal(reply?.status,'rejected');assert.equal(reply.code,'publication_coverage_contract');
+   assert.equal(s.db.prepare('SELECT permit FROM research_control_runs').get().permit,null);
+   assert.equal(s.db.prepare('SELECT phase FROM research_control_events').get().phase,'sent');
+   assert.deepEqual(pendingResearchControls(s.db),[]);
+  }finally{s.close();}
+ }
 });
 
 test('native control parser binds the original tool parent and Publisher metadata, not body claims',()=>{
