@@ -1,5 +1,6 @@
 import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
+import {DISCOVERY_CONTRACT,DISCOVERY_PAGE_CHECKS,discoverySourcesPreserved} from './research-discovery.mjs';
 export const PAGE_CHECKS=Object.freeze({
  'model-serving-gpu':['model_serving'], 'hardware-status':['hardware'],
  'model-architecture-status':['model_architecture','glm_blog','qwen_blog','glm_models','deepseek_models','qwen_models','deepseek_articles'],
@@ -7,6 +8,7 @@ export const PAGE_CHECKS=Object.freeze({
  'inference-engines':['inference_engines','vllm','sglang','deepinfer','vllm_blog','sglang_blog','lmsys_blog','deepinfer_articles']
 });
 const ids=Object.keys(PAGE_CHECKS);
+const pageChecks=(audit,id)=>audit.coverage_contract===DISCOVERY_CONTRACT?[...PAGE_CHECKS[id],...(DISCOVERY_PAGE_CHECKS[id]??[])]:PAGE_CHECKS[id];
 const exact=(v,keys)=>v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).sort().join()===keys.sort().join();
 const equal=isDeepStrictEqual;
 const line=s=>typeof s==='string'&&s.trim()===s&&s.length>0&&Buffer.byteLength(s)<=300&&!/[\x00-\x1f\x7f-\x9f<>\u2028\u2029\ufeff\uD800-\uDFFF]/u.test(s);
@@ -31,9 +33,9 @@ export function pageCoverageValid(audit,bundle,previous=null,metadata=null){
   if(!pages.pending.every(p=>exact(p,['id','reason'])&&line(p.reason)))return false;
   if(!Array.isArray(report.entries)||!report.entries.every(e=>ready.includes(e.article_id)))return false;
   if(!ready.every(id=>report.entries.some(e=>e.article_id===id)))return false;
-  if(!ready.every(id=>PAGE_CHECKS[id].every(c=>audit.coverage_checked.includes(c))))return false;
+  if(!ready.every(id=>pageChecks(audit,id).every(c=>audit.coverage_checked.includes(c))))return false;
   if(!Array.isArray(audit.coverage_unchecked)||new Set(audit.coverage_unchecked).size!==audit.coverage_unchecked.length)return false;
-  if(!audit.coverage_unchecked.every(c=>audit.coverage_incomplete.includes(c)&&pending.some(id=>PAGE_CHECKS[id].includes(c))))return false;
+  if(!audit.coverage_unchecked.every(c=>audit.coverage_incomplete.includes(c)&&pending.some(id=>pageChecks(audit,id).includes(c))))return false;
   return true;
  }catch{return false;}
 }
@@ -48,7 +50,13 @@ function successorEvidenceValid(audit,report,previous,metadata){
  if(report.date!==old.date||report.revision!==old.revision+1||evidence.request_id!==`morning-${report.date.replaceAll('-','')}-r${old.revision}`)return false;
  if(!equal((previous.research_report??old).page_delivery,prior.page_scope.page_delivery)||!equal(metadata.limits,prior.limits)||metadata.started_at!==prior.started_at||metadata.budget_policy!==prior.budget_policy)return false;
  for(const key of ['prompt_commit','history_commit','prompt_hashes','history_sha256'])if(!equal(metadata.inputs?.[key],prior.inputs?.[key]))return false;
- if(!Array.isArray(metadata.sources)||!Array.isArray(prior.sources)||!equal(metadata.sources.slice(0,prior.sources.length),prior.sources))return false;
+ if(metadata.coverage_contract!==prior.coverage_contract||audit.coverage_contract!==summary.coverage_contract)return false;
+ if(audit.coverage_contract===DISCOVERY_CONTRACT){
+  const before=prior.discovery?.queries,after=metadata.discovery?.queries;
+  if(!Array.isArray(before)||!Array.isArray(after)||!equal(after.slice(0,before.length),before))return false;
+ }
+ if(audit.coverage_contract===DISCOVERY_CONTRACT){if(!discoverySourcesPreserved(metadata,prior))return false;}
+ else if(!Array.isArray(metadata.sources)||!Array.isArray(prior.sources)||!equal(metadata.sources.slice(0,prior.sources.length),prior.sources))return false;
  const added=report.page_delivery.added,oldReady=old.articles.map(a=>a.id),oldPending=old.page_delivery.pending.map(p=>p.id);
  if(!equal(added,ids.filter(id=>added.includes(id)))||added.length===0||!added.every(id=>oldPending.includes(id))
   ||!equal(report.articles.map(a=>a.id),ids.filter(id=>oldReady.includes(id)||added.includes(id)))
@@ -56,7 +64,7 @@ function successorEvidenceValid(audit,report,previous,metadata){
  for(const article of old.articles){
   if(!equal(report.articles.find(a=>a.id===article.id),article))return false;
   if(!equal(report.entries.filter(e=>e.article_id===article.id),old.entries.filter(e=>e.article_id===article.id)))return false;
-  for(const check of PAGE_CHECKS[article.id])if(!equal(metadata.checks?.[check],prior.checks?.[check]))return false;
+  for(const check of pageChecks(audit,article.id))if(!equal(metadata.checks?.[check],prior.checks?.[check]))return false;
  }
  if(!Array.isArray(metadata.model_calls)||!Array.isArray(prior.model_calls)||metadata.model_calls.length!==2||prior.model_calls.length!==2)return false;
  for(const stage of ['research','editor']){
@@ -85,7 +93,7 @@ export function resumablePageMetadataValid(audit,metadata){
   ||metadata.budget_policy!==audit.budget_policy||typeof metadata.started_at!=='string'||!Number.isFinite(Date.parse(metadata.started_at)))return false;
  if(metadata.schema_version!=='1.4'||metadata.date!==audit.date||metadata.scope!=='new_daily'||!Array.isArray(metadata.decisions)||!Array.isArray(metadata.status_entries))return false;
  if(!Array.isArray(metadata.sources)||!metadata.sources.every(s=>s&&typeof s==='object'&&!Array.isArray(s)))return false;
- if(!metadata.checks||typeof metadata.checks!=='object'||!Object.values(PAGE_CHECKS).flat().every(k=>metadata.checks[k]&&typeof metadata.checks[k]==='object'))return false;
+ if(!metadata.checks||typeof metadata.checks!=='object'||!ids.flatMap(id=>pageChecks(audit,id)).every(k=>metadata.checks[k]&&typeof metadata.checks[k]==='object'))return false;
  if(!Array.isArray(metadata.model_calls)||metadata.model_calls.length!==2)return false;
  return ['research','editor'].every(stage=>{
   const calls=metadata.model_calls.filter(c=>c&&c.stage===stage);
