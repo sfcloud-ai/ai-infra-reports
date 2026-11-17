@@ -244,8 +244,27 @@ function classifyStoredResult(db,run,op,cache){
   if(result.operation_id!==op.operation_id||result.request_id!==run.request_id)return null;
  }else{
   if(layered&&(result.operation_id!==op.operation_id||result.request_id!==run.request_id))return null;
-  if(!layered&&db.prepare('SELECT count(*) AS n FROM research_control_ops WHERE request_id=? AND result_file=?').get(run.request_id,op.result_file).n!==1)return null;
+  if(!layered&&result.status!=='not_dispatched'&&db.prepare('SELECT count(*) AS n FROM research_control_ops WHERE request_id=? AND result_file=?').get(run.request_id,op.result_file).n!==1)return null;
   try{if(researchSourceIdentity({method:'GET',url:result.url}).hash!==op.input_hash)return null;}catch{return null;}
+ }
+ // A trusted researcher's archived no-dispatch declaration can close an
+ // expired source intent, but never refunds its reservation or claims a fetch.
+ if(result.status==='not_dispatched'){
+  if(op.kind!=='source'||result.request_id!==run.request_id||result.operation_id!==op.operation_id||op.elapsed_seconds!==null||result.elapsed_seconds!==null||result.schema_version!=='source_not_dispatched_v1'||result.dispatch_started!==false||result.source_requests!==0||result.reserved_seconds!==op.reserved_seconds||result.input_sha256!==op.input_hash||!string(result.observation_sha256,HASH)||!string(result.grant_command_id,UUID)||!string(result.grant_receipt_ts,/^\d{10}\.\d{6}$/))return null;
+  const observation=decoded.byHash.get(result.observation_sha256);if(!observation)return null;
+  let local;try{local=JSON.parse(observation.data);}catch{return null;}
+  if(!local||typeof local!=='object'||Array.isArray(local)||local.artifact_kind!=='local_dispatch_observation_not_settlement'||local.request_id!==run.request_id||local.status!=='not_dispatched_grant_expired'||local.dispatch_started!==false||local.source_requests!==0||!Array.isArray(local.operation_ids)||!local.operation_ids.includes(op.operation_id)||local.command_id!==result.grant_command_id||local.receipt_ts!==result.grant_receipt_ts)return null;
+  const event=db.prepare('SELECT * FROM research_control_events WHERE command_id=? AND reply_ts=?').get(result.grant_command_id,result.grant_receipt_ts);
+  if(!event||event.phase!=='sent'||!event.reply_text)return null;
+  let grant;try{grant=JSON.parse(event.reply_text.slice('!ai-research control-receipt '.length));}catch{return null;}
+  if(grant.request_id!==run.request_id||grant.command_id!==result.grant_command_id||grant.dispatch_granted!==true||grant.replayed||grant.grant_expired||!grant.operations?.some(item=>item.operation_id===op.operation_id&&item.input_sha256===op.input_hash))return null;
+  if(typeof local.observed_at!=='string'||!Number.isFinite(grant.run?.lease_until))return null;
+  const observed=Date.parse(local.observed_at),expiry=Math.min(grant.run.lease_until,Number(event.reply_ts)*1000+60000);
+  if(!Number.isFinite(observed)||!Number.isFinite(expiry)||observed<expiry)return null;
+  if(result.grant_receipt_sha256!==undefined||observed<Number(event.reply_ts)*1000+60000){
+   if(!string(result.grant_receipt_sha256,HASH)||decoded.byHash.get(result.grant_receipt_sha256)?.data.toString('utf8')!==event.reply_text)return null;
+  }
+  return {authenticated:true,outcome:'not_dispatched',archive_sha256:op.result_archive,file_sha256:op.result_file};
  }
  const status=result.stage_status??result.status;
  const outcome=['failed','timeout'].includes(status)?'failed':['ok','success','partial'].includes(status)?'success':null;
@@ -405,7 +424,7 @@ function apply(db,c,now,config,commandHash){
     if(budget){
      need(budget.window.active,'research_continuation_not_due');
      const key=JSON.stringify([op.kind,op.key]),successes=budget.accounting.successful_attempts[key]??0;
-     const unresolved=budget.operations.some(item=>item.kind===op.kind&&item.operation_key===op.key&&(!classifiedResult(db,run,item,cache)||item.elapsed_seconds===null));
+     const unresolved=budget.operations.some(item=>item.kind===op.kind&&item.operation_key===op.key&&(!classifiedResult(db,run,item,cache)||(item.elapsed_seconds===null&&classifiedResult(db,run,item,cache)?.outcome!=='not_dispatched')));
      need(!unresolved,'research_original_result_unknown');
      need(op.kind==='source'?string(op.key,HASH)&&successes<budget.limits.max_attempts_per_source:pageModelKeyAllowed(activePageResearch(db,run,plan),op.key)&&successes<budget.limits.max_attempts_per_model,'attempt_budget');
      need(researchSecondsWithin(budget.accounting.success_seconds+budget.accounting.reserved_seconds+op.max_seconds,budget.limits.total_budget_seconds),'time_budget');
@@ -463,7 +482,19 @@ function apply(db,c,now,config,commandHash){
     need(c.args.archive_sha256===null&&c.args.file_sha256===null&&elapsed===null&&exact(result,'file_id,source_ts,sha256,bytes')&&string(result.file_id,/^[A-Z0-9]{1,128}$/)&&result.sha256===input.sha256&&result.bytes===input.bytes,'native_safe_result');
     need(input.file_id===null||input.file_id===result.file_id,'native_result_file');
     need(['complete','submit'].includes(input.step)?string(result.source_ts,/^\d{10}\.\d{6}$/):result.source_ts===null,'native_result_source');
-   }else{need(c.args.native_result===null,'research_result_kind');need(archive(db,c.request_id,c.args.archive_sha256).some(f=>f.sha256===c.args.file_sha256),'result_bytes_missing');}
+   }else{
+    need(c.args.native_result===null,'research_result_kind');need(archive(db,c.request_id,c.args.archive_sha256).some(f=>f.sha256===c.args.file_sha256),'result_bytes_missing');
+    const stored=commandArchive(db,run.request_id,c.args.archive_sha256,cache),file=stored?.byHash.get(c.args.file_sha256);
+    let candidate;try{candidate=JSON.parse(file.data);}catch{}
+    if(candidate?.status==='not_dispatched'){
+     const preview={...op,phase:'acknowledged',elapsed_seconds:elapsed,result_archive:c.args.archive_sha256,result_file:c.args.file_sha256};
+     const classification=classifiedResult(db,run,preview,cache);
+     if(classification?.outcome==='not_dispatched'){
+      const observation=JSON.parse(stored.byHash.get(candidate.observation_sha256).data);
+      need(Date.parse(observation.observed_at)<=now,'source_not_dispatched_future');
+     }else need(!isLayeredResearchPlan(plan)&&['success','failed'].includes(classification?.outcome),'source_not_dispatched_evidence');
+    }
+   }
   }else need(c.args.archive_sha256===null&&c.args.file_sha256===null&&elapsed===null&&c.args.native_result===null,'unknown_preserves_charge');
   const refund=op.elapsed_seconds===null&&elapsed!==null?op.reserved_seconds-elapsed:0;
   db.prepare('UPDATE research_control_ops SET phase=?,elapsed_seconds=?,result_archive=?,result_file=?,native_result=? WHERE operation_id=?').run(c.args.outcome,elapsed,c.args.archive_sha256,c.args.file_sha256,c.args.native_result?JSON.stringify(c.args.native_result):null,c.args.operation_id);
