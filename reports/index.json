@@ -1472,6 +1472,71 @@
         "pending": []
       },
       "path": "reports/2026-11-16/"
+    },
+    {
+      "schema_version": "1.2",
+      "date": "2026-11-17",
+      "revision": 1,
+      "title": "AI Infra 晨报 · 2026-11-17",
+      "subtitle": "从分层 KV、长上下文到机器人训练：核对机制、测量条件与部署边界。",
+      "articles": [
+        {
+          "id": "model-serving-gpu",
+          "title": "模型服务与 GPU 超配：稀疏索引与分层 KV 分开管理",
+          "summary": "HiSparse 接入分层 KV 数据平面。索引、主机页与 GPU 工作区分开管理；调度接线仍待完成。",
+          "sha256": "e01241bffc2181e18bc612a47d47f1e9b3689abfe64c5b27ea62de6583bdd29a",
+          "path": "reports/2026-11-17/articles/model-serving-gpu.md"
+        },
+        {
+          "id": "hardware-status",
+          "title": "硬件与算力平台：先对齐成绩的测量口径",
+          "summary": "NVIDIA 推理、训练成绩各有条件；TileOPs 改变冷缓存测量，不能当作 GPU 加速。",
+          "sha256": "1ebc68dfb52f1cea53bf42fd90b92122b2116526418cc5a0cba6f1b09273dc45",
+          "path": "reports/2026-11-17/articles/hardware-status.md"
+        },
+        {
+          "id": "model-architecture-status",
+          "title": "模型与架构：长上下文切分仍要保留全局语义",
+          "summary": "DeepSeek 上下文并行接入 graph：有效 token、压缩状态与全局上下文必须一致。",
+          "sha256": "2de6d6da5b5faf8f7f11216d9ea54d8eef6f7c7ecf6a733eb2ee860e6be23f7d",
+          "path": "reports/2026-11-17/articles/model-architecture-status.md"
+        },
+        {
+          "id": "embodied-training",
+          "title": "制造业具身智能训练：让反向重算保持同一条路由",
+          "summary": "Praxis 修复反向重算的路由精度，并排除动作 padding；证据达到单步训练。",
+          "sha256": "f5999006565324c8e245024b899d8570afb07f612bb87b5163b0c3ed46dd2a9a",
+          "path": "reports/2026-11-17/articles/embodied-training.md"
+        },
+        {
+          "id": "small-model-status",
+          "title": "前沿小模型：LFM3 接入先划清输入与输出能力",
+          "summary": "LFM3 的总参数、上下文与状态各有边界。SGLang 支持多模态输入，当前只输出文本。",
+          "sha256": "5318b591bfffa1a2332d1fc262817c0a797a90eceeb363fc78711ea4d5ebbb07",
+          "path": "reports/2026-11-17/articles/small-model-status.md"
+        },
+        {
+          "id": "inference-engines",
+          "title": "推理引擎每日变动：缓存恢复与卸载初始化",
+          "summary": "vLLM 优化 Mamba 恢复与 CPU 卸载初始化；SGLang 按主题展开，DeepInfer 保留离线边界。",
+          "sha256": "e2e5b361e50163cd05efd7372444ed43160496b91bc74bf50e98f7fa60d98f49",
+          "path": "reports/2026-11-17/articles/inference-engines.md"
+        }
+      ],
+      "poster": "assets/overview.png",
+      "page_delivery": {
+        "previous": null,
+        "added": [
+          "model-serving-gpu",
+          "hardware-status",
+          "model-architecture-status",
+          "embodied-training",
+          "small-model-status",
+          "inference-engines"
+        ],
+        "pending": []
+      },
+      "path": "reports/2026-11-17/"
     }
   ],
   "entries": [
@@ -4872,6 +4937,147 @@
       "article_id": "inference-engines",
       "fingerprint": "819daaa332e1626d7bb747cea20eca0329888210cfe81d4a8b59dac52da0c1dc",
       "date": "2026-11-16",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-17-sglang-hisparse-hicache-dataplane-49473",
+      "event_key": "sglang-hisparse-hicache-dataplane-49473",
+      "title": "HiSparse/HiCache：KV卸载后仍能找到索引",
+      "summary": "d9bf131d8b9b / #49473 新增主机/设备索引寻址、驻留KV读取、延迟绑定host buffer及每请求LRU状态，并允许显式为DSA indexer提供独立于attention KV的页表；未提供时沿用attention页表。",
+      "source_urls": [
+        "https://api.github.com/repos/sgl-project/sglang/commits/d9bf131d8b9b",
+        "https://api.github.com/repos/sgl-project/sglang/pulls/49473"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "536bf7b3f7cbd3c2b9a0b704fc4bd765ee3b5e9b03f6ef3a3068d9ec84140610",
+      "date": "2026-11-17",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-17-nvidia-mlperf-endpoints-v1-20261116",
+      "event_key": "nvidia-mlperf-endpoints-v1-20261116",
+      "title": "MLPerf Endpoints：先辨认并发与功率分母",
+      "summary": "NVIDIA以多轮agentic负载展示Vera Rubin与GB300的吞吐/交互性取舍；大于10倍的headline是TPS除以配置功率kW，在至少50 tok/s/user条件下选各自运行点。",
+      "source_urls": [
+        "https://developer.nvidia.com/blog/feed/",
+        "https://developer.nvidia.com/blog/nvidia-vera-rubin-nvl72-leads-agentic-inference-performance-on-mlperf-endpoints-v1-0/"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status",
+      "fingerprint": "da77908cbd2dac7d9ad892c76e51340e8fa21c2ba97455ae9f5a2a5e2e9588cf",
+      "date": "2026-11-17",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-17-nvidia-mlperf-training-v61-20261116",
+      "event_key": "nvidia-mlperf-training-v61-20261116",
+      "title": "MLPerf Training：到质量目标的时间与完整训练分开",
+      "summary": "主表在同GPU数下给出Rubin相对GB300约1.4至2倍benchmark收益；DeepSeek-V3 1024GPU到基准质量目标为4.14对8.03分钟，10240GB300的绝对最快值为1.38分钟。",
+      "source_urls": [
+        "https://developer.nvidia.com/blog/feed/",
+        "https://developer.nvidia.com/blog/nvidia-vera-rubin-nvl72-achieves-up-to-2x-blackwell-ultra-performance-in-mlperf-training-v6-1/"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status",
+      "fingerprint": "6f21e333d6f515656fe4d41e32e6dd0d6acbd375872b9b6cee1e060b308dfbe6",
+      "date": "2026-11-17",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-17-tileops-cold-measurement-2985",
+      "event_key": "tileops-cold-measurement-2985",
+      "title": "TileOPs：让样本计时摆脱逐次主机同步",
+      "summary": "a9a484ce003660f7 / #2985 在CUDA stream blocker后排入一组样本，每样本reset、读取2倍L2容量冲刷后执行；记录SM0时钟、block_samples、l2_flush，队列不足时缩块或退回drained，并重测CUPTI丢记录的块。",
+      "source_urls": [
+        "https://api.github.com/repos/tile-ai/TileOPs/pulls/2985",
+        "https://api.github.com/repos/tile-ai/TileOPs/pulls/2985/files?per_page=100",
+        "https://api.github.com/search/issues?order=desc&page=1&per_page=5&q=%22FP32%22+%22throughput%22+updated%3A2026-11-15T23%3A20%3A00Z..2026-11-16T23%3A20%3A00Z&sort=updated",
+        "https://api.github.com/search/issues?order=desc&page=1&per_page=5&q=repo%3Atile-ai%2FTileOPs+is%3Apr+%22cold+measurement%22&sort=updated"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status",
+      "fingerprint": "9d7143e3a1343300e28602d8ae69ad79af17872cbf3809591e892bd5fce2466a",
+      "date": "2026-11-17",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-17-sglang-deepseek41-cp-bcg-40333",
+      "event_key": "sglang-deepseek41-cp-bcg-40333",
+      "title": "DeepSeek V4.1：上下文切分要保留全局状态",
+      "summary": "50fbc8af48f8 / #40333 把interleave上下文并行接入可中断CUDA图及P/D分离。CP本地token/位置/embedding与捕获地址保持一致，按每rank容量选bucket，只用live tokens更新压缩状态；Engram哈希仍基于全局上下文，输出按token序重组并裁padding。",
+      "source_urls": [
+        "https://api.github.com/repos/sgl-project/sglang/commits/50fbc8af48f8",
+        "https://api.github.com/repos/sgl-project/sglang/pulls/40333"
+      ],
+      "update_of": null,
+      "article_id": "model-architecture-status",
+      "fingerprint": "4b131ebb50e8cf4582c4c7a8906c10fca472a24c635357fbd9047a5b8a4793e7",
+      "date": "2026-11-17",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-17-lerobot-praxis-backward-5328",
+      "event_key": "lerobot-praxis-backward-5328",
+      "title": "Praxis：反向重算也要遵守前向数值规则",
+      "summary": "7910c20a7583 / #5328 为训练loss注册hook，把整个backward和activation checkpoint重算置于Praxis数值上下文，结束后恢复host标志；同时修正21帧动作补齐到24行后的上下文、合并设备配置与双臂原始夹爪值。",
+      "source_urls": [
+        "https://api.github.com/repos/huggingface/lerobot/commits/7910c20a7583",
+        "https://api.github.com/repos/huggingface/lerobot/pulls/5328"
+      ],
+      "update_of": null,
+      "article_id": "embodied-training",
+      "fingerprint": "3abbd2bd3fef5f00ebca8c0c6c389304991b411f9e82b4afdb9021860055074a",
+      "date": "2026-11-17",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-17-sglang-lfm3-text-output-46858",
+      "event_key": "sglang-lfm3-text-output-46858",
+      "title": "LFM3小模型：多模态输入接入与文本输出边界",
+      "summary": "47361c57be9f / #46858 接入LFM3文本、视觉、音频和Omni的文本生成。共享短卷积/全局及滑窗attention骨干，卷积状态与KV分别走混合缓存；预处理复用checkpoint的Transformers processor和chat template，FlashInfer要求paged prefill。",
+      "source_urls": [
+        "https://api.github.com/repos/sgl-project/sglang/commits/47361c57be9f",
+        "https://api.github.com/repos/sgl-project/sglang/pulls/46858",
+        "https://huggingface.co/LiquidAI/LFM3-1.7B/raw/1da06bec6a819da10b54c67e5c90972b46d81871/README.md",
+        "https://huggingface.co/LiquidAI/LFM3-1.7B/raw/1da06bec6a819da10b54c67e5c90972b46d81871/config.json",
+        "https://huggingface.co/LiquidAI/LFM3-Omni-2B/raw/main/README.md",
+        "https://huggingface.co/LiquidAI/LFM3-Omni-2B/raw/main/config.json"
+      ],
+      "update_of": null,
+      "article_id": "small-model-status",
+      "fingerprint": "68446e1484a0d905b6b08edaafd5037c23ce24c33dcfc7cbfa20ad7e717ac098",
+      "date": "2026-11-17",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-17-vllm-mamba-midblock-prefill-66938",
+      "event_key": "vllm-mamba-midblock-prefill-66938",
+      "title": "vLLM：减少Mamba中途命中后的额外prefill",
+      "summary": "5b028fb8369d / #66938 在#67717正确性基础上，允许mid-block resume把checkpoint写入恢复块的私有副本，调度、MambaManager和worker使用相同规则；非块末状态继续禁止取得整块hash。特定1920→2880示例由3次forward变1次。",
+      "source_urls": [
+        "https://api.github.com/repos/vllm-project/vllm/commits/5b028fb8369d",
+        "https://api.github.com/repos/vllm-project/vllm/pulls/66938"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "25f385097044883b25c12df48b4e5e1d4b1d5a444b5b9b4cb8a04d97b184c9db",
+      "date": "2026-11-17",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-17-vllm-cpu-offload-async-init-66583",
+      "event_key": "vllm-cpu-offload-async-init-66583",
+      "title": "vLLM：CPU缓存先异步准备再开放卸载",
+      "summary": "33ca7f415b23 / #66583 为CPUOffloadingSpec加入默认关闭的CUDA async_init：后台prefault与分批pin，setup线程采用relaxed capture mode；全部worker ready后才开放卸载，后台setup失败保持卸载关闭。",
+      "source_urls": [
+        "https://api.github.com/repos/vllm-project/vllm/commits/33ca7f415b23",
+        "https://api.github.com/repos/vllm-project/vllm/pulls/66583"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "85eb9b550bac3b82d1a1240eb92bee27488469e388ff6fd7523a2548ebe48095",
+      "date": "2026-11-17",
       "revision": 1
     }
   ]

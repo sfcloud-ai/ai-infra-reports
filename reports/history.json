@@ -1904,6 +1904,62 @@
       "revision": 1,
       "fingerprint": "7176faf600029110d4dc5b6ca6414a42e413826f7803b25bfb70874fd96e4264",
       "content_sha256": "08f793042a9cc2699a0565c7e69c72c30d07c25e73e1643a68a1d0ba72e476cd"
+    },
+    {
+      "id": "2026-11-16-lerobot-lance-storage-4794",
+      "event_key": "lerobot-lance-storage-4794",
+      "date": "2026-11-16",
+      "revision": 1,
+      "fingerprint": "c28d42897a6fe44f7dc333223f946fc59b7705675a1509715194d14dfa346562",
+      "content_sha256": "f5284d996a892deffb1b9cec4372b3c80ff1f6c79f673b23acc5fb36617dd472"
+    },
+    {
+      "id": "2026-11-16-nvidia-aicr-runtime-inventory-20261111",
+      "event_key": "nvidia-aicr-runtime-inventory-20261111",
+      "date": "2026-11-16",
+      "revision": 1,
+      "fingerprint": "bdb1cc3996999e9a8b2a7d6854874541b702000af615e475ea85436a95a8de4e",
+      "content_sha256": "60ffcba66846b678bd8f327ea2ed9c3058ac0e5053fa3ba4feaa5c0343852ac5"
+    },
+    {
+      "id": "2026-11-16-sglang-admission-50311",
+      "event_key": "sglang-admission-50311",
+      "date": "2026-11-16",
+      "revision": 1,
+      "fingerprint": "552cca3566ef7f216f6bc7f9e1c7ead6f3a5e1590abe049d9c861daebcf925c5",
+      "content_sha256": "99bfd014216d795c50cd83cd4d07ff30af38add6669eebabf0fd86032865d4a2"
+    },
+    {
+      "id": "2026-11-16-sglang-gqa-head-mapping-47802",
+      "event_key": "sglang-gqa-head-mapping-47802",
+      "date": "2026-11-16",
+      "revision": 1,
+      "fingerprint": "819daaa332e1626d7bb747cea20eca0329888210cfe81d4a8b59dac52da0c1dc",
+      "content_sha256": "c3076d35238fc8eb0c68c215fe7869b1bdffdc2fa1ea2c23ea965a842bb0f6b5"
+    },
+    {
+      "id": "2026-11-16-sglang-qwen4exp-sp-43048",
+      "event_key": "sglang-qwen4exp-sp-43048",
+      "date": "2026-11-16",
+      "revision": 1,
+      "fingerprint": "c8f70c864965043ab420861f3946f01f1ad936ea1afa9ee97a882213cc3f62c6",
+      "content_sha256": "7198d75b102350d59ed851f0e2765b31d0820147e54fe0373ab02d32ddf2bffa"
+    },
+    {
+      "id": "2026-11-16-small-model-status-20261116",
+      "event_key": "small-model-status-20261116",
+      "date": "2026-11-16",
+      "revision": 1,
+      "fingerprint": "5ab1ad68b1cf69e0cdc73fe05e27c237f1b35cfd2c2181949cb541d96aeac934",
+      "content_sha256": "454630b3d113268a5e0d4576df2ac42f41db1db5ded4845ac499423fcce11c01"
+    },
+    {
+      "id": "2026-11-16-vllm-mamba-align-67717",
+      "event_key": "vllm-mamba-align-67717",
+      "date": "2026-11-16",
+      "revision": 1,
+      "fingerprint": "fd30d3afc08bf8ec9f786bb0b37a1168cb6c2bde59fdcbb1008ee17cfad0a697",
+      "content_sha256": "9ab475d6ad1874ef5511532d1ba526da0fd917b226ff90e248929d6b75989277"
     }
   ]
 }
