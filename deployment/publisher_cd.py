@@ -504,6 +504,11 @@ def require_settled_scheduled(database):
     for request_id, (_, phase, _) in rows.items():
         if phase == 'complete':
             continue
+        if phase in {'policy_rejected', 'awaiting_first_delivery'}:
+            identity, result = bound(request_id)
+            if result.get('status') != 'rejected' or result.get('error') != 'first_notice_requires_all_six_articles':
+                raise Deferred('in_flight_or_unknown_operation')
+            continue
         seen = set()
         while phase == 'superseded' and len(seen) <= 100:
             if request_id in seen:

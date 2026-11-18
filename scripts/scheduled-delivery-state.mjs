@@ -30,7 +30,7 @@ export function requireSettledScheduled(db){
  };
  for(const original of rows.values()){
   if(original.phase==='complete')continue; // 已有 legacy complete 原样保留。
-  if(original.phase==='policy_rejected'){
+  if(['policy_rejected','awaiting_first_delivery'].includes(original.phase)){
    const {result,binding}=bound(original.request_id);
    requireThat(firstNoticeRejected(result,binding),'Scheduled rejection binding differs');
    continue;

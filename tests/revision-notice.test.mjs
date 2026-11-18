@@ -88,6 +88,24 @@ const base={request_id:id,report_date:DAY,report_commit:MERGE,bundle_sha256:bund
 test('bridge accepts actual one-part revision receipt and does not invent an image',async()=>{
  const s=state();try{assert.equal((await advanceScheduledDelivery(s,config,async()=>base)).phase,'complete');await advanceScheduledDelivery(s,config,()=>assert.fail('no resend'));}finally{s.close();}
 });
+test('a refused pre-send revision resumes after an earlier delivery starts',async()=>{
+ const s=state();let admits=0;
+ const query=async(c,request)=>{
+  if(request.action==='status')return {status:'not_found'};
+  if(++admits===1)return {request_id:id,report_commit:MERGE,bundle_sha256:bundle.hash,status:'rejected',error:'first_notice_requires_all_six_articles'};
+  return base;
+ };
+ try{
+  assert.equal((await advanceScheduledDelivery(s,config,query)).phase,'awaiting_first_delivery');
+  assert.equal((await advanceScheduledDelivery(s,config,query)).phase,'idle');
+  assert.equal(admits,1);
+  const original={request_id:'morning-20261101-r1',report_date:DAY,bundle_sha256:'d'.repeat(64),report_commit:MERGE};
+  const receipt={...original,parts_sent:1,parts_total:2,status:'sending',phase:'sending'};
+  s.db.prepare('INSERT INTO scheduled_handoffs VALUES (?,?,?,?,0)').run(original.request_id,JSON.stringify(original),'observed',JSON.stringify(receipt));
+  assert.equal((await advanceScheduledDelivery(s,config,query)).phase,'complete');
+  assert.equal(admits,2);
+ }finally{s.close();}
+});
 test('website-only decision is terminal but never counted as a sent notification',async()=>{
  const s=state();try{
   const result=await advanceScheduledDelivery(s,config,async()=>({...base,delivery_kind:'web_only',phase:'skipped',status:'skipped',parts_total:0,parts_sent:0}));
