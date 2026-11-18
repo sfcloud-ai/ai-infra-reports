@@ -5,7 +5,7 @@ import base64
 import datetime
 import errno
 import os
-from contextlib import contextmanager, closing
+from contextlib import contextmanager, closing, redirect_stdout
 import io
 import json
 from pathlib import Path
@@ -26,6 +26,70 @@ def connection(path):
     with closing(sqlite3.connect(path)) as database:
         with database:
             yield database
+
+
+class ReportPartActivationTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == 'posix', 'Linux deployment lock')
+    def test_competing_deployment_and_activation_defer_without_mutating(self):
+        import fcntl
+        cases = [(['tick'], 'deployment.lock'), (['enable-report-parts', 'a'*40], 'control-entry.lock')]
+        with tempfile.TemporaryDirectory() as directory:
+            for args, name in cases:
+                with self.subTest(args=args), (Path(directory) / name).open('wb') as owner:
+                    fcntl.flock(owner, fcntl.LOCK_EX)
+                    output = io.StringIO()
+                    with patch.object(cd.sys, 'argv', ['publisher_cd.py', *args]), patch.object(cd.os, 'getuid', return_value=0), patch.object(cd, 'load_config', return_value={'control': directory}), patch.object(cd, 'tick') as tick, patch.object(cd, 'enable_report_parts') as activate, redirect_stdout(output):
+                        cd.main()
+                    tick.assert_not_called()
+                    activate.assert_not_called()
+                    self.assertEqual(json.loads(output.getvalue()), dict(status='deferred', reason='deployment_lock_busy'))
+
+    def test_only_the_confirmed_healthy_release_can_install_the_store(self):
+        commit = 'a' * 40
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            release = root / 'releases' / commit
+            (release / 'deployment').mkdir(parents=True)
+            shutil.copyfile(cd.__file__, release / 'deployment/publisher_cd.py')
+            control = root / 'control'
+            control.mkdir()
+            config = dict(base=str(root), control=str(control), node='/node', publisher_config='/publisher.json', uid=1001, gid=1002)
+            active = control / 'active.json'
+            active.write_text(json.dumps({'commit': 'b' * 40}))
+            service = dict(ActiveState='active', SubState='running', WorkingDirectory=str(release), MainPID='15')
+            result = subprocess.CompletedProcess([], 0, b'{"installed":true}', b'')
+            with patch.object(cd, 'properties', return_value=service), patch.object(cd, 'health', return_value=False) as healthy, patch.object(cd.subprocess, 'run', return_value=result) as start:
+                with self.assertRaisesRegex(ValueError, 'active_release'):
+                    cd.enable_report_parts(config, commit)
+                active.write_text(json.dumps({'commit': commit}))
+                for name in ('pending.json', 'control-pending.json'):
+                    (control / name).touch()
+                    with self.assertRaisesRegex(ValueError, 'active_release'):
+                        cd.enable_report_parts(config, commit)
+                    (control / name).unlink()
+                for name in ('blocked.json', 'control-blocked.json'):
+                    (control / name).write_text(json.dumps({'commit': commit}))
+                    with self.assertRaisesRegex(ValueError, 'active_release'):
+                        cd.enable_report_parts(config, commit)
+                    (control / name).write_text(json.dumps({'commit': 'b' * 40}))
+                pointer = control / 'control-release.json'
+                pointer.write_text(json.dumps({'commit': 'b' * 40, 'files': {}}))
+                with self.assertRaisesRegex(ValueError, 'controller_release'):
+                    cd.enable_report_parts(config, commit)
+                pointer.write_text(json.dumps({'commit': commit, 'files': {'publisher_cd.py': cd.digest(Path(cd.__file__))}}))
+                with self.assertRaisesRegex(cd.Deferred, 'healthy_release'):
+                    cd.enable_report_parts(config, commit)
+                start.assert_not_called()
+                healthy.return_value = True
+                self.assertEqual(cd.enable_report_parts(config, commit), dict(status='report_parts_enabled', commit=commit, installed=True))
+                self.assertEqual(start.call_args.kwargs['cwd'], release)
+                self.assertEqual(start.call_args.args[0][:5], ['/usr/bin/setpriv', '--reuid=1001', '--regid=1002', '--clear-groups', '--no-new-privs'])
+                result.stdout = b'{"lock_busy":true}'
+                with self.assertRaisesRegex(cd.Deferred, 'publisher_ledger_lock_busy'):
+                    cd.enable_report_parts(config, commit)
+                start.side_effect = subprocess.CalledProcessError(1, 'node')
+                with self.assertRaises(subprocess.CalledProcessError):
+                    cd.enable_report_parts(config, commit)
 
 
 class RevisionSettlementTests(unittest.TestCase):

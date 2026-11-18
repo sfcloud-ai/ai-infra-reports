@@ -1,7 +1,7 @@
 """固定主机入口：拉取通过 CI 的公开 main，在隔离环境验证后排空切换。"""
 
 import base64
-from contextlib import closing
+from contextlib import closing, ExitStack
 import datetime
 import hashlib
 import io
@@ -76,7 +76,8 @@ RESEARCH_CONTROL_SCHEMA = {
     'research_control_events': "CREATE TABLE research_control_events(source_ts TEXT PRIMARY KEY,command_id TEXT NOT NULL,hash TEXT NOT NULL,bytes BLOB NOT NULL,phase TEXT NOT NULL DEFAULT 'pending',attempts INTEGER NOT NULL DEFAULT 0,next_at INTEGER NOT NULL DEFAULT 0,reply_text TEXT,reply_ts TEXT,diagnostic TEXT)",
 }
 TABLES.update(RESEARCH_CONTROL_SCHEMA)
-TABLES.add("research_control_archive_recovery")
+REPORT_PART_SCHEMA = 'CREATE TABLE research_control_report_parts(permit_id TEXT NOT NULL,part INTEGER NOT NULL,source_ts TEXT UNIQUE NOT NULL,file_id TEXT NOT NULL,sha256 TEXT NOT NULL,bytes BLOB NOT NULL,PRIMARY KEY(permit_id,part))'
+TABLES.update({'research_control_archive_recovery', 'research_control_report_parts'})
 
 
 # Authorized pre-publication corrections retain the complete original payload.
@@ -373,6 +374,10 @@ def snapshot(path, settled=True):
                 for name, count in [('research_control_runs', 2), ('research_control_ops', 1),
                                     ('research_control_commands', 1), ('research_control_submissions', 1),
                                     ('research_control_events', 1)] for n in range(1, count + 1)}
+            if any(row[1] == 'research_control_report_parts' for row in authority):
+                expected.update({('table', 'research_control_report_parts', REPORT_PART_SCHEMA),
+                                 ('index', 'sqlite_autoindex_research_control_report_parts_1', None),
+                                 ('index', 'sqlite_autoindex_research_control_report_parts_2', None)})
             if any(row[1] == 'research_control_archive_recovery' for row in authority):
                 expected.add(('table', 'research_control_archive_recovery', ARCHIVE_RECOVERY_SCHEMA))
                 # Exact schema is checked before querying its version row.
@@ -457,9 +462,16 @@ def snapshot(path, settled=True):
             result.append([name, sql, [[{"base64": base64.b64encode(value).decode()} if isinstance(value, bytes) else value
                                       for value in row] for row in rows]])
         if settled:
+            # A retained byte range waits for an external authenticated share.
+            # Compatible releases resume it in place, including unknown POSTs.
+            waiting = ""
+            if 'research_control_report_parts' in {row[0] for row in tables}:
+                waiting = (" AND NOT (phase='receiving' AND kind='part-0' AND EXISTS "
+                           "(SELECT 1 FROM research_control_report_parts p WHERE p.part=0 "
+                           "AND p.source_ts=slack_submission_events.source_ts AND p.file_id=slack_submission_events.file_id))")
             if pages and database.execute("SELECT 1 FROM research_page_staged WHERE phase!='admitted'").fetchone():
                 raise Deferred('unfinished_page_submission')
-            if submissions and (database.execute("SELECT 1 FROM slack_submission_events WHERE phase!='done' AND NOT coalesce(phase='fenced' AND json_extract(diagnostic,'$.stage')='research_publication' AND json_extract(diagnostic,'$.outcome')='rejected',0)").fetchone()
+            if submissions and (database.execute("SELECT 1 FROM slack_submission_events WHERE phase!='done' AND NOT coalesce(phase='fenced' AND json_extract(diagnostic,'$.stage')='research_publication' AND json_extract(diagnostic,'$.outcome')='rejected',0)" + waiting).fetchone()
                                 or database.execute("SELECT 1 FROM slack_staged_bundles WHERE phase!='admitted'").fetchone()):
                 raise Deferred('unfinished_slack_submission')
             if intake:
@@ -810,6 +822,7 @@ def compatibility(config, release, operation, expected):
     if snapshot(database) != expected:
         raise ValueError("state_changed_during_backup")
     with closing(sqlite3.connect(database)) as isolated:
+        needs_report_parts = isolated.execute("SELECT 1 FROM sqlite_master WHERE name='research_control_report_parts'").fetchone() is not None
         needs_archive_recovery = archive_recovery_runtime_required(isolated)
         needs_model_continuation = model_continuation_runtime_required(isolated)
         needs_cancellation_pages = cancellation_page_runtime_required(isolated)
@@ -825,6 +838,8 @@ def compatibility(config, release, operation, expected):
         os.chown(path, config["uid"], config["gid"])
         path.chmod(0o700 if path.is_dir() else 0o600)
     script = "import{readFileSync}from'node:fs';import{HandoffState,handoffScope}from'./scripts/handoff-state.mjs';import{NoticeOutbox,notificationScope}from'./scripts/notice-outbox.mjs';import * as runtime from'./scripts/run-handoff.mjs';"
+    if needs_report_parts:
+        script += "const parts=await import('./scripts/report-bundle-parts.mjs');if(parts.REPORT_PART_VERSION!==1)throw Error('report_parts_require_compatible_release');"
     if needs_archive_recovery:
         script += "const recovery=await import('./scripts/research-archive-recovery.mjs');if(recovery.ARCHIVE_RECOVERY_VERSION!==1)throw Error('archive_recovery_requires_compatible_release');"
     if needs_pages:
@@ -1034,20 +1049,73 @@ def tick(config):
         raise
 
 
+def enable_report_parts(config, commit):
+    """One-time activation under the CD lock after the reviewed release is active."""
+    control = Path(config["control"])
+    if not SHA.fullmatch(commit):
+        raise ValueError("report_parts_active_release_required")
+    release = Path(config["base"]) / "releases" / commit
+    controller = digest(Path(__file__))
+    pointer = control / "control-release.json"
+    if pointer.exists():
+        selected = json.loads(pointer.read_bytes())
+        if selected.get("commit") != commit or selected.get("files", {}).get("publisher_cd.py") != controller:
+            raise ValueError("report_parts_controller_release_required")
+    blocks = (control / name for name in ("blocked.json", "control-blocked.json"))
+    if (json.loads((control / "active.json").read_bytes()) != {"commit": commit}
+            or any((control / name).exists() for name in ("pending.json", "control-pending.json"))
+            or any(block.exists() and json.loads(block.read_bytes())["commit"] == commit for block in blocks)
+            or digest(release / "deployment/publisher_cd.py") != controller):
+        raise ValueError("report_parts_active_release_required")
+    service = properties()
+    if (service["ActiveState"] != "active" or service["SubState"] != "running"
+            or service["WorkingDirectory"] != str(release) or not health(config, commit, pid=service["MainPID"])):
+        raise Deferred("report_parts_healthy_release_required")
+    node = Path(config["node"]) / "bin/node"
+    script = ("import{readFileSync}from'node:fs';import{withLockedHandoffState}from'./scripts/handoff-state.mjs';"
+              "import{installReportParts}from'./scripts/research-control.mjs';"
+              "import{isHandoffLockBusy}from'./scripts/handoff-lock.mjs';"
+              "const c=JSON.parse(readFileSync(process.argv[1]));"
+              "try{const installed=await withLockedHandoffState(c,s=>installReportParts(s.db,c));"
+              "process.stdout.write(JSON.stringify({installed}));}catch(e){if(!isHandoffLockBusy(e))throw e;"
+              "process.stdout.write(JSON.stringify({lock_busy:true}));}")
+    account = ["/usr/bin/setpriv", "--reuid=" + str(config["uid"]), "--regid=" + str(config["gid"]),
+               "--clear-groups", "--no-new-privs"]
+    result = subprocess.run(account + [str(node), "--input-type=module", "-e", script, config["publisher_config"]],
+                            cwd=release, stdin=subprocess.DEVNULL, capture_output=True, check=True,
+                            timeout=60,
+                            env={"PATH": "/usr/bin:/bin", "LANG": "C"})
+    outcome = json.loads(result.stdout)
+    if outcome == {"lock_busy": True}:
+        raise Deferred("publisher_ledger_lock_busy")
+    if set(outcome) != {"installed"} or type(outcome["installed"]) is not bool:
+        raise ValueError("unexpected_report_parts_activation_result")
+    return {"status": "report_parts_enabled", "commit": commit, **outcome}
+
+
 def main():
     import fcntl
-    if sys.platform != "linux" or os.getuid() != 0 or sys.argv[1:] != ["tick"]:
+    args = sys.argv[1:]
+    activation = len(args) == 2 and args[0] == "enable-report-parts" and SHA.fullmatch(args[1])
+    if sys.platform != "linux" or os.getuid() != 0 or (args != ["tick"] and not activation):
         raise ValueError("fixed_linux_cd_entry_required")
     config = load_config()
-    lock = os.open(Path(config["control"]) / "deployment.lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
-    try:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    # The stable wrapper already holds control-entry.lock while invoking a
+    # normal tick. Administrative activation takes the same locks in that order.
+    names = ("control-entry.lock", "deployment.lock") if activation else ("deployment.lock",)
+    with ExitStack() as locks:
+        for name in names:
+            lock = os.open(Path(config["control"]) / name, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+            locks.callback(os.close, lock)
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                print(json.dumps({"status": "deferred", "reason": "deployment_lock_busy"}))
+                return
         try:
-            print(json.dumps(tick(config)))
+            print(json.dumps(enable_report_parts(config, args[1]) if activation else tick(config)))
         except Deferred as error:
             print(json.dumps({"status": "deferred", "reason": str(error)}))
-    finally:
-        os.close(lock)
 
 
 if __name__ == "__main__":

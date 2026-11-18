@@ -1,3 +1,4 @@
+import {isReportPart,partScope,reportParts,REPORT_SPLIT_THRESHOLD,REPORT_PART_SCHEMA} from './report-bundle-parts.mjs';
 import {researchMicros,receiptMicros} from './research-time.mjs';
 import {applyArchiveRecovery,readArchiveRecovery,recoveryForOperation,ARCHIVE_RECOVERY_TRANSPORT,assertArchiveRecoveryFence,ARCHIVE_RECOVERY_SCHEMA} from './research-archive-recovery.mjs';
 import {statusPart,storedStatusBytes,STATUS_PART_BYTES,STATUS_RESULT_BYTES} from './research-status-pages.mjs';
@@ -64,9 +65,17 @@ export function assertResearchControl(db,c){
  const rows=db.prepare("SELECT name,sql FROM sqlite_master WHERE type='table' AND name LIKE 'research_control_%'").all();
  if(!c.research_control){requireThat(!rows.length,'Installed research authority cannot be removed');return false;}
  assertResearchArchive(db,c);assertResearchRecovery(db);pageAuthorityInstalled(db);const binding=policy(c);
- const fenced=assertArchiveRecoveryFence(db),schema={...RESEARCH_CONTROL_SCHEMA,...(fenced?{research_control_archive_recovery:ARCHIVE_RECOVERY_SCHEMA}:{})};
+ const parts=rows.some(r=>r.name==='research_control_report_parts');
+ const fenced=assertArchiveRecoveryFence(db),schema={...RESEARCH_CONTROL_SCHEMA,...(parts?{research_control_report_parts:REPORT_PART_SCHEMA}:{}),...(fenced?{research_control_archive_recovery:ARCHIVE_RECOVERY_SCHEMA}:{})};
  requireThat(rows.length===Object.keys(schema).length&&rows.every(r=>r.sql===schema[r.name]),'Original research authority schema required');
  const installed=db.prepare('SELECT * FROM research_control_policy').all();requireThat(installed.length===1&&installed[0].id===1&&installed[0].binding===binding,'Original research authority binding required');return true;
+}
+// Activate only from the locked, post-deployment administration entry point.
+export function installReportParts(db,c){
+ requireThat(assertResearchControl(db,c),'Installed research authority required');
+ if(db.prepare("SELECT 1 FROM sqlite_master WHERE name='research_control_report_parts'").get())return false;
+ requireThat(!db.prepare("SELECT 1 FROM research_control_ops WHERE kind='native' AND json_type(input,'$.part') IS NOT NULL LIMIT 1").get(),'Missing original report part store');
+ db.exec(REPORT_PART_SCHEMA);return true;
 }
 export function installResearchControl(db,c,reference){
  assertResearchArchive(db,c);assertResearchRecovery(db);pageAuthorityInstalled(db);const binding=policy(c);
@@ -232,12 +241,36 @@ export function researchSourceIdentity(input){
  need(['https:','http:'].includes(url.protocol)&&!url.username&&!url.password&&!url.hash,'source_url');
  url.searchParams.sort();const value={method:'GET',url:url.href};return {value,hash:digest(Buffer.from(JSON.stringify(value)))};
 }
+export function permittedReportBytes(db,runId,permit){
+ const archive=commandArchive(db,runId,permit.archive_sha256,commandCache());
+ const file=archive?.byHash.get(permit.bundle_sha256);
+ need(file,'publication_bytes_missing');return file.data;
+}
 function nativeScope(db,run,input){
  if(input.permit_id!==null){
   const permit=publicationPermit(db,run,input.permit_id);
-  need(permit&&input.permit_id===permit.permit_id&&input.sha256===permit.bundle_sha256&&input.archive_sha256===permit.archive_sha256,'native_permit_binding');return 'permit:'+permit.permit_id;
+  need(permit&&input.permit_id===permit.permit_id&&input.archive_sha256===permit.archive_sha256,'native_permit_binding');
+  const base='permit:'+permit.permit_id;
+  if(input.part!==undefined){
+   need(isReportPart(input.part)&&input.step!=='submit','native_report_part');
+   const original=permittedReportBytes(db,run.request_id,permit);
+   need(original.length>REPORT_SPLIT_THRESHOLD,'native_report_part_binding');
+   const expected=reportParts(original)[input.part];
+   need(expected&&expected.sha256===input.sha256&&expected.bytes===input.bytes,'native_report_part_binding');
+   const root=db.prepare('SELECT input FROM research_control_ops WHERE request_id=? AND operation_key=?').get(run.request_id,base+':ticket');
+   need(!root||JSON.parse(root.input).part===0,'native_original_report_transport');
+   need(db.prepare("SELECT 1 FROM sqlite_master WHERE name='research_control_report_parts'").get(),'report_part_activation_required');
+   return partScope(base,input.part);
+  }
+  need(input.sha256===permit.bundle_sha256,'native_permit_binding');
+  if(input.step==='ticket'){
+   const original=permittedReportBytes(db,run.request_id,permit);
+   const active=db.prepare("SELECT 1 FROM sqlite_master WHERE name='research_control_report_parts'").get();
+   need(input.bytes===original.length&&(!active||original.length<=REPORT_SPLIT_THRESHOLD),'native_report_parts_required');
+  }
+  return base;
  }
- need(string(input.archive_sha256,HASH)&&input.sha256===input.archive_sha256,'native_archive_binding');need(input.step!=='submit','archive_has_no_submit');return 'archive:'+input.archive_sha256;
+ need(input.part===undefined&&string(input.archive_sha256,HASH)&&input.sha256===input.archive_sha256,'native_archive_binding');need(input.step!=='submit','archive_has_no_submit');return 'archive:'+input.archive_sha256;
 }
 function nativePredecessor(db,run,op){
  const scope=nativeScope(db,run,op.input);need(op.key===scope+':'+op.input.step,'native_operation_key');
@@ -246,7 +279,10 @@ function nativePredecessor(db,run,op){
  else{
   const prior=db.prepare('SELECT * FROM research_control_ops WHERE request_id=? AND kind=\'native\' AND operation_key=?').get(run.request_id,scope+':'+steps[index-1]);
   need(prior&&prior.phase==='acknowledged'&&prior.native_result,'native_predecessor_unresolved');const result=JSON.parse(prior.native_result),input=JSON.parse(prior.input);
-  need(op.input.file_id===result.file_id&&op.input.sha256===input.sha256&&op.input.bytes===input.bytes,'native_original_file');
+  const multipartSubmit=index===3&&input.part===0;
+  need(op.input.file_id===result.file_id&&(multipartSubmit
+   ?op.input.part===undefined&&op.input.bytes===permittedReportBytes(db,run.request_id,publicationPermit(db,run,op.input.permit_id)).length
+   :op.input.part===input.part&&op.input.sha256===input.sha256&&op.input.bytes===input.bytes),'native_original_file');
   need(index===3?op.input.source_ts===result.source_ts&&result.source_ts!==null:op.input.source_ts===null,'native_original_source');
  }
 }
@@ -475,17 +511,17 @@ function apply(db,c,now,config,commandHash){
   need(exact(c.args,'recovery_id'),'archive_recovery_fields');return {status:'observed',recovery:readArchiveRecovery(db,c.request_id,c.args.recovery_id)};
  }
  if(c.action==='upload_status'){
-  need(exact(c.args,'archive_sha256,permit_id')&&string(c.args.archive_sha256,HASH)&&(c.args.permit_id===null||string(c.args.permit_id,UUID)),'upload_status_fields');
+  need((exact(c.args,'archive_sha256,permit_id')||exact(c.args,'archive_sha256,permit_id,part')&&c.args.permit_id&&isReportPart(c.args.part))&&string(c.args.archive_sha256,HASH)&&(c.args.permit_id===null||string(c.args.permit_id,UUID)),'upload_status_fields');
   if(!run)return {status:'not_found',run:null};
-  const scope=c.args.permit_id?'permit:'+c.args.permit_id:'archive:'+c.args.archive_sha256;
+  const scope=c.args.permit_id?partScope('permit:'+c.args.permit_id,c.args.part):'archive:'+c.args.archive_sha256;
   if(c.args.permit_id){const permit=publicationPermit(db,run,c.args.permit_id);need(permit?.permit_id===c.args.permit_id&&permit.archive_sha256===c.args.archive_sha256,'upload_status_permit');}
   const ops=db.prepare("SELECT * FROM research_control_ops WHERE request_id=? AND kind='native' AND operation_key IN (?,?,?,?) ORDER BY rowid").all(c.request_id,...['ticket','post','complete','submit'].map(step=>scope+':'+step));
   // Upload recovery needs the complete step set, not duplicated run/SQL metadata.
   // Keep original identities, hashes and phases: an unknown write stays unknown.
   const {request_id,owner_id,epoch,revision,lease_until}=run;
   return {status:'observed',run:{request_id,owner_id,epoch,revision,lease_until},permit:c.args.permit_id?publicationPermit(db,run,c.args.permit_id):null,operations:ops.map(op=>{
-   const {step,bytes,sha256}=JSON.parse(op.input);
-   return {operation_id:op.operation_id,operation_key:op.operation_key,input_hash:op.input_hash,phase:op.phase,input:{step,bytes,sha256},native_result:op.native_result?JSON.parse(op.native_result):null};
+   const {step,bytes,sha256,part}=JSON.parse(op.input);
+   return {operation_id:op.operation_id,operation_key:op.operation_key,input_hash:op.input_hash,phase:op.phase,input:{step,bytes,sha256,...(part!==undefined?{part}:{})},native_result:op.native_result?JSON.parse(op.native_result):null};
   })};
  }
  if(c.action==='status'){
@@ -555,7 +591,7 @@ function apply(db,c,now,config,commandHash){
    const used=db.prepare('SELECT count(*) n FROM research_control_ops WHERE request_id=? AND kind=? AND operation_key=?').get(c.request_id,op.kind,op.key).n;
    if(op.kind==='native'){
     need(op.max_seconds===0&&used===0,'native_intent_exists');
-    need(exact(op.input,'archive_sha256,permit_id,step,file_id,source_ts,bytes,sha256')&&['ticket','post','complete','submit'].includes(op.input.step)&&string(op.input.sha256,HASH)&&integer(op.input.bytes,1,16*1024*1024)&&(op.input.file_id===null||string(op.input.file_id,/^[A-Z0-9]{1,128}$/))&&(op.input.source_ts===null||string(op.input.source_ts,/^\d{10}\.\d{6}$/)),'safe_native_intent');
+    need((exact(op.input,'archive_sha256,permit_id,step,file_id,source_ts,bytes,sha256')||exact(op.input,'archive_sha256,permit_id,step,file_id,source_ts,bytes,sha256,part')&&isReportPart(op.input.part))&&['ticket','post','complete','submit'].includes(op.input.step)&&string(op.input.sha256,HASH)&&integer(op.input.bytes,1,16*1024*1024)&&(op.input.file_id===null||string(op.input.file_id,/^[A-Z0-9]{1,128}$/))&&(op.input.source_ts===null||string(op.input.source_ts,/^\d{10}\.\d{6}$/)),'safe_native_intent');
     need(digest(Buffer.from(JSON.stringify(op.input)))===op.input_sha256,'native_input_hash');
     nativePredecessor(db,run,op);
    }else{
@@ -630,6 +666,7 @@ function apply(db,c,now,config,commandHash){
    need(op.kind!=='model'||!JSON.parse(op.input)?.continuation_archive_sha256||elapsed!==null,'model_continuation_timing_required');
    if(op.kind==='native'){
     const input=JSON.parse(op.input),result=c.args.native_result;
+    need(input.part===undefined||input.step!=='complete','native_report_part_requires_host_receipt');
     need(c.args.archive_sha256===null&&c.args.file_sha256===null&&elapsed===null&&exact(result,'file_id,source_ts,sha256,bytes')&&string(result.file_id,/^[A-Z0-9]{1,128}$/)&&result.sha256===input.sha256&&result.bytes===input.bytes,'native_safe_result');
     need(input.file_id===null||input.file_id===result.file_id,'native_result_file');
     need(['complete','submit'].includes(input.step)?string(result.source_ts,/^\d{10}\.\d{6}$/):result.source_ts===null,'native_result_source');

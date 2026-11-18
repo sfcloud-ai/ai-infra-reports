@@ -1,3 +1,6 @@
+import {assembleReportParts,REPORT_PART_BYTES,reportPartName,pendingSubmissionClause,pendingSubmissionPhase} from './report-bundle-parts.mjs';
+import {permittedReportBytes} from './research-control.mjs';
+import {digest} from './archive.mjs';
 import {stagingTable,originalRunId,assertPageAdmission,pageRound,assertPageCorrectionDelivery} from './research-page-authority.mjs';
 // Opt-in, host-persistent staging. Slack is the data transport, not an executor.
 // Installation is offline under the original Publisher lock; normal ticks never
@@ -57,7 +60,7 @@ export function acceptSubmission(message,config,now,window){
  requireThat(!/^!ai-report (?:stage|submit) /.test(message?.text??''),'Retired publication entry; use the original host research client');
  const event=acceptPermitSubmission(message,config,now,window);if(!event)return null;
  const date=canonicalRequestDate(event.request_id);
- requireThat(event.permit_id&&controlledDate(config,event.request_id)&&event.source_ts>=config.research_control.activation_ts&&(event.kind==='stage'||event.target_ts<event.source_ts),'Permit submission outside authority activation');
+ requireThat(event.permit_id&&controlledDate(config,event.request_id)&&event.source_ts>=config.research_control.activation_ts&&(event.kind!=='submit'||event.target_ts<event.source_ts),'Permit submission outside authority activation');
  requireThat(date>=config.slack_submission.first_report_date&&event.source_ts>=config.slack_submission.activation_ts,'Staging outside activation boundary');return event;
 }
 // Called in the same transaction as the fixed history-page checkpoint.
@@ -72,11 +75,11 @@ export function queueSubmission(db,event){
 export function submissionStatus(db,id){
  if(!db.prepare("SELECT 1 FROM sqlite_master WHERE name='slack_submission_policy'").get())return null;
  const bundle=db.prepare(`SELECT request_id,report_date,hash,source_ts,file_id,phase,submit_ts FROM ${stagingTable(db,id)} WHERE request_id=?`).get(id);
- const pending=db.prepare("SELECT source_ts,kind,hash,file_id,target_ts,phase,next_at,diagnostic FROM slack_submission_events WHERE request_id=? AND phase='pending' ORDER BY source_ts LIMIT 4").all(id);
+ const pending=db.prepare(`SELECT source_ts,kind,hash,file_id,target_ts,${pendingSubmissionPhase},next_at,diagnostic FROM slack_submission_events WHERE request_id=? AND ${pendingSubmissionClause(db)} ORDER BY CASE WHEN phase='pending' THEN 0 ELSE 1 END,source_ts LIMIT 4`).all(id);
  return {bundle:bundle??null,pending:pending.map(r=>({...r,diagnostic:r.diagnostic?JSON.parse(r.diagnostic):null}))};
 }
 export function pendingSubmissions(db){
- return db.prepare("SELECT source_ts,request_id,kind,phase,next_at,diagnostic FROM slack_submission_events WHERE phase='pending' ORDER BY source_ts LIMIT 16").all().map(r=>({...r,diagnostic:r.diagnostic?JSON.parse(r.diagnostic):null}));
+ return db.prepare(`SELECT source_ts,request_id,kind,${pendingSubmissionPhase},next_at,diagnostic FROM slack_submission_events WHERE ${pendingSubmissionClause(db)} ORDER BY CASE WHEN phase='pending' THEN 0 ELSE 1 END,source_ts LIMIT 16`).all().map(r=>({...r,diagnostic:r.diagnostic?JSON.parse(r.diagnostic):null}));
 }
 export async function advanceSubmission(state,config,slack,query=queryScheduled,now=Date.now(),{monotonicNow=()=>performance.now()}={}){
  const started=monotonicNow(),clock=()=>now+Math.floor(monotonicNow()-started);
@@ -120,13 +123,50 @@ export async function advanceSubmission(state,config,slack,query=queryScheduled,
   const stagedTable=stagingTable(db,row.request_id),page=stagedTable==='research_page_staged';
   const checkPage=bundle=>assertPageAdmission(db,db.prepare('SELECT * FROM research_control_runs WHERE request_id=?').get(originalRunId(row.request_id)),bundle.data);
   let stored=db.prepare(`SELECT * FROM ${stagedTable} WHERE request_id=?`).get(row.request_id);
-  permitSubmission(db,config,row,stored);
+  const proof=permitSubmission(db,config,row,stored);
   requireThat(!db.prepare("SELECT 1 FROM slack_submission_events WHERE request_id=? AND hash!=? AND phase!='fenced'").get(row.request_id,row.hash),'Conflicting original staging evidence requires reconciliation');
-  const message=await slack.exactPublish(row.source_ts),original=acceptSubmission(message,config,now,{from:config.slack_submission.activation_ts,to:row.source_ts});
-  requireThat(original&&['kind','request_id','hash','file_id','target_ts'].every(k=>(original[k]??null)===row[k]),'Original staging command changed');
-  if(controlledDate(config,row.request_id))requireThat(original.permit_id===db.prepare('SELECT permit_id FROM research_control_submissions WHERE source_ts=?').get(row.source_ts)?.permit_id,'Original publication permit changed');
-  if(row.kind==='stage'){
-   const bytes=await slack.download(row),bundle=await decodeBundle(bytes);
+  const index=proof.input.part;
+  const prior=index===undefined?null:db.prepare('SELECT * FROM research_control_report_parts WHERE permit_id=? AND part=?').get(proof.permit.permit_id,index);
+  if(prior){
+   requireThat(prior.source_ts===row.source_ts&&prior.file_id===row.file_id&&prior.sha256===proof.input.sha256,'Original report part receipt conflict');
+  }else{
+   const message=await slack.exactPublish(row.source_ts),original=acceptSubmission(message,config,now,{from:config.slack_submission.activation_ts,to:row.source_ts});
+   requireThat(original&&['kind','request_id','hash','file_id','target_ts'].every(k=>(original[k]??null)===row[k]),'Original staging command changed');
+   if(controlledDate(config,row.request_id))requireThat(original.permit_id===proof.permit.permit_id,'Original publication permit changed');
+  }
+  if(row.kind!=='submit'){
+   const wire=prior?Buffer.from(prior.bytes):await slack.download(row,index===undefined?undefined:{name:reportPartName(index),limit:REPORT_PART_BYTES});
+   requireThat(wire.length===proof.input.bytes&&digest(wire)===proof.input.sha256,'Original stage file differs from reserved bytes');
+   const expected=index===0?permittedReportBytes(db,proof.run_id,proof.permit):null;
+   if(index!==undefined){
+    let waiting=false;
+    db.exec('BEGIN IMMEDIATE');try{
+     const authority=permitSubmission(db,config,row);
+     if(!prior)db.prepare('INSERT INTO research_control_report_parts VALUES(?,?,?,?,?,?)').run(proof.permit.permit_id,index,row.source_ts,row.file_id,proof.input.sha256,wire);
+     if(index>0){
+      settlePermitSubmission(db,authority,row,wire.length);
+      db.prepare("UPDATE slack_submission_events SET phase='done',diagnostic=NULL,next_at=0 WHERE source_ts=?").run(row.source_ts);
+      db.prepare("UPDATE slack_submission_events SET phase='pending',next_at=0 WHERE phase='receiving' AND kind='part-0' AND request_id=? AND hash=?").run(row.request_id,row.hash);
+     }else{
+      const count=db.prepare('SELECT count(*) n FROM research_control_report_parts WHERE permit_id=?').get(proof.permit.permit_id).n;
+      waiting=count<Math.ceil(expected.length/REPORT_PART_BYTES);
+      if(waiting)db.prepare("UPDATE slack_submission_events SET phase='receiving',diagnostic=NULL,next_at=0 WHERE source_ts=?").run(row.source_ts);
+     }
+     db.exec('COMMIT');
+    }catch(error){db.exec('ROLLBACK');throw error;}
+    if(index>0||waiting)return;
+   }
+   const bytes=index===undefined?wire:await assembleReportParts(expected,async part=>{
+    if(part.index===0)return wire;
+    const receipt=db.prepare('SELECT * FROM research_control_report_parts WHERE permit_id=? AND part=?').get(proof.permit.permit_id,part.index);
+    requireThat(receipt,'Awaiting original report part receipt');
+    const event=db.prepare("SELECT * FROM slack_submission_events WHERE source_ts=? AND phase='done'").get(receipt.source_ts);
+    requireThat(event?.request_id===row.request_id&&event.hash===row.hash&&event.kind==='part-'+part.index&&event.file_id===receipt.file_id,'Original report part event differs');
+    const partProof=permitSubmission(db,config,event);
+    requireThat(partProof.permit.permit_id===proof.permit.permit_id&&partProof.op.phase==='acknowledged'&&partProof.input.sha256===part.sha256&&partProof.input.bytes===part.bytes&&receipt.sha256===part.sha256,'Original report part receipt differs');
+    return Buffer.from(receipt.bytes);
+   });
+   const bundle=await decodeBundle(bytes);
    requireThat(bundle.data.request_id===row.request_id&&bundle.hash===row.hash&&bundle.report.date===date,'Staged bundle binding differs');
    if(stored){requireThat(stored.hash===row.hash&&stored.report_date===date&&Buffer.from(stored.bytes).equals(bytes),'Original staged bytes cannot change');}
    else{
@@ -137,7 +177,10 @@ export async function advanceSubmission(state,config,slack,query=queryScheduled,
     const authority=permitSubmission(db,config,row,stored);
     if(page)checkPage(bundle);
     if(!stored)db.prepare(`INSERT INTO ${stagedTable}(request_id,report_date,hash,source_ts,file_id,bytes) VALUES(?,?,?,?,?,?)`).run(row.request_id,date,row.hash,row.source_ts,row.file_id,bytes);
-    settlePermitSubmission(db,authority,row,bytes.length);
+    settlePermitSubmission(db,authority,row,wire.length);
+    // Staging now owns the original full bytes. Keep the per-range hash, ID
+    // and receipt in the native ledger without retaining a second payload.
+    if(index===0)db.prepare('DELETE FROM research_control_report_parts WHERE permit_id=?').run(proof.permit.permit_id);
     db.prepare("UPDATE slack_submission_events SET phase='done',diagnostic=NULL,next_at=0 WHERE source_ts=?").run(row.source_ts);db.exec('COMMIT');
    }catch(e){db.exec('ROLLBACK');throw e;}
   }else{
@@ -171,5 +214,5 @@ export async function advanceSubmission(state,config,slack,query=queryScheduled,
 }
 async function emptyDay(state,config,row,date,query,clock){
  const result=await producerInspection(state,config,{kind:'inspect',query_id:randomUUID(),request_id:row.request_id,report_date:date,bundle_sha256:row.hash},row.source_ts,query,clock,{stagedRequest:row.request_id});
- requireThat(result.publisher===null&&result.publisher_day.length===0&&result.scheduler===null&&result.scheduler_day_claim===null,'Original date is occupied');
+ requireThat(result.complete===true&&result.publisher===null&&result.publisher_day.length===0&&result.scheduler===null&&result.scheduler_day_claim===null,'Original date is occupied');
 }

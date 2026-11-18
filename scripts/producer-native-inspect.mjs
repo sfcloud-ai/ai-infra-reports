@@ -85,20 +85,28 @@ export class ProducerInspect{
   const pattern='^=== THREAD PARENT MESSAGE ===\\nFrom: [^\\n<>]+ <[^\\n<>]+> \\('+escape(s.sender_user_id)+'\\)\\nTime: [^\\n]+\\nMessage TS: '+escape(q.source_ts)+'\\n'+escape(command(j,q))+'\\n'+'(?:'+footers(s.sender_attribution_text).map(escape).join('|')+')'+'\\n\\n=== THREAD REPLIES \\(1 total\\) ===\\n\\n--- Reply 1 of 1 ---\\nFrom: [^\\n<>]+ <botuser-'+escape(s.team_id)+'-'+escape(c.publisher_bot_id)+'@slack-bots\\.com> \\('+escape(c.publisher_user_id)+'\\)\\nTime: [^\\n]+\\nMessage TS: (\\d{10}\\.\\d{6})\\n!ai-report inspect-receipt ([^\\n]+)\\n$';
   const match=new RegExp(pattern).exec(body.messages);requireThat(match&&TS.test(match[1])&&match[1]>q.source_ts&&Number(match[1])*1000<=this.state.now()+30000,'Untrusted inspect parent, Publisher or reply structure');
   const r=JSON.parse(match[2]);
-  exact(r,['query_id','request_id','report_date','bundle_sha256','source_ts','read_context','observed_at','complete','publisher_day','publisher','scheduler_day_claim','scheduler']);
-  requireThat(r.query_id===q.query_id&&r.request_id===id&&r.report_date===j.date&&r.bundle_sha256===j.hash&&r.source_ts===q.source_ts&&r.complete===true,'Inspect original query binding differs');
+  const pending=r.complete===false&&r.reason==='multipart_staging_pending';
+  const identity=['query_id','request_id','report_date','bundle_sha256','source_ts','read_context','observed_at','complete'];
+  exact(r,[...identity,...(pending?['reason']:['publisher_day','publisher','scheduler_day_claim','scheduler'])]);
+  requireThat(r.query_id===q.query_id&&r.request_id===id&&r.report_date===j.date&&r.bundle_sha256===j.hash&&r.source_ts===q.source_ts&&(pending||r.complete===true),'Inspect original query binding differs');
   requireThat(Number.isSafeInteger(r.observed_at)&&r.observed_at>=Number(q.source_ts)*1000-30000&&r.observed_at<=this.state.now()&&r.observed_at<=Number(match[1])*1000+30000,'Inspect observation clock differs');
   const {query_id,request_id,report_date,bundle_sha256,source_ts,...evidence}=r;
   const fresh=this.state.now()-r.observed_at<READ_TTL_MS;
+  exact(evidence.read_context,['publisher_scope_sha256','scheduler_scope_sha256']);
   requireThat(evidence.read_context?.publisher_scope_sha256===s.publisher_scope_sha256&&evidence.read_context.scheduler_scope_sha256===s.scheduler_scope_sha256,'Inspect original read scope differs');
   // Stale authenticated receipts resolve this read query but grant no upload.
   // This allows a new inspection without replaying an uncertain query send.
   this.state.transaction(()=>{
    const latest=this.query(id);requireThat(latest?.operation_id===q.operation_id,'Inspect changed while verifying');
    const receipt_hash=digest(match[2]);requireThat(!latest.receipt_hash||(latest.receipt_hash===receipt_hash&&latest.receipt_ts===match[1]),'Original inspect receipt changed');
-   if(fresh&&latest.phase!=='resolved'){requireThat(q.started_at>=Math.max(j.detail.recovery_at??0,j.detail.restart_recovery_at??0),'Post-recovery inspect required');this.state.observeDownstream(id,evidence,{inTransaction:true,inspectQueryId:q.query_id});}
+   if(latest.phase!=='resolved'&&pending){
+    this.state.save(j,{...j.detail,preflight_at:null,preflight_query_id:null,preflight_empty:false});
+   }else if(fresh&&latest.phase!=='resolved'){
+    requireThat(q.started_at>=Math.max(j.detail.recovery_at??0,j.detail.restart_recovery_at??0),'Post-recovery inspect required');
+    this.state.observeDownstream(id,evidence,{inTransaction:true,inspectQueryId:q.query_id});
+   }
    this.state.db.prepare("UPDATE producer_inspect_queries SET receipt_ts=?,receipt_hash=?,phase='resolved' WHERE operation_id=?").run(match[1],receipt_hash,q.operation_id);
   });
-  return {type:fresh?'state':'stale_inspect',...this.state.summary(this.state.get(id)),write_allowed:false};
+  return {type:pending?'pending':fresh?'state':'stale_inspect',...(pending?{reason:r.reason}:{}),...this.state.summary(this.state.get(id)),write_allowed:false};
  }
 }

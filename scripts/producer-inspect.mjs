@@ -1,3 +1,4 @@
+import {pendingSubmissionClause} from './report-bundle-parts.mjs';
 import {assertFence,isFencedOut} from './producer-admission-fence.mjs';
 // Read-only, authenticated control replies. A complete snapshot is not a claim,
 // reservation, or permission to repeat an uncertain upload or delivery.
@@ -25,6 +26,10 @@ export async function inspectPublisherDay(state,config,command,sourceTs,{now=()=
   }
   const scope=db.prepare('SELECT value FROM scope WHERE id=1').get()?.value;
   requireThat(scope===scopeDigest(handoffScope(config)),'Publisher inspect scope mismatch');
+  if(exists(db,'slack_submission_events')&&!db.prepare('SELECT 1 FROM jobs WHERE id=?').get(command.request_id)){
+   const partial=db.prepare(`SELECT 1 FROM slack_submission_events WHERE kind LIKE 'part-%' AND ${pendingSubmissionClause(db)} AND (request_id=? OR request_id LIKE ?) AND NOT (request_id IS ? AND request_id=? AND hash=?) LIMIT 1`).get(command.request_id,'morning-'+command.report_date.replaceAll('-','')+'-r%',stagedRequest,command.request_id,command.bundle_sha256);
+   if(partial)return {publisher_scope_sha256:scope,reason:'multipart_staging_pending'};
+  }
   const rows=db.prepare('SELECT id,hash,source_ts,length(bytes) AS bundle_size FROM jobs ORDER BY source_ts LIMIT 1001').all();
   requireThat(rows.length<=1000,'Publisher inspect capacity exceeded');
   const inbox=exists(db,'publisher_inbox')?db.prepare("SELECT request_id,hash,file_id,source_ts,phase FROM publisher_inbox WHERE phase!='admitted' LIMIT 10001").all():[];
@@ -77,6 +82,9 @@ export async function producerInspection(state,config,command,sourceTs,query,now
   requireThat(['queued','sending','sent','failed','unknown','partial'].includes(status.status)&&typeof status.phase==='string'&&/^[a-z_]{1,40}$/.test(status.phase)&&Number.isSafeInteger(status.parts_total)&&status.parts_total>0&&Number.isSafeInteger(status.parts_sent)&&status.parts_sent>=0&&status.parts_sent<=status.parts_total,'Scheduler inspect status invalid');
  }
  const local=await inspectPublisherDay(state,config,command,sourceTs,localOptions);
+ const common={...expected,query_id:command.query_id,source_ts:sourceTs,read_context:{publisher_scope_sha256:local.publisher_scope_sha256,...remote.read_context},observed_at:Math.min(remote.observed_at,now())};
+ requireThat(remote.observed_at>=now()-60000,'Combined inspect snapshot stale');
+ if(local.reason)return {...common,complete:false,reason:local.reason};
  if(status!==null)requireThat(local.publisher&&local.publisher.report_commit===status.report_commit,'Scheduler and publisher binding differs');
  // The wire whitelist must never grow merely because an adapter adds fields.
  const safe=status===null?null:Object.fromEntries(['request_id','report_date','report_commit','bundle_sha256','status','phase','parts_sent','parts_total','next_attempt_at','attempts'].filter(k=>Object.hasOwn(status,k)).map(k=>[k,status[k]]));
@@ -91,6 +99,5 @@ export async function producerInspection(state,config,command,sourceTs,query,now
   // evidence, not invalid counters or milliseconds to silently reinterpret.
   requireThat(safe.next_attempt_at===undefined||safe.next_attempt_at===null||typeof safe.next_attempt_at==='number'&&Number.isFinite(safe.next_attempt_at)&&safe.next_attempt_at>=0,'Scheduler attempt time invalid');
  }
- requireThat(remote.observed_at>=now()-60000,'Combined inspect snapshot stale');
- return {...expected,query_id:command.query_id,source_ts:sourceTs,read_context:{publisher_scope_sha256:local.publisher_scope_sha256,...remote.read_context},observed_at:Math.min(remote.observed_at,now()),complete:true,publisher_day:local.publisher_day,publisher:local.publisher,scheduler_day_claim:claim,scheduler:safe};
+ return {...common,complete:true,publisher_day:local.publisher_day,publisher:local.publisher,scheduler_day_claim:claim,scheduler:safe};
 }
