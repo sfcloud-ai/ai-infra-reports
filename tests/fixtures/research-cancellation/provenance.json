@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "synthetic": true,
+  "validator_repository": "sfcloud-ai/ai-infra-brief",
+  "validator_commit": "420448818d2e079e6e1b75cd01cd7be2c8e52cef",
+  "files": {
+    "cancel_only/audit.json": "584fe2e46a88b970fed6fc3f0eb016537414b42aa825ed7214f0481d4bfe918a",
+    "cancel_only/summary.json": "b202ab4a9c86322f4ef79532a755595983499c693619ff053e267faa6ee936e3",
+    "cancel_only/draft.json": "1f3b77f2f887bf751b70e5a233bc71e734260ab02da54af87acf9872d73276a0",
+    "failed_cancel/audit.json": "7e5714fc6354942266eaf0b888bec7e9c3b33b61a350f0232269836d8bd13fca",
+    "failed_cancel/summary.json": "adae37b1e41eebfeb2385d38808ca78350bae0db93e96e722e1ad770c54f1ace",
+    "failed_cancel/draft.json": "1f3b77f2f887bf751b70e5a233bc71e734260ab02da54af87acf9872d73276a0",
+    "ok_cancel/audit.json": "9fc3f5ca0e7c07e51fc9986d98973bac12ac04333c6f09d699afdee4905b215c",
+    "ok_cancel/summary.json": "d65a622dc822d292edad241aa52dacef4aaa4f8b4a9c21cff4df9e27886b688f",
+    "ok_cancel/draft.json": "186f246167a4f40dd435c030f354c6d847e003803b513d3177452a148522a9d6",
+    "successor_v1/audit.json": "0b35d0078c8b9f1a23374c657947e76388b1fb1f0c4aa6472dffaadf9627e38b",
+    "successor_v1/summary.json": "88646e7754e0b6a5833e7a37855aea72646ac183365a2a83935595fd11ff161d",
+    "successor_v1/draft.json": "37b92f6f310f0c0fb6f23e0191064102369114cfd9364699788ee819bc5ce9ea",
+    "successor_v1/previous/audit.json": "1d2bd993690186cab82699f99256e4a8148e64622ae1de549f44b4775457ccab",
+    "successor_v1/previous/metadata.json": "895d0e75e44e9471d236270c70b65dcd58927508b5c7024cdd79f3c1b5d2b4e2",
+    "successor_v1/previous/report.json": "cfd8cecbe197a42fc66be8220b5dbadfca2699068cb0603ec2caba9c22379fc3",
+    "successor_v2/audit.json": "ed17ef63262b9ff7ed76a9767af4f7ec0ee6d597f5b3c58f75e96414499c0500",
+    "successor_v2/summary.json": "1c3e1524e3cc40589a84d9fffd1be0f6717adda8764c274c2014274812a7a4bc",
+    "successor_v2/draft.json": "f77fb212b09c56067d7e9382cb8a3266a8f1c99017c69a36a4894cd562c2deb2",
+    "successor_v2/previous/audit.json": "17f4e0f0bb79601631d28998ed025e7f8b18316dbfd4b7d2bb3b86e721f9450c",
+    "successor_v2/previous/metadata.json": "940fa46008df63460b61cec148417d34db62a06f0896cb448b4db8b169907b5e",
+    "successor_v2/previous/report.json": "1f3b77f2f887bf751b70e5a233bc71e734260ab02da54af87acf9872d73276a0"
+  }
+}

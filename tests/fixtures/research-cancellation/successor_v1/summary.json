@@ -1,0 +1,243 @@
+{
+  "schema_version": "1.4",
+  "date": "2026-11-06",
+  "audit_valid": true,
+  "readiness": "partial",
+  "blockers": [],
+  "candidate_count": 1,
+  "selected_count": 2,
+  "status_entry_count": 0,
+  "delivery_allowed": false,
+  "warnings": [
+    {
+      "code": "timing_unavailable",
+      "path": "sources[2].elapsed_seconds"
+    },
+    {
+      "code": "not_dispatched_reservation_retained",
+      "path": "sources[2].attempt_records[0]"
+    },
+    {
+      "code": "timing_unavailable",
+      "path": "sources[2].attempt_records[0].elapsed_seconds"
+    },
+    {
+      "code": "coverage_incomplete",
+      "path": "checks.model_architecture"
+    },
+    {
+      "code": "coverage_incomplete",
+      "path": "checks.embodied_training"
+    },
+    {
+      "code": "coverage_incomplete",
+      "path": "checks.small_models"
+    },
+    {
+      "code": "coverage_incomplete",
+      "path": "checks.inference_engines"
+    },
+    {
+      "code": "coverage_incomplete",
+      "path": "checks.vllm"
+    },
+    {
+      "code": "coverage_incomplete",
+      "path": "checks.sglang"
+    },
+    {
+      "code": "coverage_incomplete",
+      "path": "checks.deepinfer"
+    },
+    {
+      "code": "coverage_incomplete",
+      "path": "checks.vllm_blog"
+    },
+    {
+      "code": "coverage_incomplete",
+      "path": "checks.sglang_blog"
+    },
+    {
+      "code": "coverage_incomplete",
+      "path": "checks.lmsys_blog"
+    },
+    {
+      "code": "coverage_incomplete",
+      "path": "checks.deepseek_articles"
+    },
+    {
+      "code": "coverage_incomplete",
+      "path": "checks.deepinfer_articles"
+    },
+    {
+      "code": "coverage_incomplete",
+      "path": "checks.glm_blog"
+    },
+    {
+      "code": "coverage_incomplete",
+      "path": "checks.qwen_blog"
+    },
+    {
+      "code": "coverage_incomplete",
+      "path": "checks.glm_models"
+    },
+    {
+      "code": "coverage_incomplete",
+      "path": "checks.deepseek_models"
+    },
+    {
+      "code": "coverage_incomplete",
+      "path": "checks.qwen_models"
+    }
+  ],
+  "budget_unknown": true,
+  "coverage_incomplete": [
+    "deepinfer",
+    "deepinfer_articles",
+    "deepseek_articles",
+    "deepseek_models",
+    "embodied_training",
+    "glm_blog",
+    "glm_models",
+    "inference_engines",
+    "lmsys_blog",
+    "model_architecture",
+    "qwen_blog",
+    "qwen_models",
+    "sglang",
+    "sglang_blog",
+    "small_models",
+    "vllm",
+    "vllm_blog"
+  ],
+  "coverage_contract": "daily_required_v1",
+  "required_checks": [
+    "model_serving",
+    "hardware",
+    "model_architecture",
+    "embodied_training",
+    "small_models",
+    "inference_engines",
+    "vllm",
+    "sglang",
+    "deepinfer",
+    "vllm_blog",
+    "sglang_blog",
+    "lmsys_blog",
+    "deepseek_articles",
+    "deepinfer_articles",
+    "glm_blog",
+    "qwen_blog",
+    "glm_models",
+    "deepseek_models",
+    "qwen_models"
+  ],
+  "coverage_checked": [
+    "hardware",
+    "model_serving"
+  ],
+  "coverage_unchecked": [
+    "deepinfer",
+    "deepinfer_articles",
+    "deepseek_articles",
+    "deepseek_models",
+    "embodied_training",
+    "glm_blog",
+    "glm_models",
+    "inference_engines",
+    "lmsys_blog",
+    "model_architecture",
+    "qwen_blog",
+    "qwen_models",
+    "sglang",
+    "sglang_blog",
+    "small_models",
+    "vllm",
+    "vllm_blog"
+  ],
+  "limits": {
+    "source_attempts": 2,
+    "model_attempts": 2,
+    "source_attempt_seconds": 180,
+    "model_stage_seconds": 500,
+    "run_seconds": 1200
+  },
+  "inputs": {
+    "prompt_commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "history_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "prompt_hashes": {
+      "research.md": "30d6d0106d7bb4c7acb7bb4220e981ea414a86c2cbbac90757ed0e830a7db968",
+      "editor.md": "78b6fe25326eadb6533cf519848222b9de9d37a99570ce1b4d5f8e575530aa49",
+      "sources.md": "879bbb19f2425e9194185bf771fccd8c3919320d3191da86642cbad2da32bfe4",
+      "delivery.md": "a1eca6d2a2784364d6853b8ce4de8ffd619a652dd84f041d5f6166b419f9a110",
+      "audit.md": "dec9772fe52f43465a86fcbb5298b8328b3cc6cf74df6524f85a6dffbf0d7050"
+    },
+    "history_sha256": "438f15df62839fb8a1897e57c6bacfdd2c40dd034045949575e96d8353cbea83",
+    "draft_sha256": "37b92f6f310f0c0fb6f23e0191064102369114cfd9364699788ee819bc5ce9ea"
+  },
+  "page_scope": {
+    "contract": "verified_pages_v1",
+    "page_delivery": {
+      "previous": {
+        "request_id": "morning-20261106-r1",
+        "bundle_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "added": [
+        "hardware-status"
+      ],
+      "pending": [
+        {
+          "id": "model-architecture-status",
+          "reason": "尚未完成该页研究，不代表无更新"
+        },
+        {
+          "id": "embodied-training",
+          "reason": "尚未完成该页研究，不代表无更新"
+        },
+        {
+          "id": "small-model-status",
+          "reason": "尚未完成该页研究，不代表无更新"
+        },
+        {
+          "id": "inference-engines",
+          "reason": "尚未完成该页研究，不代表无更新"
+        }
+      ]
+    },
+    "checked_pages": [
+      "hardware-status"
+    ],
+    "previous_evidence": {
+      "request_id": "morning-20261106-r1",
+      "bundle_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "audit_sha256": "1d2bd993690186cab82699f99256e4a8148e64622ae1de549f44b4775457ccab",
+      "archive_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "report_commit": "cccccccccccccccccccccccccccccccccccccccc"
+    }
+  },
+  "verified_event_keys": [
+    "cache-fix",
+    "new-page-2"
+  ],
+  "evidence_metadata_sha256": "0b35d0078c8b9f1a23374c657947e76388b1fb1f0c4aa6472dffaadf9627e38b",
+  "budget_accounting": {
+    "successful_attempts": {
+      "source": 20,
+      "model": 4
+    },
+    "successful_seconds": 109,
+    "failed_attempts": {
+      "source": 1,
+      "model": 0
+    },
+    "failed_seconds": 1,
+    "unknown_attempts": {
+      "source": 1,
+      "model": 0
+    },
+    "reserved_unknown_seconds": 180,
+    "charged_seconds": 289
+  },
+  "run_elapsed_seconds": 720.0,
+  "budget_policy": "successful_work_hourly_continuation_v1"
+}

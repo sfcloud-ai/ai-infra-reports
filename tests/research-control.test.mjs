@@ -1394,7 +1394,7 @@ test('full ready schema 1.2 still requires installed page decoder authority with
 
 test('expired undispatched source remains charged but admits a fresh bounded retry',async()=>{
  for(const inputPlan of [plan,layeredPlan()]){const s=setup();try{
-  let run=start(s,inputPlan);const op=source(),c=command('reserve',{operations:[op]},run);queue(s,c);
+  let run=start(s,inputPlan);const op=source('https://example.org/changes?b=2&a=1'),c=command('reserve',{operations:[op]},run);queue(s,c);
   const receipt='1793491210.000001';
   await advanceResearchControl(s,config,{controlReceipt:async()=>receipt},now);
   run=execute(s,command('status',{offset:0}),now+70000).run;
@@ -1410,9 +1410,9 @@ test('expired undispatched source remains charged but admits a fresh bounded ret
   const replay=execute(s,command('settle',{operation_id:op.operation_id,outcome:'acknowledged',elapsed_seconds:null,archive_sha256:hash,file_sha256:digest(result),native_result:null},settled.run),now+70000);
   assert.equal(replay.code,'operation_unsettled');
   assert.equal(execute(s,command('resume',{operation_id:op.operation_id},settled.run),now+70000).code,'resume_original_intent');
-  const retried=execute(s,command('reserve',{operations:[source()]},settled.run),now+70000);
+  const retried=execute(s,command('reserve',{operations:[source('https://example.org/changes?a=1&b=2')]},settled.run),now+70000);
   assert.equal(retried.status,'committed');assert.equal(retried.run.charged_seconds,360);
-  assert.equal(execute(s,command('reserve',{operations:[source()]},retried.run),now+70000).code,inputPlan===plan?'attempt_budget':'research_original_result_unknown');
+  assert.equal(execute(s,command('reserve',{operations:[source('https://example.org/changes?a=1&b=2')]},retried.run),now+70000).code,inputPlan===plan?'attempt_budget':'research_original_result_unknown');
  }finally{s.close();}}
 });
 
@@ -1460,4 +1460,345 @@ test('no-dispatch expiry honors the original embedded lease after current owner 
   const settled=execute(s,command('settle',{operation_id:op.operation_id,outcome:'acknowledged',elapsed_seconds:null,archive_sha256:hash,file_sha256:digest(result),native_result:null},run),observed);
   assert.equal(settled.status,'committed',JSON.stringify(settled));assert.equal(settled.run.charged_seconds,180);
  }finally{s.close();}
+});
+
+function continuationFixture(status='partial',earlySource=false,oldBody=false){
+ const s=setup(),p=JSON.parse(layeredPlan());p.model_stages=['research','editor','review'];let run=start(s,Buffer.from(JSON.stringify(p)));
+ const added=source();if(earlySource)run=execute(s,command('reserve',{operations:[added]},run)).run;
+ const originalInput=Buffer.from(JSON.stringify({request_id:id,stage:'editor',sources:oldBody?[{body_sha256:digest(Buffer.from('new original source body'))}]:[],research:{result_sha256:'a'.repeat(64),outputs:[{sha256:'b'.repeat(64)}]}}));
+ const first={...source('editor','model'),max_seconds:600,input_sha256:digest(originalInput)};
+ run=execute(s,command('reserve',{operations:[first]},run)).run;
+ const result=Buffer.from(JSON.stringify({request_id:id,operation_id:first.operation_id,status,elapsed_seconds:400}));
+ const head=archive(s,{'stage_artifacts/prior.json':result});
+ run=execute(s,command('settle',{operation_id:first.operation_id,outcome:'acknowledged',elapsed_seconds:400,archive_sha256:head,file_sha256:digest(result),native_result:null},run)).run;
+ if(!earlySource)run=execute(s,command('reserve',{operations:[added]},run)).run;
+ const content=Buffer.from('new original source body');
+ const body=Buffer.from(JSON.stringify({request_id:id,operation_id:added.operation_id,url:added.input.url,status:'ok',elapsed_seconds:10,response_complete:true,curl_exit_code:0,error:'',http_status:200,content_sha256:digest(content)}));
+ const addedHead=archive(s,{'stage_artifacts/new-source.json':body,'stage_artifacts/source-body.txt':content});
+ run=execute(s,command('settle',{operation_id:added.operation_id,outcome:'acknowledged',elapsed_seconds:10,archive_sha256:addedHead,file_sha256:digest(body),native_result:null},run)).run;
+ const payloadValue={request_id:id,stage:'editor',sources:[{operation_id:added.operation_id,result_sha256:digest(body),body_sha256:digest(content)}]};
+ const manifest={schema_version:'model_prepublication_continuation_v1',request_id:id,stage:'editor',previous_operation_id:first.operation_id,checkpoint_archive_sha256:head,checkpoint_file_sha256:digest(result),payload_sha256:'0'.repeat(64),added_evidence:[{operation_id:added.operation_id,archive_sha256:addedHead,file_sha256:digest(body)}]};
+ function next(changes={},payloadChanges={}){
+  const m={...manifest,...changes};
+  const payload=Buffer.from(JSON.stringify({...payloadValue,continuation:{previous_operation_id:m.previous_operation_id,checkpoint_archive_sha256:m.checkpoint_archive_sha256,checkpoint_file_sha256:m.checkpoint_file_sha256,added_evidence:m.added_evidence},...payloadChanges}));
+  if(!('payload_sha256' in changes))m.payload_sha256=digest(payload);
+  const data=Buffer.from(JSON.stringify(m));
+  const nextHead=archive(s,{'stage_artifacts/continuation.json':data,'stage_artifacts/new-input.txt':payload,'stage_artifacts/original-input.json':originalInput});
+  return {...source('editor','model'),max_seconds:800,input_sha256:digest(data),input:{previous_operation_id:first.operation_id,checkpoint_archive_sha256:head,checkpoint_file_sha256:digest(result),continuation_archive_sha256:nextHead}};
+ }
+ return {s,run,first,added,manifest,next,originalInput,content};
+}
+test('prepublication continuation preserves successful results and cumulative stage budget',()=>{
+ for(const status of ['partial','ok']){
+  const f=continuationFixture(status);try{
+   const original=authorityRows(f.s).research_control_ops,op=f.next();
+   assert.equal(execute(f.s,command('reserve',{operations:[{...op,max_seconds:801}]},f.run)).code,'model_stage_budget');
+   assert.deepEqual(authorityRows(f.s).research_control_ops,original);
+   const result=execute(f.s,command('reserve',{operations:[op]},f.run));assert.equal(result.status,'committed');
+   assert.equal(result.run.charged_seconds,1210);
+   const old=f.s.db.prepare('SELECT * FROM research_control_ops WHERE operation_id=?').get(f.first.operation_id);
+   assert.equal(old.phase,'acknowledged');assert.equal(old.elapsed_seconds,400);
+   const unknownResult=execute(f.s,command('reserve',{operations:[f.next()]},result.run));
+   assert.equal(unknownResult.code,'model_recovery_original');
+  }finally{f.s.close();}
+ }
+});
+test('prepublication continuation authenticates new bytes and refuses missing or substituted evidence',()=>{
+ for(const mutation of [
+  {stage:'review'}, {request_id:'morning-20261102-r1'}, {payload_sha256:'f'.repeat(64)},
+  {added_evidence:[]}, {added_evidence:[{operation_id:randomUUID(),archive_sha256:'a'.repeat(64),file_sha256:'b'.repeat(64)}]},
+ ]){
+  const f=continuationFixture();try{
+   const before=authorityRows(f.s).research_control_ops,op=f.next(mutation),result=execute(f.s,command('reserve',{operations:[op]},f.run));
+   assert.equal(result.status,'rejected');assert.match(result.code,/model_continuation_/);assert.deepEqual(authorityRows(f.s).research_control_ops,before);
+  }finally{f.s.close();}
+ }
+ const f=continuationFixture();try{
+  const op=f.next({added_evidence:[f.manifest.added_evidence[0],f.manifest.added_evidence[0]]});
+  assert.equal(execute(f.s,command('reserve',{operations:[op]},f.run)).code,'model_continuation_evidence');
+  const absent={...f.next(),input_sha256:'f'.repeat(64)};
+  assert.equal(execute(f.s,command('reserve',{operations:[absent]},f.run)).code,'model_continuation_manifest');
+  f.s.db.prepare("UPDATE research_control_ops SET phase='unknown' WHERE operation_id=?").run(f.added.operation_id);
+  assert.equal(execute(f.s,command('reserve',{operations:[f.next()]},f.run)).code,'model_continuation_new_evidence');
+ }finally{f.s.close();}
+});
+test('prepublication continuation cannot relabel failure as new successful work',()=>{
+ const f=continuationFixture('failed');try{
+  assert.equal(execute(f.s,command('reserve',{operations:[f.next()]},f.run)).code,'model_continuation_prior_success');
+ }finally{f.s.close();}
+});
+
+test('continuation refuses previously available evidence and preserves global budget',()=>{
+ const old=continuationFixture('partial',true);try{
+  assert.equal(execute(old.s,command('reserve',{operations:[old.next()]},old.run)).code,'model_continuation_new_evidence');
+ }finally{old.s.close();}
+ const f=continuationFixture();try{
+  // Other work consumes the original global allowance, without changing stage quota.
+  const extra={...source('review','model'),max_seconds:1200};
+  let run=execute(f.s,command('reserve',{operations:[extra]},f.run)).run;
+  const result=Buffer.from(JSON.stringify({request_id:id,operation_id:extra.operation_id,status:'ok',elapsed_seconds:2800}));
+  const head=archive(f.s,{'stage_artifacts/other.json':result});
+  run=execute(f.s,command('settle',{operation_id:extra.operation_id,outcome:'acknowledged',elapsed_seconds:2800,archive_sha256:head,file_sha256:digest(result),native_result:null},run)).run;
+  assert.equal(execute(f.s,command('reserve',{operations:[f.next()]},run)).code,'time_budget');
+ }finally{f.s.close();}
+});
+
+test('continuation requires stored nonempty source body, not a JSON success label',()=>{
+ const f=continuationFixture();try{
+  const data=Buffer.from(JSON.stringify({request_id:id,operation_id:f.added.operation_id,url:f.added.input.url,status:'ok',elapsed_seconds:10}));
+  const head=archive(f.s,{'stage_artifacts/empty-source.json':data});
+  f.s.db.prepare('UPDATE research_control_ops SET result_archive=?,result_file=? WHERE operation_id=?').run(head,digest(data),f.added.operation_id);
+  const op=f.next({added_evidence:[{operation_id:f.added.operation_id,archive_sha256:head,file_sha256:digest(data)}]});
+  assert.equal(execute(f.s,command('reserve',{operations:[op]},f.run)).code,'model_continuation_source_content');
+ }finally{f.s.close();}
+});
+
+test('publication rechecks accumulated successful model time after continuation overrun',async()=>{
+ for(const elapsed of [800,900]){
+  const f=continuationFixture();try{
+   const second=f.next();let run=execute(f.s,command('reserve',{operations:[second]},f.run)).run;
+   const data=Buffer.from(JSON.stringify({request_id:id,operation_id:second.operation_id,status:'ok',elapsed_seconds:elapsed}));
+   const head=archive(f.s,{'stage_artifacts/continued-result.json':data});
+   run=execute(f.s,command('settle',{operation_id:second.operation_id,outcome:'acknowledged',elapsed_seconds:elapsed,archive_sha256:head,file_sha256:digest(data),native_result:null},run)).run;
+   const bundle=await encodeBundle(FILES,id,'b'.repeat(40),'a'.repeat(40)),total=410+elapsed;
+   const a=auditSummary({schema_version:'1.4',budget_policy:LAYERED_BUDGET_POLICY,limits:{source_attempts:2,model_attempts:2,source_attempt_seconds:180,model_stage_seconds:1200,run_seconds:3600},budget_accounting:{successful_attempts:{source:1,model:2},failed_attempts:{source:0,model:0},unknown_attempts:{source:0,model:0},successful_seconds:total,failed_seconds:0,reserved_unknown_seconds:0,charged_seconds:total}});
+   const audit=Buffer.from(JSON.stringify(a)),h=archive(f.s,{'bundle.json':bundle,'audit.json':audit});
+   const result=await issuePermit(f.s,command('permit',{archive_sha256:h,bundle_sha256:digest(bundle),audit_sha256:digest(audit)},run));
+   if(elapsed===800)assert.equal(result.status,'committed');else assert.equal(result.code,'publication_model_stage_budget');
+  }finally{f.s.close();}
+ }
+});
+
+test('publication retains ordinary model missing timing at its original reservation',async()=>{
+ const s=setup();try{
+  let run=start(s,layeredPlan());const op={...source('editor','model'),max_seconds:600};run=execute(s,command('reserve',{operations:[op]},run)).run;
+  const d=Buffer.from(JSON.stringify({request_id:id,operation_id:op.operation_id,status:'ok',elapsed_seconds:null}));const h=archive(s,{'result.json':d});
+  run=execute(s,command('settle',{operation_id:op.operation_id,outcome:'acknowledged',elapsed_seconds:null,archive_sha256:h,file_sha256:digest(d),native_result:null},run)).run;
+  const b=await encodeBundle(FILES,id,'b'.repeat(40),'a'.repeat(40));const a=Buffer.from(JSON.stringify(auditSummary({schema_version:'1.4',budget_policy:LAYERED_BUDGET_POLICY,limits:{source_attempts:2,model_attempts:2,source_attempt_seconds:180,model_stage_seconds:1200,run_seconds:3600},budget_accounting:{successful_attempts:{source:0,model:0},failed_attempts:{source:0,model:0},unknown_attempts:{source:0,model:1},successful_seconds:0,failed_seconds:0,reserved_unknown_seconds:600,charged_seconds:600}})));const ah=archive(s,{'bundle.json':b,'audit.json':a});
+  assert.equal((await issuePermit(s,command('permit',{archive_sha256:ah,bundle_sha256:digest(b),audit_sha256:digest(a)},run))).status,'committed');
+ }finally{s.close();}
+});
+
+test('legacy recovery continuation is durably rejected without parsing body-bound results',()=>{
+ const s=setup();try{
+  let run=start(s);installResearchRecovery(s.db,'synthetic legacy recovery');
+  const grant={schema_version:'research_recovery_grant_v1',grant_id:randomUUID(),request_id:id,generation:config.research_control.generation,plan_hash:run.plan_hash,previous_sha256:null,authorization_reference:'synthetic approval',effective_not_before:nextResearchContinuationAt(now),window_seconds:3600,failed_attempts_consume_success_budget:false,continuation_policy:'hourly_20_until_complete'};
+  const bytes=Buffer.from(JSON.stringify(grant));approveResearchRecoveryGrant(s.db,bytes,grant.authorization_reference,now);
+  run=execute(s,command('recovery_grant',{grant_base64:bytes.toString('base64')},run)).run;
+  const later=grant.effective_not_before;run=execute(s,command('claim',{plan_base64:plan.toString('base64')},run),later).run;
+  const first=source('editor','model');run=execute(s,command('reserve',{operations:[first]},run),later).run;
+  const result=Buffer.from(JSON.stringify({request_id:id,operation_id:first.operation_id,status:'partial',elapsed_seconds:10}));
+  const h=archive(s,{'stage_artifacts/legacy-prior.json':result});
+  run=execute(s,command('settle',{operation_id:first.operation_id,outcome:'acknowledged',elapsed_seconds:10,archive_sha256:h,file_sha256:digest(result),native_result:null},run),later).run;
+  const op={...source('editor','model'),input:{previous_operation_id:first.operation_id,checkpoint_archive_sha256:h,checkpoint_file_sha256:digest(result),continuation_archive_sha256:h}};
+  const c=command('reserve',{operations:[op]},run),rejected=execute(s,c,later);
+  assert.equal(rejected.code,'model_continuation_layered_plan');assert.equal(rejected.status,'rejected');assert.equal(rejected.dispatch_granted,false);
+  assert.deepEqual(execute(s,c,later),{...rejected,replayed:true});
+ }finally{s.close();}
+});
+
+test('publication retains a known source failure with unknown duration at its reservation',async()=>{
+ const s=setup();try{
+  let run=start(s,layeredPlan());const op=source();run=execute(s,command('reserve',{operations:[op]},run)).run;
+  const d=Buffer.from(JSON.stringify({request_id:id,operation_id:op.operation_id,url:op.input.url,status:'failed',elapsed_seconds:null}));const h=archive(s,{'result.json':d});
+  run=execute(s,command('settle',{operation_id:op.operation_id,outcome:'acknowledged',elapsed_seconds:null,archive_sha256:h,file_sha256:digest(d),native_result:null},run)).run;
+  const b=await encodeBundle(FILES,id,'b'.repeat(40),'a'.repeat(40));const a=Buffer.from(JSON.stringify(auditSummary({schema_version:'1.4',budget_policy:LAYERED_BUDGET_POLICY,limits:{source_attempts:2,model_attempts:2,source_attempt_seconds:180,model_stage_seconds:1200,run_seconds:3600},budget_accounting:{successful_attempts:{source:0,model:0},failed_attempts:{source:0,model:0},unknown_attempts:{source:1,model:0},successful_seconds:0,failed_seconds:0,reserved_unknown_seconds:180,charged_seconds:180}})));const ah=archive(s,{'bundle.json':b,'audit.json':a});
+  assert.equal((await issuePermit(s,command('permit',{archive_sha256:ah,bundle_sha256:digest(b),audit_sha256:digest(a)},run))).status,'committed');
+ }finally{s.close();}
+});
+
+
+test('continuation payload must bind its checkpoint and every evidence content hash',()=>{
+ for(const changes of [{continuation:null},{sources:[]},{stage:'research'}]){
+  const f=continuationFixture();try{
+   const result=execute(f.s,command('reserve',{operations:[f.next({},changes)]},f.run));
+   assert.equal(result.status,'rejected');assert.match(result.code,/model_continuation_(payload|stage_input)/);
+  }finally{f.s.close();}
+ }
+ const f=continuationFixture('partial',false,true);try{
+  assert.equal(execute(f.s,command('reserve',{operations:[f.next()]},f.run)).code,'model_continuation_no_new_content');
+ }finally{f.s.close();}
+});
+test('continuation refuses to guess when exact previous input bytes are missing',()=>{
+ const f=continuationFixture();try{
+  const op=f.next(),row=f.s.db.prepare('SELECT bytes FROM research_archives WHERE hash=?').get(op.input.continuation_archive_sha256);
+  const files=Object.fromEntries(decodeResearchArchive(Buffer.from(row.bytes)).files.filter(file=>file.sha256!==f.first.input_sha256).map(file=>[file.path,file.data]));
+  op.input.continuation_archive_sha256=archive(f.s,files);
+  assert.equal(execute(f.s,command('reserve',{operations:[op]},f.run)).code,'model_continuation_input_bytes');
+ }finally{f.s.close();}
+});
+test('editor continuation binds newly archived research output bytes',()=>{
+ for(const scalar of [false,true]){
+ const f=continuationFixture();try{
+  const research={...source('research','model'),max_seconds:30};let run=execute(f.s,command('reserve',{operations:[research]},f.run)).run;
+  const output=Buffer.from('new research findings');const data=Buffer.from(JSON.stringify({request_id:id,operation_id:research.operation_id,status:'partial',elapsed_seconds:10,...(scalar?{output_sha256:digest(output)}:{outputs:[{sha256:digest(output)}]})}));
+  const head=archive(f.s,{'stage_artifacts/new-research.json':data,'stage_artifacts/new-findings.txt':output});
+  run=execute(f.s,command('settle',{operation_id:research.operation_id,outcome:'acknowledged',elapsed_seconds:10,archive_sha256:head,file_sha256:digest(data),native_result:null},run)).run;
+  const evidence={added_evidence:[{operation_id:research.operation_id,archive_sha256:head,file_sha256:digest(data)}]};
+  const misplaced=f.next(evidence,{sources:[{body_sha256:digest(output)}],research:{operation_id:research.operation_id,result_sha256:digest(data),outputs:[]}});
+  assert.equal(execute(f.s,command('reserve',{operations:[misplaced]},run)).code,'model_continuation_payload_research');
+  const extra=f.next(evidence,{sources:[],research:{operation_id:research.operation_id,result_sha256:digest(data),outputs:[{sha256:digest(output)},{sha256:'f'.repeat(64)}]}});
+  assert.equal(execute(f.s,command('reserve',{operations:[extra]},run)).code,'model_continuation_payload_research');
+  const op=f.next(evidence,{sources:[],research:{operation_id:research.operation_id,result_sha256:digest(data),outputs:[{sha256:digest(output)}]}});
+  assert.equal(execute(f.s,command('reserve',{operations:[op]},run)).status,'committed');
+ }finally{f.s.close();}
+ }
+});
+
+test('research output declarations are a complete validated union',()=>{
+ for(const mode of ['union','invalid','missing']){
+  const f=continuationFixture();try{
+   const research={...source('research','model'),max_seconds:30};let run=execute(f.s,command('reserve',{operations:[research]},f.run)).run;
+   const first=Buffer.from('first new output'),second=Buffer.from('second new output');
+   const result=Buffer.from(JSON.stringify({request_id:id,operation_id:research.operation_id,status:'ok',elapsed_seconds:10,outputs:[{sha256:digest(first)}],output_sha256:mode==='invalid'?'invalid':digest(second)}));
+   const files={'stage_artifacts/result.json':result,'stage_artifacts/first.txt':first};if(mode!=='missing')files['stage_artifacts/second.txt']=second;
+   const head=archive(f.s,files);run=execute(f.s,command('settle',{operation_id:research.operation_id,outcome:'acknowledged',elapsed_seconds:10,archive_sha256:head,file_sha256:digest(result),native_result:null},run)).run;
+   const op=f.next({added_evidence:[{operation_id:research.operation_id,archive_sha256:head,file_sha256:digest(result)}]},{sources:[],research:{operation_id:research.operation_id,result_sha256:digest(result),outputs:[{sha256:digest(first)},{sha256:digest(second)}]}});
+   const answer=execute(f.s,command('reserve',{operations:[op]},run));
+   if(mode==='union')assert.equal(answer.status,'committed');else assert.equal(answer.code,'model_continuation_model_content');
+  }finally{f.s.close();}
+ }
+});
+
+test('continuation rejects a source payload with right bytes but wrong operation binding',()=>{
+ const f=continuationFixture();try{
+  const op=f.next({},{sources:[{operation_id:randomUUID(),result_sha256:f.manifest.added_evidence[0].file_sha256,body_sha256:digest(f.content)}]});
+  assert.equal(execute(f.s,command('reserve',{operations:[op]},f.run)).code,'model_continuation_payload_source');
+ }finally{f.s.close();}
+});
+
+test('continuation rejects duplicate source identity with a different body',()=>{
+ const f=continuationFixture();try{
+  const bound={operation_id:f.added.operation_id,result_sha256:f.manifest.added_evidence[0].file_sha256,body_sha256:digest(f.content)};
+  const op=f.next({},{sources:[bound,{...bound,body_sha256:'f'.repeat(64)}]});
+  assert.equal(execute(f.s,command('reserve',{operations:[op]},f.run)).code,'model_continuation_payload_source');
+ }finally{f.s.close();}
+});
+
+test('untimed continuation stays reconcilable until original timing is known',()=>{
+ const f=continuationFixture();try{
+  const op=f.next();let run=execute(f.s,command('reserve',{operations:[op]},f.run)).run;
+  const data=Buffer.from(JSON.stringify({request_id:id,operation_id:op.operation_id,status:'ok',elapsed_seconds:null})),h=archive(f.s,{'stage_artifacts/unknown-continuation.json':data});
+  const rejected=execute(f.s,command('settle',{operation_id:op.operation_id,outcome:'acknowledged',elapsed_seconds:null,archive_sha256:h,file_sha256:digest(data),native_result:null},run));
+  assert.equal(rejected.code,'model_continuation_timing_required');assert.equal(rejected.run.charged_seconds,1210);
+  assert.equal(f.s.db.prepare('SELECT phase FROM research_control_ops WHERE operation_id=?').get(op.operation_id).phase,'intent');
+  run=execute(f.s,command('settle',unknown(op.operation_id),run)).run;
+  const known=Buffer.from(JSON.stringify({request_id:id,operation_id:op.operation_id,status:'ok',elapsed_seconds:20})),kh=archive(f.s,{'stage_artifacts/known-continuation.json':known});
+  const settled=execute(f.s,command('settle',{operation_id:op.operation_id,outcome:'acknowledged',elapsed_seconds:20,archive_sha256:kh,file_sha256:digest(known),native_result:null},run));
+  assert.equal(settled.status,'committed');assert.equal(settled.run.charged_seconds,430);
+ }finally{f.s.close();}
+});
+
+test('no-dispatch observation cannot precede a late grant receipt',async()=>{
+ const s=setup();try{
+  let run=start(s,layeredPlan());const op=source(),c=command('reserve',{operations:[op]},run);queue(s,c);
+  const receipt=String((now+910000)/1000)+'.000001';
+  await advanceResearchControl(s,config,{assertReady:()=>{throw Error('synthetic cooldown');}},now);
+  await advanceResearchControl(s,config,{controlReceipt:async()=>receipt},now+899000);
+  run=execute(s,command('status',{offset:0}),now+899500).run;
+  run=execute(s,command('renew',{},run),now+899500).run;
+  const observed=now+901000,originalGrant=Buffer.from(s.db.prepare('SELECT reply_text FROM research_control_events WHERE command_id=?').get(c.command_id).reply_text);
+  const observation=Buffer.from(JSON.stringify({artifact_kind:'local_dispatch_observation_not_settlement',request_id:id,status:'not_dispatched_grant_expired',dispatch_started:false,source_requests:0,operation_ids:[op.operation_id],command_id:c.command_id,receipt_ts:receipt,observed_at:new Date(observed).toISOString()}));
+  const result=Buffer.from(JSON.stringify({schema_version:'source_not_dispatched_v1',request_id:id,operation_id:op.operation_id,url:op.input.url,input_sha256:op.input_sha256,status:'not_dispatched',dispatch_started:false,source_requests:0,elapsed_seconds:null,reserved_seconds:op.max_seconds,observation_sha256:digest(observation),grant_command_id:c.command_id,grant_receipt_ts:receipt,grant_receipt_sha256:digest(originalGrant)}));
+  const missing=archive(s,{'observation.json':observation,'result.json':result});
+  assert.equal(execute(s,command('settle',{operation_id:op.operation_id,outcome:'acknowledged',elapsed_seconds:null,archive_sha256:missing,file_sha256:digest(result),native_result:null},run),observed).code,'source_not_dispatched_evidence');
+  const hash=archive(s,{'observation.json':observation,'result.json':result,'grant.txt':originalGrant});
+  const settled=execute(s,command('settle',{operation_id:op.operation_id,outcome:'acknowledged',elapsed_seconds:null,archive_sha256:hash,file_sha256:digest(result),native_result:null},run),observed);
+  assert.equal(settled.code,'source_not_dispatched_evidence');assert.equal(settled.run.charged_seconds,180);
+ }finally{s.close();}
+});
+
+test('prior model source contents require comparable explicit hashes',()=>{
+ for(const sourceEntry of [{body:'old inline body'},{body_sha256:null,body:'old inline body'},{body_sha256:null,body_file:'old-body.txt'},{body_sha256:null,status:'ok'}]){
+  const f=continuationFixture();try{
+   const input=Buffer.from(JSON.stringify({request_id:id,stage:'editor',sources:[sourceEntry]})),op=f.next();
+   f.s.db.prepare('UPDATE research_control_ops SET input_hash=? WHERE operation_id=?').run(digest(input),f.first.operation_id);
+   const original=f.s.db.prepare('SELECT bytes FROM research_archives WHERE hash=?').get(op.input.continuation_archive_sha256);
+   const files=Object.fromEntries(decodeResearchArchive(Buffer.from(original.bytes)).files.map(file=>[file.path,file.data]));files['stage_artifacts/original-input.json']=input;
+   op.input.continuation_archive_sha256=archive(f.s,files);
+   assert.equal(execute(f.s,command('reserve',{operations:[op]},f.run)).code,'model_continuation_stage_input');
+  }finally{f.s.close();}
+ }
+});
+
+test('continuation cannot relabel a stored source URL or input identity',()=>{
+ for(const changes of [{url:'https://example.org/other'},{input_sha256:'f'.repeat(64)}]){
+  const f=continuationFixture();try{
+   const op=f.next({},{sources:[{operation_id:f.added.operation_id,result_sha256:f.manifest.added_evidence[0].file_sha256,body_sha256:digest(f.content),...changes}]});
+   assert.equal(execute(f.s,command('reserve',{operations:[op]},f.run)).code,'model_continuation_payload_source');
+  }finally{f.s.close();}
+ }
+});
+test('prior model research must use explicit hashed outputs',()=>{
+ for(const research of ['inline prior output',{text:'inline prior output'},{outputs:[{sha256:'f'.repeat(64),text:'inline prior output'}]}]){
+  const f=continuationFixture();try{
+   const input=Buffer.from(JSON.stringify({request_id:id,stage:'editor',sources:[],research})),op=f.next();
+   f.s.db.prepare('UPDATE research_control_ops SET input_hash=? WHERE operation_id=?').run(digest(input),f.first.operation_id);
+   const original=f.s.db.prepare('SELECT bytes FROM research_archives WHERE hash=?').get(op.input.continuation_archive_sha256);
+   const files=Object.fromEntries(decodeResearchArchive(Buffer.from(original.bytes)).files.map(file=>[file.path,file.data]));files['stage_artifacts/original-input.json']=input;
+   op.input.continuation_archive_sha256=archive(f.s,files);
+   assert.equal(execute(f.s,command('reserve',{operations:[op]},f.run)).code,'model_continuation_stage_input');
+  }finally{f.s.close();}
+ }
+});
+
+test('no-dispatch ordering preserves microsecond precision after a late receipt',async()=>{
+ const s=setup();try{
+  let run=start(s,layeredPlan());const op=source(),c=command('reserve',{operations:[op]},run);queue(s,c);
+  const receipt=String((now+910000)/1000)+'.123456';
+  await advanceResearchControl(s,config,{assertReady:()=>{throw Error('synthetic cooldown');}},now);
+  await advanceResearchControl(s,config,{controlReceipt:async()=>receipt},now+899000);
+  run=execute(s,command('status',{offset:0}),now+899500).run;
+  run=execute(s,command('renew',{},run),now+899500).run;
+  const observed=now+910124,originalGrant=Buffer.from(s.db.prepare('SELECT reply_text FROM research_control_events WHERE command_id=?').get(c.command_id).reply_text);
+  const observation=Buffer.from(JSON.stringify({artifact_kind:'local_dispatch_observation_not_settlement',request_id:id,status:'not_dispatched_grant_expired',dispatch_started:false,source_requests:0,operation_ids:[op.operation_id],command_id:c.command_id,receipt_ts:receipt,observed_at:new Date(now+910123).toISOString().replace('.123Z','.123900Z')}));
+  const result=Buffer.from(JSON.stringify({schema_version:'source_not_dispatched_v1',request_id:id,operation_id:op.operation_id,url:op.input.url,input_sha256:op.input_sha256,status:'not_dispatched',dispatch_started:false,source_requests:0,elapsed_seconds:null,reserved_seconds:op.max_seconds,observation_sha256:digest(observation),grant_command_id:c.command_id,grant_receipt_ts:receipt,grant_receipt_sha256:digest(originalGrant)}));
+  const missing=archive(s,{'observation.json':observation,'result.json':result});
+  assert.equal(execute(s,command('settle',{operation_id:op.operation_id,outcome:'acknowledged',elapsed_seconds:null,archive_sha256:missing,file_sha256:digest(result),native_result:null},run),observed).code,'source_not_dispatched_evidence');
+  const hash=archive(s,{'observation.json':observation,'result.json':result,'grant.txt':originalGrant});
+  const settled=execute(s,command('settle',{operation_id:op.operation_id,outcome:'acknowledged',elapsed_seconds:null,archive_sha256:hash,file_sha256:digest(result),native_result:null},run),observed);
+  assert.equal(settled.status,'committed',JSON.stringify(settled));assert.equal(settled.run.charged_seconds,180);
+ }finally{s.close();}
+});
+
+
+test('actual permit rejects omitted batch cancellations and records a compatible versioned receipt',async()=>{
+ const s=setup();try{
+  let run=start(s,layeredPlan());const ops=Array.from({length:8},(_,i)=>({...source('https://example.org/batch-'+i),max_seconds:30}));
+  const reserved=command('reserve',{operations:ops},run);queue(s,reserved);
+  const receipt='1793491210.000001';await advanceResearchControl(s,config,{controlReceipt:async()=>receipt},now);
+  run=execute(s,command('status',{offset:0}),now+70000).run;
+  const observation=Buffer.from(JSON.stringify({artifact_kind:'local_dispatch_observation_not_settlement',request_id:id,status:'not_dispatched_grant_expired',dispatch_started:false,source_requests:0,operation_ids:ops.map(op=>op.operation_id),command_id:reserved.command_id,receipt_ts:receipt,observed_at:new Date(now+65000).toISOString()}));
+  for(const op of ops){
+   const data=Buffer.from(JSON.stringify({schema_version:'source_not_dispatched_v1',request_id:id,operation_id:op.operation_id,url:op.input.url,input_sha256:op.input_sha256,status:'not_dispatched',dispatch_started:false,source_requests:0,elapsed_seconds:null,reserved_seconds:30,observation_sha256:digest(observation),grant_command_id:reserved.command_id,grant_receipt_ts:receipt}));
+   const h=archive(s,{'observation.json':observation,'result.json':data});
+   const settled=execute(s,command('settle',{operation_id:op.operation_id,outcome:'acknowledged',elapsed_seconds:null,archive_sha256:h,file_sha256:digest(data),native_result:null},run),now+70000);assert.equal(settled.status,'committed');run=settled.run;
+  }
+  const bundle=await encodeBundle(FILES,id,'b'.repeat(40),'a'.repeat(40));
+  for(const count of [1,8]){
+   const metadata=Buffer.from(JSON.stringify({sources:ops.slice(0,count).map(op=>({id:op.operation_id,attempt_records:[{status:'not_dispatched'}]}))}));
+   const summary=Buffer.from(JSON.stringify(auditSummary({schema_version:'1.4',budget_policy:LAYERED_BUDGET_POLICY,evidence_metadata_sha256:digest(metadata),limits:{source_attempts:2,model_attempts:2,source_attempt_seconds:180,model_stage_seconds:1200,run_seconds:3600},budget_accounting:{successful_attempts:{source:0,model:0},failed_attempts:{source:0,model:0},unknown_attempts:{source:count,model:0},successful_seconds:0,failed_seconds:0,reserved_unknown_seconds:count*30,charged_seconds:count*30}})));
+   const h=archive(s,{'bundle.json':bundle,'metadata.json':metadata,'summary.json':summary}),c=command('permit',{archive_sha256:h,bundle_sha256:digest(bundle),audit_sha256:digest(summary)},run);
+   const answer=await issuePermit(s,c);
+   if(count===1){assert.equal(answer.code,'publication_budget_accounting');assert.equal(answer.cancellation_page_version,undefined);assert.equal(answer.run.permit,null);}
+   else{
+    assert.equal(answer.status,'committed');assert.equal(answer.cancellation_page_version,1);assert.equal(answer.run.charged_seconds,240);
+    const parsed=await nativeFixtureControl(s)(Buffer.from(JSON.stringify(c)));assert.equal(parsed.cancellation_page_version,1);
+    assert.equal(JSON.parse(s.db.prepare('SELECT result FROM research_control_commands WHERE command_id=?').get(c.command_id).result).cancellation_page_version,1);
+   }
+  }
+ }finally{s.close();}
+});
+
+test('editor-only continuation requires its original research checkpoint shape',()=>{
+ for(const research of [undefined,{outputs:[]},{result_sha256:'a'.repeat(64),outputs:[]}]){
+  const f=continuationFixture();try{
+   const input=Buffer.from(JSON.stringify({request_id:id,stage:'editor',sources:[],...(research===undefined?{}:{research})})),op=f.next();
+   f.s.db.prepare('UPDATE research_control_ops SET input_hash=? WHERE operation_id=?').run(digest(input),f.first.operation_id);
+   const original=f.s.db.prepare('SELECT bytes FROM research_archives WHERE hash=?').get(op.input.continuation_archive_sha256);
+   const files=Object.fromEntries(decodeResearchArchive(Buffer.from(original.bytes)).files.map(file=>[file.path,file.data]));files['stage_artifacts/original-input.json']=input;
+   op.input.continuation_archive_sha256=archive(f.s,files);
+   const answer=execute(f.s,command('reserve',{operations:[op]},f.run));assert.equal(answer.code,'model_continuation_prior_research');assert.equal(answer.run.charged_seconds,410);
+  }finally{f.s.close();}
+ }
 });

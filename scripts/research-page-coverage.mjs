@@ -55,8 +55,7 @@ function successorEvidenceValid(audit,report,previous,metadata){
   const before=prior.discovery?.queries,after=metadata.discovery?.queries;
   if(!Array.isArray(before)||!Array.isArray(after)||!equal(after.slice(0,before.length),before))return false;
  }
- if(audit.coverage_contract===DISCOVERY_CONTRACT){if(!discoverySourcesPreserved(metadata,prior))return false;}
- else if(!Array.isArray(metadata.sources)||!Array.isArray(prior.sources)||!equal(metadata.sources.slice(0,prior.sources.length),prior.sources))return false;
+ if(!discoverySourcesPreserved(metadata,prior))return false;
  const added=report.page_delivery.added,oldReady=old.articles.map(a=>a.id),oldPending=old.page_delivery.pending.map(p=>p.id);
  if(!equal(added,ids.filter(id=>added.includes(id)))||added.length===0||!added.every(id=>oldPending.includes(id))
   ||!equal(report.articles.map(a=>a.id),ids.filter(id=>oldReady.includes(id)||added.includes(id)))

@@ -1,0 +1,857 @@
+{
+  "schema_version": "1.4",
+  "scope": "new_daily",
+  "date": "2026-11-06",
+  "as_of": "2026-11-06T07:20:00+08:00",
+  "started_at": "2026-11-06T07:20:00+08:00",
+  "finished_at": "2026-11-06T07:30:00+08:00",
+  "window_hours": 24,
+  "inputs": {
+    "history_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "prompt_commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "prompt_hashes": {
+      "research.md": "30d6d0106d7bb4c7acb7bb4220e981ea414a86c2cbbac90757ed0e830a7db968",
+      "editor.md": "78b6fe25326eadb6533cf519848222b9de9d37a99570ce1b4d5f8e575530aa49",
+      "sources.md": "879bbb19f2425e9194185bf771fccd8c3919320d3191da86642cbad2da32bfe4",
+      "delivery.md": "a1eca6d2a2784364d6853b8ce4de8ffd619a652dd84f041d5f6166b419f9a110",
+      "audit.md": "6d2d72bb3f30714faa41216818eae2a7e7c4160e3818f4564dbf079f07ab34fe"
+    },
+    "history_sha256": "438f15df62839fb8a1897e57c6bacfdd2c40dd034045949575e96d8353cbea83",
+    "candidates_sha256": "1521ce52978f2bc3db4109a775cd7f6cf38751572c352f69fc562ac45e522702",
+    "draft_sha256": "1f3b77f2f887bf751b70e5a233bc71e734260ab02da54af87acf9872d73276a0"
+  },
+  "limits": {
+    "source_attempts": 2,
+    "model_attempts": 2,
+    "source_attempt_seconds": 180,
+    "model_stage_seconds": 500,
+    "run_seconds": 1200
+  },
+  "sources": [
+    {
+      "id": "source",
+      "url": "https://example.org/change",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 10,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "80577fca4c73782d795ac63fb787c692916cb5d8ab6b17b2f00f8dd93cc57292",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 10,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-model_serving",
+      "url": "https://arxiv.org/search/?query=multi-model+serving",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "82d26a8b11765f0c499eeb9476366574e49b09c433ef5171c21fb9a7ece8f520",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-hardware",
+      "url": "https://developer.nvidia.com/blog/",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "c94e19fb727c335085c7c66058aab214a98e5c982e96df4562781c46f1088171",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-model_architecture",
+      "url": "https://huggingface.co/Qwen",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "f498e9184271b7c0ecb640aaaca31c5ccae9c489dabaa2d19eff54368125284d",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-embodied_training",
+      "url": "https://github.com/Physical-Intelligence/openpi",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "2c671ea0435c72aa256b0f0c4886655ed7334a89b726b0b754846153ac877574",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-small_models",
+      "url": "https://huggingface.co/HuggingFaceTB",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "cdca63865cd28d5b50d370beceafa2b6658ab082267676c9eded568a7c190c67",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-inference_engines",
+      "url": "https://github.com/vllm-project/vllm/releases",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "37b180cc68edb1d219686aa94045c534d678a39756d0f16b7c3fb64998ef1555",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-vllm",
+      "url": "https://api.github.com/repos/vllm-project/vllm/commits",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "ae91ceea7d93a4f9e59b80d7f02120446d9d987eed6de203df762e61f3afb421",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-sglang",
+      "url": "https://api.github.com/repos/sgl-project/sglang/commits",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "e1f858edb1ec04246ea50aa567f679842ca2265ed3e492c5c49aed764d3dd29c",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-deepinfer",
+      "url": "https://github.com/deepseek-ai/DeepInfer/commits",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "6fe6cf382cd2bb844a57465da19d4e211a28969f106675dae128a53e9b4bd014",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-vllm_blog",
+      "url": "https://vllm.ai/blog/archive",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "ac9ac38e09379fac4877d4bccee19046ea39db657eace74113e3c52b26f30436",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-sglang_blog",
+      "url": "https://www.sglang.io/blog",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "d096742a89ef4dc83347d0fd4e9f1d82237cbc6d437d07ecd551b8928c094d46",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-lmsys_blog",
+      "url": "https://www.lmsys.org/blog/",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "be24ef5adc17f033d8077cedbfe8e6d7decd38ead903a3e2ac700f2b103e0c35",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-deepseek_articles",
+      "url": "https://www.deepseek.com/news/",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "101d1d57c97f5832ae42d06a772f1d4438e954ae482fb98ab36677c79c6a9ee0",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-deepinfer_articles",
+      "url": "https://github.com/deepseek-ai/open-infra-index",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "edabd771f9dab7290ddb2b5c50632dcf90b58118f198dd8acc97f319126994c3",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-glm_blog",
+      "url": "https://z.ai/blog",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "5b6e28943f8d7affef4fac9908b5af4c47772b6dcf4544b28ca163c7022d57f0",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-qwen_blog",
+      "url": "https://qwen.ai/blog",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "5520812ed2870785b146d8bd1be2388405f9ee0d5a66293d22d0b404ce8d2cdf",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-glm_models",
+      "url": "https://huggingface.co/api/models?author=zai-org",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "4d2f31982b34990b393193ac7c804a328677fa57b8ce6e4ec76b83e7773311b6",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-deepseek_models",
+      "url": "https://huggingface.co/api/models?author=deepseek-ai",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "a39f188808115e9da6104108dc8a190a749e964f0dadb9f789954fb89e9ae6fb",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-qwen_models",
+      "url": "https://huggingface.co/api/models?author=Qwen",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "984684aa89c4c6d3d02c684ce0de31ee79ce3fdc85130caad4602f22a2cc6fe3",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "search-0",
+      "url": "https://api.github.com/search/repositories?q=GPU+memory+oversubscription+offload+in%3Areadme&per_page=10&page=1",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "1ffd92302e4307c15cdf05b9e041d32029f7a485856d1f9235456b8f420fa555",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "search-1",
+      "url": "https://api.github.com/search/repositories?q=GPU+sharing+scheduler+isolation+in%3Areadme&per_page=10&page=1",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "8fbe7b0aebce1c2eaf0c17b9bdae2d6dbf8cf73513392fd7aef2b3fda4f1f4a5",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "search-2",
+      "url": "https://api.github.com/search/repositories?q=GPU+tensor+throughput+FP32+accumulation+in%3Areadme&per_page=10&page=1",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "9acc1b160339d36706dabc4bc1b488dc485a7bc9fdaadf0f00914206f91b7157",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "search-3",
+      "url": "https://api.github.com/search/repositories?q=GPU+communication+RDMA+transfer+in%3Areadme&per_page=10&page=1",
+      "status": "not_dispatched",
+      "attempts": 1,
+      "elapsed_seconds": null,
+      "retrieved_at": null,
+      "published_at": null,
+      "content_sha256": null,
+      "error": "not read",
+      "attempt_records": [
+        {
+          "status": "not_dispatched",
+          "elapsed_seconds": null,
+          "error": "grant expired before dispatch",
+          "reserved_seconds": 180,
+          "timing_unavailable_reason": "No dispatch; reservation retained without refund",
+          "operation_id": "e13c5936-9baf-4182-aa06-c0398ac8abeb",
+          "not_dispatched_evidence_sha256": "2a2b91b84f28971c9855c519f29fda1e3e058c509369f1280db71e3a27f1a631"
+        }
+      ],
+      "timing_unavailable_reason": "Original reservation remains held"
+    }
+  ],
+  "checks": {
+    "model_serving": {
+      "status": "checked",
+      "source_ids": [
+        "coverage-model_serving"
+      ],
+      "reason": "合成完整覆盖证据"
+    },
+    "hardware": {
+      "status": "not_checked",
+      "source_ids": [],
+      "reason": "Not yet queried"
+    },
+    "model_architecture": {
+      "status": "not_checked",
+      "source_ids": [],
+      "reason": "Not yet queried"
+    },
+    "embodied_training": {
+      "status": "not_checked",
+      "source_ids": [],
+      "reason": "Not yet queried"
+    },
+    "small_models": {
+      "status": "not_checked",
+      "source_ids": [],
+      "reason": "Not yet queried"
+    },
+    "inference_engines": {
+      "status": "not_checked",
+      "source_ids": [],
+      "reason": "Not yet queried"
+    },
+    "vllm": {
+      "status": "not_checked",
+      "source_ids": [],
+      "reason": "Not yet queried"
+    },
+    "sglang": {
+      "status": "not_checked",
+      "source_ids": [],
+      "reason": "Not yet queried"
+    },
+    "deepinfer": {
+      "status": "not_checked",
+      "source_ids": [],
+      "reason": "Not yet queried"
+    },
+    "vllm_blog": {
+      "status": "not_checked",
+      "source_ids": [],
+      "reason": "Not yet queried"
+    },
+    "sglang_blog": {
+      "status": "not_checked",
+      "source_ids": [],
+      "reason": "Not yet queried"
+    },
+    "lmsys_blog": {
+      "status": "not_checked",
+      "source_ids": [],
+      "reason": "Not yet queried"
+    },
+    "deepseek_articles": {
+      "status": "not_checked",
+      "source_ids": [],
+      "reason": "Not yet queried"
+    },
+    "deepinfer_articles": {
+      "status": "not_checked",
+      "source_ids": [],
+      "reason": "Not yet queried"
+    },
+    "glm_blog": {
+      "status": "not_checked",
+      "source_ids": [],
+      "reason": "Not yet queried"
+    },
+    "qwen_blog": {
+      "status": "not_checked",
+      "source_ids": [],
+      "reason": "Not yet queried"
+    },
+    "glm_models": {
+      "status": "not_checked",
+      "source_ids": [],
+      "reason": "Not yet queried"
+    },
+    "deepseek_models": {
+      "status": "not_checked",
+      "source_ids": [],
+      "reason": "Not yet queried"
+    },
+    "qwen_models": {
+      "status": "not_checked",
+      "source_ids": [],
+      "reason": "Not yet queried"
+    },
+    "discovery_memory": {
+      "status": "no_qualifying_items",
+      "source_ids": [
+        "search-0"
+      ],
+      "reason": "Only this bounded synthetic result set was assessed"
+    },
+    "discovery_scheduling": {
+      "status": "no_qualifying_items",
+      "source_ids": [
+        "search-1"
+      ],
+      "reason": "Only this bounded synthetic result set was assessed"
+    },
+    "discovery_compute": {
+      "status": "no_qualifying_items",
+      "source_ids": [
+        "search-2"
+      ],
+      "reason": "Only this bounded synthetic result set was assessed"
+    },
+    "discovery_data_path": {
+      "status": "not_checked",
+      "source_ids": [
+        "search-3"
+      ],
+      "reason": "Only this bounded synthetic result set was assessed"
+    }
+  },
+  "status_entries": [],
+  "decisions": [
+    {
+      "event_key": "cache-fix",
+      "disposition": "selected",
+      "source_ids": [
+        "source"
+      ],
+      "reason": "合成入选理由",
+      "history_entry_ids": []
+    }
+  ],
+  "model_calls": [
+    {
+      "stage": "research",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 20,
+      "model": {
+        "name": null,
+        "version": null,
+        "unavailable_reason": "测试环境未暴露模型信息"
+      },
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 20,
+          "error": "",
+          "input_sha256": "ce151c3c566c7b31485d6cfeb9ab8ff27797abff378bdc4279d2dbc0b5f5e97b",
+          "checkpoint_sha256": null,
+          "result_sha256": "9b584ca0ff3daefafadb6f8f39b1d32f12ff0af2c206379334c6fa5c1b0869d9",
+          "reserved_seconds": 400
+        }
+      ]
+    },
+    {
+      "stage": "editor",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 20,
+      "model": {
+        "name": null,
+        "version": null,
+        "unavailable_reason": "测试环境未暴露模型信息"
+      },
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 20,
+          "error": "",
+          "input_sha256": "ce151c3c566c7b31485d6cfeb9ab8ff27797abff378bdc4279d2dbc0b5f5e97b",
+          "checkpoint_sha256": null,
+          "result_sha256": "9b584ca0ff3daefafadb6f8f39b1d32f12ff0af2c206379334c6fa5c1b0869d9",
+          "reserved_seconds": 400
+        }
+      ]
+    }
+  ],
+  "coverage_contract": "daily_required_v2",
+  "coverage_policy": "publish_verified_with_gaps",
+  "coverage_notice": {
+    "checks": [
+      "hardware",
+      "model_architecture",
+      "embodied_training",
+      "small_models",
+      "inference_engines",
+      "vllm",
+      "sglang",
+      "deepinfer",
+      "vllm_blog",
+      "sglang_blog",
+      "lmsys_blog",
+      "deepseek_articles",
+      "deepinfer_articles",
+      "glm_blog",
+      "qwen_blog",
+      "glm_models",
+      "deepseek_models",
+      "qwen_models",
+      "discovery_data_path"
+    ],
+    "text": "部分晨报｜覆盖缺口：硬件、架构、具身、小模型、引擎。缺页原因详见页面，未检查不代表无更新。"
+  },
+  "budget_policy": "successful_work_hourly_continuation_v1",
+  "discovery": {
+    "queries": [
+      {
+        "id": "search-0",
+        "family": "discovery_memory",
+        "mode": "current",
+        "provider": "github_search",
+        "query": "GPU memory oversubscription offload in:readme",
+        "since": "2026-11-05T07:20:00+08:00",
+        "until": "2026-11-06T07:20:00+08:00",
+        "source_id": "search-0",
+        "result_limit": 10,
+        "page": 1,
+        "truncated": false,
+        "followup_of": null,
+        "attempt": 1,
+        "response_sha256": "1ffd92302e4307c15cdf05b9e041d32029f7a485856d1f9235456b8f420fa555",
+        "results": [
+          {
+            "url": "https://github.com/HAMi-project/HAMi",
+            "repository_url": "https://github.com/HAMi-project/HAMi",
+            "disposition": "watch",
+            "novelty": "old_discovery",
+            "source_ids": [],
+            "event_key": null,
+            "reason": "Synthetic old project, no new event verified",
+            "next_step": "Check later maintainer benchmark and implementation changes",
+            "baseline_url": null
+          }
+        ]
+      },
+      {
+        "id": "search-1",
+        "family": "discovery_scheduling",
+        "mode": "current",
+        "provider": "github_search",
+        "query": "GPU sharing scheduler isolation in:readme",
+        "since": "2026-11-05T07:20:00+08:00",
+        "until": "2026-11-06T07:20:00+08:00",
+        "source_id": "search-1",
+        "result_limit": 10,
+        "page": 1,
+        "truncated": false,
+        "followup_of": null,
+        "attempt": 1,
+        "response_sha256": "8fbe7b0aebce1c2eaf0c17b9bdae2d6dbf8cf73513392fd7aef2b3fda4f1f4a5",
+        "results": [
+          {
+            "url": "https://github.com/mit-gfx/Salus",
+            "repository_url": "https://github.com/mit-gfx/Salus",
+            "disposition": "watch",
+            "novelty": "old_discovery",
+            "source_ids": [],
+            "event_key": null,
+            "reason": "Synthetic old project, no new event verified",
+            "next_step": "Check later maintainer benchmark and implementation changes",
+            "baseline_url": null
+          }
+        ]
+      },
+      {
+        "id": "search-2",
+        "family": "discovery_compute",
+        "mode": "current",
+        "provider": "github_search",
+        "query": "GPU tensor throughput FP32 accumulation in:readme",
+        "since": "2026-11-05T07:20:00+08:00",
+        "until": "2026-11-06T07:20:00+08:00",
+        "source_id": "search-2",
+        "result_limit": 10,
+        "page": 1,
+        "truncated": false,
+        "followup_of": null,
+        "attempt": 1,
+        "response_sha256": "9acc1b160339d36706dabc4bc1b488dc485a7bc9fdaadf0f00914206f91b7157",
+        "results": [
+          {
+            "url": "https://github.com/JustAResearcher/gpu-unlock-ada",
+            "repository_url": "https://github.com/JustAResearcher/gpu-unlock-ada",
+            "disposition": "watch",
+            "novelty": "old_discovery",
+            "source_ids": [],
+            "event_key": null,
+            "reason": "Synthetic old project, no new event verified",
+            "next_step": "Check later maintainer benchmark and implementation changes",
+            "baseline_url": null
+          }
+        ]
+      },
+      {
+        "id": "search-3",
+        "family": "discovery_data_path",
+        "mode": "current",
+        "provider": "github_search",
+        "query": "GPU communication RDMA transfer in:readme",
+        "since": "2026-11-05T07:20:00+08:00",
+        "until": "2026-11-06T07:20:00+08:00",
+        "source_id": "search-3",
+        "result_limit": 10,
+        "page": 1,
+        "truncated": false,
+        "followup_of": null,
+        "attempt": 1,
+        "response_sha256": null,
+        "results": []
+      }
+    ],
+    "backscan": {
+      "status": "budget_deferred",
+      "reason": "Synthetic bounded budget"
+    },
+    "followup": {
+      "status": "none_due",
+      "reason": "Synthetic empty followup list"
+    }
+  },
+  "page_scope": {
+    "contract": "verified_pages_v1",
+    "page_delivery": {
+      "previous": null,
+      "added": [
+        "model-serving-gpu"
+      ],
+      "pending": [
+        {
+          "id": "hardware-status",
+          "reason": "Synthetic pending evidence"
+        },
+        {
+          "id": "model-architecture-status",
+          "reason": "Synthetic pending evidence"
+        },
+        {
+          "id": "embodied-training",
+          "reason": "Synthetic pending evidence"
+        },
+        {
+          "id": "small-model-status",
+          "reason": "Synthetic pending evidence"
+        },
+        {
+          "id": "inference-engines",
+          "reason": "Synthetic pending evidence"
+        }
+      ]
+    },
+    "checked_pages": [
+      "model-serving-gpu"
+    ],
+    "previous_evidence": null
+  }
+}

@@ -762,6 +762,27 @@ def archive_recovery_runtime_required(database):
     return database.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='research_control_archive_recovery'").fetchone() is not None
 
 
+def model_continuation_runtime_required(database):
+    if database.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='research_control_ops'").fetchone() is None:
+        return False
+    return database.execute("SELECT 1 FROM research_control_ops WHERE kind='model' AND json_type(input,'$.continuation_archive_sha256') IS NOT NULL LIMIT 1").fetchone() is not None
+
+
+def cancellation_page_runtime_required(database):
+    # New committed permit receipts explicitly record their semantic version.
+    # Historical permits have no marker and must not block the first upgrade.
+    if database.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='research_control_commands'").fetchone() is None:
+        return False
+    rows = database.execute("SELECT bytes,result FROM research_control_commands WHERE json_type(result,'$.cancellation_page_version') IS NOT NULL")
+    required = False
+    for raw_command, raw_result in rows:
+        command, result = json.loads(raw_command), json.loads(raw_result)
+        if result.get('cancellation_page_version') != 1 or result.get('status') != 'committed' or command.get('action') not in {'permit', 'page_permit'}:
+            raise ValueError('cancellation_permit_version_invalid')
+        required = True
+    return required
+
+
 def compatibility(config, release, operation, expected):
     """仅打开隔离的账本副本，不提供生产凭据或网络。"""
     probe = operation / ("probe-" + uuid.uuid4().hex)
@@ -777,6 +798,8 @@ def compatibility(config, release, operation, expected):
         raise ValueError("state_changed_during_backup")
     with closing(sqlite3.connect(database)) as isolated:
         needs_archive_recovery = archive_recovery_runtime_required(isolated)
+        needs_model_continuation = model_continuation_runtime_required(isolated)
+        needs_cancellation_pages = cancellation_page_runtime_required(isolated)
         needs_pages = page_runtime_required(isolated)
         needs_revision = revision_runtime_required(isolated)
         needs_repository_inputs = repository_inputs_runtime_required(isolated)
@@ -796,6 +819,10 @@ def compatibility(config, release, operation, expected):
         script += "if(runtime.REVISION_NOTICES_VERSION!==1)throw Error('revision_ledger_requires_compatible_release');"
     if needs_repository_inputs:
         script += "const inputs=await import('./scripts/research-control.mjs');if(inputs.REPOSITORY_RESEARCH_INPUTS_VERSION!==1)throw Error('repository_inputs_require_compatible_release');"
+    if needs_model_continuation:
+        script += "const continuation=await import('./scripts/research-control.mjs');if(continuation.MODEL_CONTINUATION_VERSION!==1)throw Error('model_continuation_requires_compatible_release');"
+    if needs_cancellation_pages:
+        script += "const cancellation=await import('./scripts/research-control.mjs');if(cancellation.CANCELLATION_PAGE_VERSION!==1)throw Error('cancellation_pages_require_compatible_release');"
     if needs_layered_budget:
         script += "const budget=await import('./scripts/research-control.mjs');if(budget.LAYERED_RESEARCH_BUDGET_VERSION!==1)throw Error('layered_budget_requires_compatible_release');"
     script += "const c=(runtime.validateLiveConfig??runtime.validateConfig)(JSON.parse(readFileSync('/probe/publisher.json')));const s=new HandoffState('/probe/handoff.sqlite',handoffScope(c));try{if(c.research_control||s.db.prepare(\"SELECT 1 FROM sqlite_master WHERE name='research_control_policy'\").get()){const authority=await import('./scripts/research-control.mjs');authority.assertResearchControl(s.db,c);}if(c.notification_destination)new NoticeOutbox(s,notificationScope(c));}finally{s.close();}"

@@ -1,0 +1,254 @@
+{
+  "schema_version": "1.4",
+  "date": "2026-11-06",
+  "audit_valid": true,
+  "readiness": "partial",
+  "blockers": [],
+  "candidate_count": 1,
+  "selected_count": 1,
+  "status_entry_count": 0,
+  "delivery_allowed": false,
+  "warnings": [
+    {
+      "code": "timing_unavailable",
+      "path": "sources[23].elapsed_seconds"
+    },
+    {
+      "code": "not_dispatched_reservation_retained",
+      "path": "sources[23].attempt_records[1]"
+    },
+    {
+      "code": "timing_unavailable",
+      "path": "sources[23].attempt_records[1].elapsed_seconds"
+    },
+    {
+      "code": "coverage_incomplete",
+      "path": "checks.hardware"
+    },
+    {
+      "code": "coverage_incomplete",
+      "path": "checks.model_architecture"
+    },
+    {
+      "code": "coverage_incomplete",
+      "path": "checks.embodied_training"
+    },
+    {
+      "code": "coverage_incomplete",
+      "path": "checks.small_models"
+    },
+    {
+      "code": "coverage_incomplete",
+      "path": "checks.inference_engines"
+    },
+    {
+      "code": "coverage_incomplete",
+      "path": "checks.vllm"
+    },
+    {
+      "code": "coverage_incomplete",
+      "path": "checks.sglang"
+    },
+    {
+      "code": "coverage_incomplete",
+      "path": "checks.deepinfer"
+    },
+    {
+      "code": "coverage_incomplete",
+      "path": "checks.vllm_blog"
+    },
+    {
+      "code": "coverage_incomplete",
+      "path": "checks.sglang_blog"
+    },
+    {
+      "code": "coverage_incomplete",
+      "path": "checks.lmsys_blog"
+    },
+    {
+      "code": "coverage_incomplete",
+      "path": "checks.deepseek_articles"
+    },
+    {
+      "code": "coverage_incomplete",
+      "path": "checks.deepinfer_articles"
+    },
+    {
+      "code": "coverage_incomplete",
+      "path": "checks.glm_blog"
+    },
+    {
+      "code": "coverage_incomplete",
+      "path": "checks.qwen_blog"
+    },
+    {
+      "code": "coverage_incomplete",
+      "path": "checks.glm_models"
+    },
+    {
+      "code": "coverage_incomplete",
+      "path": "checks.deepseek_models"
+    },
+    {
+      "code": "coverage_incomplete",
+      "path": "checks.qwen_models"
+    },
+    {
+      "code": "coverage_incomplete",
+      "path": "checks.discovery_data_path"
+    }
+  ],
+  "budget_unknown": true,
+  "coverage_incomplete": [
+    "deepinfer",
+    "deepinfer_articles",
+    "deepseek_articles",
+    "deepseek_models",
+    "discovery_data_path",
+    "embodied_training",
+    "glm_blog",
+    "glm_models",
+    "hardware",
+    "inference_engines",
+    "lmsys_blog",
+    "model_architecture",
+    "qwen_blog",
+    "qwen_models",
+    "sglang",
+    "sglang_blog",
+    "small_models",
+    "vllm",
+    "vllm_blog"
+  ],
+  "coverage_contract": "daily_required_v2",
+  "required_checks": [
+    "model_serving",
+    "hardware",
+    "model_architecture",
+    "embodied_training",
+    "small_models",
+    "inference_engines",
+    "vllm",
+    "sglang",
+    "deepinfer",
+    "vllm_blog",
+    "sglang_blog",
+    "lmsys_blog",
+    "deepseek_articles",
+    "deepinfer_articles",
+    "glm_blog",
+    "qwen_blog",
+    "glm_models",
+    "deepseek_models",
+    "qwen_models",
+    "discovery_memory",
+    "discovery_scheduling",
+    "discovery_compute",
+    "discovery_data_path"
+  ],
+  "coverage_checked": [
+    "discovery_compute",
+    "discovery_memory",
+    "discovery_scheduling",
+    "model_serving"
+  ],
+  "coverage_unchecked": [
+    "deepinfer",
+    "deepinfer_articles",
+    "deepseek_articles",
+    "deepseek_models",
+    "embodied_training",
+    "glm_blog",
+    "glm_models",
+    "hardware",
+    "inference_engines",
+    "lmsys_blog",
+    "model_architecture",
+    "qwen_blog",
+    "qwen_models",
+    "sglang",
+    "sglang_blog",
+    "small_models",
+    "vllm",
+    "vllm_blog"
+  ],
+  "limits": {
+    "source_attempts": 2,
+    "model_attempts": 2,
+    "source_attempt_seconds": 180,
+    "model_stage_seconds": 500,
+    "run_seconds": 1200
+  },
+  "inputs": {
+    "prompt_commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "history_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "prompt_hashes": {
+      "research.md": "30d6d0106d7bb4c7acb7bb4220e981ea414a86c2cbbac90757ed0e830a7db968",
+      "editor.md": "78b6fe25326eadb6533cf519848222b9de9d37a99570ce1b4d5f8e575530aa49",
+      "sources.md": "879bbb19f2425e9194185bf771fccd8c3919320d3191da86642cbad2da32bfe4",
+      "delivery.md": "a1eca6d2a2784364d6853b8ce4de8ffd619a652dd84f041d5f6166b419f9a110",
+      "audit.md": "6d2d72bb3f30714faa41216818eae2a7e7c4160e3818f4564dbf079f07ab34fe"
+    },
+    "history_sha256": "438f15df62839fb8a1897e57c6bacfdd2c40dd034045949575e96d8353cbea83",
+    "draft_sha256": "1f3b77f2f887bf751b70e5a233bc71e734260ab02da54af87acf9872d73276a0"
+  },
+  "page_scope": {
+    "contract": "verified_pages_v1",
+    "page_delivery": {
+      "previous": null,
+      "added": [
+        "model-serving-gpu"
+      ],
+      "pending": [
+        {
+          "id": "hardware-status",
+          "reason": "Synthetic pending evidence"
+        },
+        {
+          "id": "model-architecture-status",
+          "reason": "Synthetic pending evidence"
+        },
+        {
+          "id": "embodied-training",
+          "reason": "Synthetic pending evidence"
+        },
+        {
+          "id": "small-model-status",
+          "reason": "Synthetic pending evidence"
+        },
+        {
+          "id": "inference-engines",
+          "reason": "Synthetic pending evidence"
+        }
+      ]
+    },
+    "checked_pages": [
+      "model-serving-gpu"
+    ],
+    "previous_evidence": null
+  },
+  "verified_event_keys": [
+    "cache-fix"
+  ],
+  "evidence_metadata_sha256": "7e5714fc6354942266eaf0b888bec7e9c3b33b61a350f0232269836d8bd13fca",
+  "budget_accounting": {
+    "successful_attempts": {
+      "source": 24,
+      "model": 2
+    },
+    "successful_seconds": 73,
+    "failed_attempts": {
+      "source": 0,
+      "model": 0
+    },
+    "failed_seconds": 0,
+    "unknown_attempts": {
+      "source": 1,
+      "model": 0
+    },
+    "reserved_unknown_seconds": 180,
+    "charged_seconds": 253
+  },
+  "run_elapsed_seconds": 600.0,
+  "budget_policy": "successful_work_hourly_continuation_v1"
+}
