@@ -126,6 +126,26 @@ function readPublicationBytes(db,run,args,cache){
  cache.archive=null;cache.archiveKey=null;
  return {bundle,audit,metadata};
 }
+function modelContinuationPublicationBound(db,run,args,metadata,cache){
+ const operations=db.prepare("SELECT * FROM research_control_ops WHERE request_id=? AND kind='model'").all(run.request_id);
+ const current=new Map(operations.filter(op=>JSON.parse(op.input)?.continuation_archive_sha256).map(op=>[op.operation_id,op]));
+ const hasProof=Array.isArray(metadata?.model_calls)&&metadata.model_calls.some(call=>Array.isArray(call?.attempt_records)&&call.attempt_records.some(attempt=>attempt?.prepublication_continuation_sha256!==undefined));
+ if(!current.size&&!hasProof)return;
+ need(Array.isArray(metadata?.model_calls)&&metadata.model_calls.every(call=>call&&typeof call.stage==='string'&&Array.isArray(call.attempt_records)&&call.attempt_records.every(attempt=>attempt&&typeof attempt==='object'&&!Array.isArray(attempt))),'publication_model_continuation_binding');
+ const seen=new Set(),files=commandArchive(db,run.request_id,args.archive_sha256,cache)?.byHash;
+ const matches=(attempt,op)=>attempt.input_sha256===op.input_hash&&attempt.result_sha256===op.result_file&&attempt.reserved_seconds===op.reserved_seconds&&attempt.elapsed_seconds===op.elapsed_seconds;
+ for(const call of metadata.model_calls)for(const attempt of call.attempt_records){
+  if(attempt.prepublication_continuation_sha256===undefined)continue;
+  need(string(attempt.prepublication_continuation_sha256,HASH),'publication_model_continuation_binding');
+  let proof;try{proof=JSON.parse(files?.get(attempt.prepublication_continuation_sha256)?.data);}catch{}
+  const op=current.get(proof?.operation_id),input=op?JSON.parse(op.input):null;
+  need(proof?.schema_version==='model_prepublication_continuation_evidence_v1'&&op&&!seen.has(op.operation_id)&&op.phase==='acknowledged'&&op.request_id===run.request_id&&op.operation_key===call.stage&&matches(attempt,op)&&attempt.checkpoint_sha256===input.checkpoint_file_sha256,'publication_model_continuation_binding');
+  const prior=operations.find(item=>item.operation_id===input.previous_operation_id);
+  need(prior&&prior.phase==='acknowledged'&&prior.operation_key===call.stage&&prior.result_archive===input.checkpoint_archive_sha256&&prior.result_file===input.checkpoint_file_sha256&&call.attempt_records.filter(item=>matches(item,prior)).length===1,'publication_model_continuation_binding');
+  seen.add(op.operation_id);
+ }
+ need(seen.size===current.size,'publication_model_continuation_binding');
+}
 function publicationEvidence(db,run,plan,args,now,cache,page=false){
  const {bundle,audit,metadata}=readPublicationBytes(db,run,args,cache);
  const pageBinding=page?pagePublicationBinding(db,run,bundle):null;
@@ -176,6 +196,7 @@ function publicationEvidence(db,run,plan,args,now,cache,page=false){
    need(summary.successful_attempts?.[kind]===count(actual.successful_attempts)&&summary.failed_attempts?.[kind]===count(actual.failed_attempts)&&summary.unknown_attempts?.[kind]===count(actual.unknown_attempts),'publication_budget_attempts');
   }
  }
+ modelContinuationPublicationBound(db,run,args,metadata,cache);
  // Legacy non-layered schema 1.3 does not carry audit metadata; preserve its existing contract.
  if(!budget&&metadata===null)return {...pageBinding};
  const cancelled=new Map(db.prepare("SELECT * FROM research_control_ops WHERE request_id=? AND kind='source'").all(run.request_id).filter(op=>classifiedResult(db,run,op,cache)?.outcome==='not_dispatched').map(op=>[op.operation_id,op]));
