@@ -598,6 +598,12 @@ test('a withheld grant can resume once after takeover without resetting attempts
    assert.equal(s.db.prepare('SELECT count(*) n FROM research_control_ops').get().n,1);
    assert.equal(execute(s,command('resume',{operation_id:op.operation_id},reply.run,ownerB),clock).code,'resume_dispatch_not_proven_unstarted');
    assert.notEqual(s.db.prepare('SELECT phase FROM research_control_events WHERE source_ts=?').get(ts).phase,'ready');
+   const observation=Buffer.from(JSON.stringify({artifact_kind:'local_dispatch_observation_not_settlement',request_id:id,status:'not_dispatched_grant_expired',dispatch_started:false,source_requests:0,operation_ids:[op.operation_id],command_id:resume.command_id,receipt_ts:'1793492164.000001',observed_at:new Date(clock+70000).toISOString()}));
+   const result=Buffer.from(JSON.stringify({schema_version:'source_not_dispatched_v1',request_id:id,operation_id:op.operation_id,url:op.input.url,input_sha256:op.input_sha256,status:'not_dispatched',dispatch_started:false,source_requests:0,elapsed_seconds:null,reserved_seconds:op.max_seconds,observation_sha256:digest(observation),grant_command_id:resume.command_id,grant_receipt_ts:'1793492164.000001'}));
+   const hash=archive(s,{'observation.json':observation,'result.json':result});
+   const settled=execute(s,command('settle',{operation_id:op.operation_id,outcome:'acknowledged',elapsed_seconds:null,archive_sha256:hash,file_sha256:digest(result),native_result:null},reply.run,ownerB),clock+70000);
+   assert.equal(settled.status,'committed');assert.equal(settled.run.charged_seconds,180);
+
   }finally{s.close();}
  }
 });
@@ -1166,10 +1172,10 @@ test('offline immediate approval stamps real locked approval time and dispatch e
 });
 
 test('legacy body-bound source results require unique authenticated original metadata and never downgrade v4',()=>{
- for(const mode of ['ok','http-failed','mismatch','duplicate','layered']){
+ for(const mode of ['ok','reserved-status','http-failed','mismatch','duplicate','layered']){
  const s=setup();try{
   let run=start(s,mode==='layered'?layeredPlan():plan);const op=source('https://example.org/original-body');run=execute(s,command('reserve',{operations:[op]},run)).run;
-  const body=Buffer.from('original source body'),meta={operation_id:op.operation_id,kind:'source',key:op.key,input_sha256:op.input_sha256,input:op.input,max_seconds:op.max_seconds,elapsed_seconds:1,attempts:1,exit_code:0,http_status:mode==='http-failed'?'404':'200',error:'',bytes:body.length,sha256:digest(body)};
+  const body=Buffer.from(mode==='reserved-status'?JSON.stringify({status:'not_dispatched'}):'original source body'),meta={operation_id:op.operation_id,kind:'source',key:op.key,input_sha256:op.input_sha256,input:op.input,max_seconds:op.max_seconds,elapsed_seconds:1,attempts:1,exit_code:0,http_status:mode==='http-failed'?'404':'200',error:'',bytes:body.length,sha256:digest(body)};
   if(mode==='mismatch')meta.key='f'.repeat(64);
   const files={'sources/original.txt':body,'sources/original.json':Buffer.from(JSON.stringify(meta))};if(mode==='duplicate')files['sources/duplicate.json']=files['sources/original.json'];
   const h=archive(s,files);run=execute(s,command('settle',{operation_id:op.operation_id,outcome:'acknowledged',elapsed_seconds:1,archive_sha256:h,file_sha256:digest(body),native_result:null},run)).run;
@@ -1178,7 +1184,7 @@ test('legacy body-bound source results require unique authenticated original met
    const b=Buffer.from(JSON.stringify(grant));approveResearchRecoveryGrant(s.db,b,grant.authorization_reference,now);run=execute(s,command('recovery_grant',{grant_base64:b.toString('base64')},run)).run;
   }
   const totals=execute(s,command('status',{offset:0})).effective_budget.accounting;
-  assert.equal(totals.success_seconds,mode==='ok'?1:0);assert.equal(totals.failed_seconds,mode==='http-failed'?1:0);assert.equal(totals.reserved_seconds,['ok','http-failed'].includes(mode)?0:180);
+  assert.equal(totals.success_seconds,['ok','reserved-status'].includes(mode)?1:0);assert.equal(totals.failed_seconds,mode==='http-failed'?1:0);assert.equal(totals.reserved_seconds,['ok','reserved-status','http-failed'].includes(mode)?0:180);
  }finally{s.close();}
  }
 });
@@ -1383,5 +1389,75 @@ test('full ready schema 1.2 still requires installed page decoder authority with
   installPageAuthority(s.db);
   assert.equal((await issuePermit(s,command('permit',args,result.run))).status,'committed');
   assert.deepEqual(s.db.prepare('SELECT plan FROM research_control_runs WHERE request_id=?').get(id).plan,before);
+ }finally{s.close();}
+});
+
+test('expired undispatched source remains charged but admits a fresh bounded retry',async()=>{
+ for(const inputPlan of [plan,layeredPlan()]){const s=setup();try{
+  let run=start(s,inputPlan);const op=source(),c=command('reserve',{operations:[op]},run);queue(s,c);
+  const receipt='1793491210.000001';
+  await advanceResearchControl(s,config,{controlReceipt:async()=>receipt},now);
+  run=execute(s,command('status',{offset:0}),now+70000).run;
+  const observation=Buffer.from(JSON.stringify({artifact_kind:'local_dispatch_observation_not_settlement',request_id:id,status:'not_dispatched_grant_expired',dispatch_started:false,source_requests:0,operation_ids:[op.operation_id],command_id:c.command_id,receipt_ts:receipt,observed_at:new Date(now+65000).toISOString()}));
+  const result=Buffer.from(JSON.stringify({schema_version:'source_not_dispatched_v1',request_id:id,operation_id:op.operation_id,url:op.input.url,input_sha256:op.input_sha256,status:'not_dispatched',dispatch_started:false,source_requests:0,elapsed_seconds:null,reserved_seconds:op.max_seconds,observation_sha256:digest(observation),grant_command_id:c.command_id,grant_receipt_ts:receipt}));
+  const hash=archive(s,{'observation.json':observation,'result.json':result});
+  const settled=execute(s,command('settle',{operation_id:op.operation_id,outcome:'acknowledged',elapsed_seconds:null,archive_sha256:hash,file_sha256:digest(result),native_result:null},run),now+70000);
+  assert.equal(settled.status,'committed');assert.equal(settled.run.charged_seconds,180);
+  const status=execute(s,command('status',{offset:0}),now+70000);
+  if(status.effective_budget){assert.equal(status.effective_budget.accounting.reserved_seconds,180);
+  assert.equal(status.effective_budget.accounting.unknown_attempts.source,1);
+  assert.equal(status.effective_budget.accounting.failed_attempts.source,0);}
+  const replay=execute(s,command('settle',{operation_id:op.operation_id,outcome:'acknowledged',elapsed_seconds:null,archive_sha256:hash,file_sha256:digest(result),native_result:null},settled.run),now+70000);
+  assert.equal(replay.code,'operation_unsettled');
+  assert.equal(execute(s,command('resume',{operation_id:op.operation_id},settled.run),now+70000).code,'resume_original_intent');
+  const retried=execute(s,command('reserve',{operations:[source()]},settled.run),now+70000);
+  assert.equal(retried.status,'committed');assert.equal(retried.run.charged_seconds,360);
+  assert.equal(execute(s,command('reserve',{operations:[source()]},retried.run),now+70000).code,inputPlan===plan?'attempt_budget':'research_original_result_unknown');
+ }finally{s.close();}}
+});
+
+test('no-dispatch settlement rejects missing, mismatched, unexpired or future declarations',async()=>{
+ for(const mutation of ['missing','null','array','timestamp-object','missing-command','missing-receipt','command','receipt','operation','input','dispatched','requests','elapsed','unexpired','future','native']){
+  const s=setup();try{
+   let run=start(s,layeredPlan());const op=source(),c=command('reserve',{operations:[op]},run);queue(s,c);
+   const receipt='1793491210.000001';await advanceResearchControl(s,config,{controlReceipt:async()=>receipt},now);
+   run=execute(s,command('status',{offset:0}),now+70000).run;
+   const obs={artifact_kind:'local_dispatch_observation_not_settlement',request_id:id,status:'not_dispatched_grant_expired',dispatch_started:false,source_requests:0,operation_ids:[op.operation_id],command_id:c.command_id,receipt_ts:receipt,observed_at:new Date(now+65000).toISOString()};
+   if(mutation==='unexpired')obs.observed_at=new Date(now+50000).toISOString();
+   if(mutation==='future')obs.observed_at=new Date(now+80000).toISOString();
+   if(mutation==='timestamp-object')obs.observed_at={toString:null};
+   if(mutation==='missing-command')delete obs.command_id;if(mutation==='missing-receipt')delete obs.receipt_ts;
+   const observation=Buffer.from(JSON.stringify(mutation==='null'?null:mutation==='array'?[]:obs));
+   const value={schema_version:'source_not_dispatched_v1',request_id:id,operation_id:op.operation_id,url:op.input.url,input_sha256:op.input_sha256,status:'not_dispatched',dispatch_started:false,source_requests:0,elapsed_seconds:null,reserved_seconds:op.max_seconds,observation_sha256:digest(observation),grant_command_id:c.command_id,grant_receipt_ts:receipt};
+   if(mutation==='missing-command')delete value.grant_command_id;if(mutation==='missing-receipt')delete value.grant_receipt_ts;
+   if(mutation==='command')value.grant_command_id=randomUUID();if(mutation==='receipt')value.grant_receipt_ts='1793491209.000001';
+   if(mutation==='operation')value.operation_id=randomUUID();if(mutation==='input')value.input_sha256='e'.repeat(64);
+   if(mutation==='dispatched')value.dispatch_started=true;if(mutation==='requests')value.source_requests=1;
+   if(mutation==='elapsed')value.elapsed_seconds=0;if(mutation==='native')value.schema_version='native_not_dispatched_v1';
+   const result=Buffer.from(JSON.stringify(value)),files={'result.json':result};if(mutation!=='missing')files['observation.json']=observation;
+   const hash=archive(s,files),settled=execute(s,command('settle',{operation_id:op.operation_id,outcome:'acknowledged',elapsed_seconds:null,archive_sha256:hash,file_sha256:digest(result),native_result:null},run),now+70000);
+   assert.equal(settled.status,'rejected',mutation);assert.equal(settled.run.charged_seconds,180,mutation);
+   assert.equal(s.db.prepare('SELECT phase FROM research_control_ops WHERE operation_id=?').get(op.operation_id).phase,'intent',mutation);
+  }finally{s.close();}
+ }
+});
+
+
+test('no-dispatch expiry honors the original embedded lease after current owner renewal',async()=>{
+ const s=setup();try{
+  let run=start(s,layeredPlan());const op=source(),c=command('reserve',{operations:[op]},run);queue(s,c);
+  const receipt=String((now+899000)/1000)+'.000001';
+  await advanceResearchControl(s,config,{assertReady:()=>{throw Error('synthetic cooldown');}},now);
+  await advanceResearchControl(s,config,{controlReceipt:async()=>receipt},now+899000);
+  run=execute(s,command('status',{offset:0}),now+899500).run;
+  run=execute(s,command('renew',{},run),now+899500).run;
+  const observed=now+901000,originalGrant=Buffer.from(s.db.prepare('SELECT reply_text FROM research_control_events WHERE command_id=?').get(c.command_id).reply_text);
+  const observation=Buffer.from(JSON.stringify({artifact_kind:'local_dispatch_observation_not_settlement',request_id:id,status:'not_dispatched_grant_expired',dispatch_started:false,source_requests:0,operation_ids:[op.operation_id],command_id:c.command_id,receipt_ts:receipt,observed_at:new Date(observed).toISOString()}));
+  const result=Buffer.from(JSON.stringify({schema_version:'source_not_dispatched_v1',request_id:id,operation_id:op.operation_id,url:op.input.url,input_sha256:op.input_sha256,status:'not_dispatched',dispatch_started:false,source_requests:0,elapsed_seconds:null,reserved_seconds:op.max_seconds,observation_sha256:digest(observation),grant_command_id:c.command_id,grant_receipt_ts:receipt,grant_receipt_sha256:digest(originalGrant)}));
+  const missing=archive(s,{'observation.json':observation,'result.json':result});
+  assert.equal(execute(s,command('settle',{operation_id:op.operation_id,outcome:'acknowledged',elapsed_seconds:null,archive_sha256:missing,file_sha256:digest(result),native_result:null},run),observed).code,'source_not_dispatched_evidence');
+  const hash=archive(s,{'observation.json':observation,'result.json':result,'grant.txt':originalGrant});
+  const settled=execute(s,command('settle',{operation_id:op.operation_id,outcome:'acknowledged',elapsed_seconds:null,archive_sha256:hash,file_sha256:digest(result),native_result:null},run),observed);
+  assert.equal(settled.status,'committed',JSON.stringify(settled));assert.equal(settled.run.charged_seconds,180);
  }finally{s.close();}
 });
