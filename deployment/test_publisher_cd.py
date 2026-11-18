@@ -18,6 +18,7 @@ import unittest
 from unittest.mock import patch
 
 from deployment import publisher_cd as cd
+from deployment import edition_cutover_preflight
 
 
 @contextmanager
@@ -29,6 +30,21 @@ def connection(path):
 
 
 class ReportPartActivationTests(unittest.TestCase):
+    def test_cutover_before_main_advances_requires_exact_original_receipt(self):
+        with closing(sqlite3.connect(':memory:')) as db:
+            db.execute('CREATE TABLE jobs(id TEXT,hash TEXT,phase TEXT,detail TEXT)')
+            db.execute('CREATE TABLE research_control_runs(request_id TEXT,report_date TEXT,permit TEXT)')
+            db.execute('CREATE TABLE research_page_rounds(request_id TEXT,run_id TEXT,permit TEXT)')
+            edition_cutover_preflight.check(db)
+            db.execute('INSERT INTO research_control_runs VALUES (?,?,?)', ('original','2026-11-19',json.dumps({'bundle_sha256':'a'*64})))
+            with self.assertRaisesRegex(ValueError,'settle_original_permit'):
+                edition_cutover_preflight.check(db)
+            db.execute('INSERT INTO jobs VALUES (?,?,?,?)', ('original','b'*64,'receipt_sent',json.dumps({'proof':{'publication_status':'verified'}})))
+            with self.assertRaisesRegex(ValueError,'settle_original_permit'):
+                edition_cutover_preflight.check(db)
+            db.execute("UPDATE jobs SET hash=?", ('a'*64,))
+            edition_cutover_preflight.check(db)
+
     @unittest.skipUnless(os.name == 'posix', 'Linux deployment lock')
     def test_competing_deployment_and_activation_defer_without_mutating(self):
         import fcntl

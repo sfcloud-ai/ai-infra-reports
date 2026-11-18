@@ -3,7 +3,7 @@
 import {isDeepStrictEqual as equal} from 'node:util';
 import {decodeResearchArchive} from './research-archive.mjs';
 import {digest} from './archive.mjs';
-import {validatePageDelivery,validatePageProgressReport,validatePageCorrectionReport,replacesPageEdition,TOPIC_IDS} from './page-delivery.mjs';
+import {validatePageDelivery,validatePageProgressReport,validatePageCorrectionReport,replacesPageEdition,TOPIC_IDS,WHOLE_EDITION_FROM} from './page-delivery.mjs';
 const fail=code=>{throw Object.assign(Error(code),{researchControlCode:code});};
 const need=(ok,code)=>{if(!ok)fail(code);};
 export const PAGE_AUTHORITY_VERSION=1;
@@ -20,6 +20,13 @@ export function installPageAuthority(db){
 }
 export const originalRunId=id=>id.replace(/-r[1-9]\d*$/,'-r1');
 export function pageRound(db,requestId){return pageAuthorityInstalled(db)?db.prepare('SELECT * FROM research_page_rounds WHERE request_id=?').get(requestId):null;}
+export function pageRevisionReserved(db,requestId,date){
+ const round=pageRound(db,requestId);
+ if(!round)return false;
+ if(date<WHOLE_EDITION_FROM||round.permit!==null)return true;
+ need(!db.prepare("SELECT 1 FROM research_control_ops WHERE request_id=? AND phase!='acknowledged' LIMIT 1").get(round.run_id),'original_page_operation_unsettled');
+ return false;
+}
 export function currentPageRound(db,runId){return pageAuthorityInstalled(db)?db.prepare('SELECT * FROM research_page_rounds WHERE run_id=? ORDER BY revision DESC LIMIT 1').get(runId):null;}
 export function publicationPermit(db,run,permitId=null){
  if(!run)return null;
@@ -119,6 +126,7 @@ export function authenticatedPrevious(db,run,previousId,depth=0){
  return {report,bundle,audit,metadata,evidence:{request_id:previousId,bundle_sha256:job.hash,audit_sha256:permit.audit_sha256,archive_sha256:permit.archive_sha256,report_commit:detail.commit}};
 }
 export function beginPageRound(db,run,args,now){
+ need(run.report_date<WHOLE_EDITION_FROM,'whole_edition_revision_required');
  need(pageAuthorityInstalled(db),'page_authority_not_installed');
  need(args&&Object.keys(args).sort().join()==='added,previous_request_id','page_begin_fields');
  const previous=authenticatedPrevious(db,run,args.previous_request_id),revision=previous.report.revision+1;

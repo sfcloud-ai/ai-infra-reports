@@ -2,6 +2,7 @@ import {pendingSubmissionClause,pendingSubmissionPhase} from './report-bundle-pa
 // Hash-free, read-only discovery before research. This is a snapshot, never a
 // reservation, an upload permit, or proof that a cloud write did not execute.
 import {assertFence,isFencedOut} from './producer-admission-fence.mjs';
+import {editionIntakeRejected} from './publisher-intake-state.mjs';
 import {decodeBundle,requireThat,reportDate,canonicalRequestDate,MAX_BUNDLE,REQUEST} from './report-handoff.mjs';
 import {scopeDigest,handoffScope} from './handoff-state.mjs';
 const HASH=/^[a-f0-9]{64}$/,SHA=/^[a-f0-9]{40}$/,TS=/^\d{10}\.\d{6}$/;
@@ -38,12 +39,13 @@ export async function inspectDay(state,config,command,sourceTs,query,now=Date.no
    requireThat(detail.intake_file_id===undefined||/^F[A-Z0-9]+$/.test(detail.intake_file_id),'Original day file invalid');
    publisher.push({request_id:row.id,bundle_sha256:row.hash,source_ts:row.source_ts,phase:row.phase,report_commit:detail.commit??null,file_id:detail.intake_file_id??null});
   }
-  const allInbox=exists(db,'publisher_inbox')?db.prepare("SELECT request_id,hash,file_id,source_ts,phase FROM publisher_inbox WHERE phase!='admitted' LIMIT 10001").all():[];
+  const allInbox=exists(db,'publisher_inbox')?db.prepare("SELECT request_id,hash,file_id,source_ts,phase,diagnostic FROM publisher_inbox WHERE phase!='admitted' LIMIT 10001").all():[];
   requireThat(allInbox.length<=10000,'Publisher day intake capacity exceeded');
   const intake=allInbox.filter(row=>{
+   if(editionIntakeRejected(row))return false;
    if(row.phase==='fenced'&&isFencedOut(state,config.producer_fence,row)&&row.source_ts>=config.producer_fence.activation_ts)return false;
    const date=canonicalRequestDate(row.request_id);return !date||date===day||row.request_id===command.request_id;
-  });
+  }).map(({diagnostic,...binding})=>binding);
   const staged=['slack_staged_bundles','research_page_staged'].flatMap(table=>exists(db,table)?db.prepare(`SELECT request_id,report_date,hash,source_ts,file_id,phase,submit_ts FROM ${table} WHERE report_date=? OR request_id=? LIMIT 101`).all(day,command.request_id):[]);
   const allPending=exists(db,'slack_submission_events')?db.prepare(`SELECT source_ts,kind,request_id,hash,file_id,target_ts,${pendingSubmissionPhase},next_at FROM slack_submission_events WHERE ${pendingSubmissionClause(db)} LIMIT 10001`).all():[];
   requireThat(allPending.length<=10000&&staged.length<=100,'Publisher day staging capacity exceeded');

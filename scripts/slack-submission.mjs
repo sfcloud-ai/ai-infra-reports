@@ -2,7 +2,7 @@ import {assembleReportParts,REPORT_PART_BYTES,reportPartName,pendingSubmissionCl
 import {permittedReportBytes} from './research-control.mjs';
 import {digest} from './archive.mjs';
 import {requireCompleteEdition} from './page-delivery.mjs';
-import {stagingTable,originalRunId,assertPageAdmission,pageRound,assertPageCorrectionDelivery} from './research-page-authority.mjs';
+import {stagingTable,originalRunId,assertPageAdmission,pageRevisionReserved,assertPageCorrectionDelivery} from './research-page-authority.mjs';
 // Opt-in, host-persistent staging. Slack is the data transport, not an executor.
 // Installation is offline under the original Publisher lock; normal ticks never
 // create policy or infer a missing ledger. Old Producer unknowns remain fenced.
@@ -92,7 +92,7 @@ export async function advanceSubmission(state,config,slack,query=queryScheduled,
   const date=canonicalRequestDate(row.request_id);
   requireThat(!db.prepare('SELECT 1 FROM producer_quarantined_dates WHERE report_date=?').get(date),'Original unresolved date is quarantined');
   if(row.kind==='revision'){
-   if(pageRound(db,row.request_id))throw Object.assign(Error('Revision reserved by original page continuation'),{researchPublicationRejection:'page_revision_reserved'});
+   if(pageRevisionReserved(db,row.request_id,date))throw Object.assign(Error('Revision reserved by original page continuation'),{researchPublicationRejection:'page_revision_reserved'});
    requireThat(!db.prepare("SELECT 1 FROM slack_submission_events WHERE request_id=? AND hash!=? AND phase!='fenced'").get(row.request_id,row.hash),'Conflicting original revision evidence requires reconciliation');
    const message=await slack.exactPublish(row.source_ts),original=acceptSubmission(message,config,now,{from:config.slack_submission.activation_ts,to:row.source_ts});
    requireThat(original&&['kind','request_id','hash','file_id','target_ts'].every(k=>(original[k]??null)===row[k]),'Original revision command changed');
@@ -101,7 +101,7 @@ export async function advanceSubmission(state,config,slack,query=queryScheduled,
    requireCompleteEdition(bundle.report);
    db.exec('BEGIN IMMEDIATE');try{
     assertSubmission(db,config);
-    if(pageRound(db,row.request_id))throw Object.assign(Error('Revision reserved by original page continuation'),{researchPublicationRejection:'page_revision_reserved'});
+    if(pageRevisionReserved(db,row.request_id,date))throw Object.assign(Error('Revision reserved by original page continuation'),{researchPublicationRejection:'page_revision_reserved'});
     assertPageCorrectionDelivery(db,bundle);
     const prior=state.metadata(row.request_id);
     if(prior)requireThat(prior.hash===row.hash&&prior.source_ts===row.source_ts&&prior.detail.intake_file_id===row.file_id,'Original revision publication conflict');

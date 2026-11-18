@@ -4,6 +4,7 @@ import {mkdtemp,rm} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {PublisherInbox,intakeStatus} from '../scripts/publisher-inbox.mjs';
+import {inspectPublisherDay} from '../scripts/producer-inspect.mjs';
 import {HandoffState,handoffScope} from '../scripts/handoff-state.mjs';
 import {SlackHandoff} from '../scripts/slack-handoff.mjs';
 import {handoffTick,prepareSlack,validateConfig} from '../scripts/run-handoff.mjs';
@@ -32,6 +33,10 @@ test('a bound incomplete edition settles its original inbox row before job admis
   await inbox.scan(slack,now);await inbox.admitOne(slack,now);
   const row=intakeStatus(s.db,id);assert.equal(row.phase,'fenced');assert.equal(row.diagnostic.hash,digest(packet));
   assert.equal(row.diagnostic.code,'publication_requires_six_complete_topics');assert.deepEqual(inbox.pending(),[]);assert.equal(s.metadata(id),null);
+  const next={kind:'inspect',request_id:'morning-20261120-r1',report_date:'2026-11-20',query_id:'12345678-1234-4234-8234-123456789012',bundle_sha256:'a'.repeat(64)};
+  assert.equal((await inspectPublisherDay(s,config,next,ts)).publisher,null);
+  s.db.prepare("UPDATE publisher_inbox SET diagnostic=json_set(diagnostic,'$.hash',?)").run('0'.repeat(64));
+  await assert.rejects(inspectPublisherDay(s,config,next,ts),/Quarantined envelope is no longer fenced/);
  }finally{s.close();}
 });
 

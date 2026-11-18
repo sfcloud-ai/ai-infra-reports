@@ -73,6 +73,14 @@ test('runtime probe detects an outstanding incomplete permit in a restored ledge
   const claim={...command('claim',{plan_base64:frozen.toString('base64')}),request_id:request};
   const run=executeResearchControl(s.db,config,Buffer.from(JSON.stringify(claim)),now+18*86400000);
   assert.equal(run.status,'claimed',JSON.stringify(run));
+  installPageAuthority(s.db);
+  assert.throws(()=>beginPageRound(s.db,run.run,{added:[],previous_request_id:request},now),/whole_edition_revision_required/);
+  const revision='morning-20261119-r2';
+  s.db.prepare('INSERT INTO research_page_rounds VALUES(?,?,?,?,?,?,NULL)').run(revision,request,2,'{}','[]',now);
+  assert.equal(pageRevisionReserved(s.db,revision,day),false);
+  s.db.prepare('UPDATE research_page_rounds SET permit=? WHERE request_id=?').run('{}',revision);
+  assert.equal(pageRevisionReserved(s.db,revision,day),true);
+  s.db.prepare('UPDATE research_page_rounds SET permit=NULL WHERE request_id=?').run(revision);
   const files=new Map([...FILES].map(([p,b])=>[p.replace(DAY,day),b]));
   const name=[...files.keys()].find(p=>p.endsWith('/report.json')),report=JSON.parse(files.get(name));
   report.date=day;report.entries=report.entries.filter(entry=>entry.article_id!==report.articles[0].id);
@@ -1347,7 +1355,7 @@ test('legacy body-bound source results require unique authenticated original met
  }
 });
 
-import {installPageAuthority,authenticatedPrevious} from '../scripts/research-page-authority.mjs';
+import {installPageAuthority,authenticatedPrevious,beginPageRound,pageRevisionReserved} from '../scripts/research-page-authority.mjs';
 import {PAGE_CHECKS} from '../scripts/research-page-coverage.mjs';
 import {installScheduledTables} from '../scripts/scheduled-delivery-state.mjs';
 for(const targetRevision of [2,6,11])test(`real r${targetRevision} page bundle permits append to original run and use independent native/staging identity`,async()=>{
