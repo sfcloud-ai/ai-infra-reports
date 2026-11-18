@@ -19,6 +19,7 @@ export {REPOSITORY_RESEARCH_INPUTS_VERSION};
 export const LAYERED_RESEARCH_BUDGET_VERSION=1;
 export const MODEL_CONTINUATION_VERSION=1;
 export const CANCELLATION_PAGE_VERSION=1;
+export const CANCELLATION_SETTLEMENT_VERSION=1;
 
 const HASH=/^[a-f0-9]{64}$/,SHA=/^[a-f0-9]{40}$/,UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const keyName=/^[a-zA-Z0-9_.-]{1,80}$/,LEASE_MS=15*60000;
@@ -369,9 +370,20 @@ function prepublicationModelContinuation(db,run,op,prior,cache){
  for(const ref of [...manifest.added_evidence].sort((a,b)=>a.archive_sha256.localeCompare(b.archive_sha256))){
   const evidence=db.prepare('SELECT rowid,* FROM research_control_ops WHERE request_id=? AND operation_id=?').get(run.request_id,ref.operation_id);
   need(evidence&&evidence.rowid>prior.rowid&&(evidence.kind==='source'||op.key==='editor'&&evidence.kind==='model'&&evidence.operation_key==='research')&&evidence.result_archive===ref.archive_sha256&&evidence.result_file===ref.file_sha256&&evidence.elapsed_seconds!==null&&classifiedResult(db,run,evidence,cache)?.outcome==='success','model_continuation_new_evidence');
-  if(evidence.kind==='model'&&JSON.parse(evidence.input)?.continuation_archive_sha256)addedResearchContinuation=true;
+  if(evidence.kind==='model'){
+   let predecessor=evidence;
+   while(predecessor){
+    const input=JSON.parse(predecessor.input);
+    if(input?.continuation_archive_sha256){addedResearchContinuation=true;break;}
+    if(!input?.previous_operation_id)break;
+    const previous=db.prepare('SELECT rowid,* FROM research_control_ops WHERE request_id=? AND operation_id=?').get(run.request_id,input.previous_operation_id);
+    need(previous&&previous.rowid<predecessor.rowid&&previous.kind==='model'&&previous.operation_key===evidence.operation_key&&previous.phase==='acknowledged'&&previous.result_archive===input.checkpoint_archive_sha256&&previous.result_file===input.checkpoint_file_sha256&&classifiedResult(db,run,previous,cache)?.outcome==='failed','model_continuation_new_evidence');
+    predecessor=previous;
+   }
+  }
   const evidenceArchive=commandArchive(db,run.request_id,evidence.result_archive,cache);
   let result;try{result=JSON.parse(evidenceArchive.byHash.get(evidence.result_file).data);}catch{refuse('model_continuation_evidence_json');}
+  need(result.input_sha256===evidence.input_hash&&(evidence.kind==='source'||result.stage==='research'),'model_continuation_evidence_binding');
   if(evidence.kind==='source')need(['ok','success'].includes(result.status)&&result.response_complete===true&&result.curl_exit_code===0&&result.error===''&&integer(result.http_status,200,299)&&string(result.content_sha256,HASH)&&nonblank(evidenceArchive.byHash.get(result.content_sha256)?.data),'model_continuation_source_content');
   const contents=[];
   if(evidence.kind==='source')contents.push(result.content_sha256);
@@ -386,7 +398,7 @@ function prepublicationModelContinuation(db,run,op,prior,cache){
    need(matches.length===1&&matches[0].result_sha256===evidence.result_file&&matches[0].body_sha256===result.content_sha256,'model_continuation_payload_source');
    const match=matches[0];let identity=null;
    if(match.url!==undefined){try{identity=researchSourceIdentity({method:'GET',url:match.url}).hash;}catch{refuse('model_continuation_payload_source');}}
-   need((match.url===undefined||identity===evidence.input_hash)&&(match.input_sha256===undefined||match.input_sha256===evidence.input_hash),'model_continuation_payload_source');
+   need((match.url===undefined||identity===evidence.input_hash)&&(match.input_sha256===undefined||match.input_sha256===evidence.input_hash)&&(match.status===undefined||match.status===result.status)&&(match.elapsed_seconds===undefined||match.elapsed_seconds===result.elapsed_seconds),'model_continuation_payload_source');
   }else {
    addedResearch=true;
    const claimed=new Set(payload.research?.outputs?.map(output=>output.sha256));
@@ -397,6 +409,8 @@ function prepublicationModelContinuation(db,run,op,prior,cache){
  // New references must be authenticated in both directions; old context is retained verbatim in meaning.
  const canonical=value=>Array.isArray(value)?value.map(canonical):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(key=>[key,canonical(value[key])])):value;
  const fingerprint=value=>JSON.stringify(canonical(value));
+ const special=new Set(['request_id','stage','sources','research','continuation']);
+ need(Object.keys(payload).every(key=>special.has(key)||Object.hasOwn(originalInput,key)&&fingerprint(payload[key])===fingerprint(originalInput[key])),'model_continuation_payload_unbound');
  const priorSources=new Set(originalInput.sources.map(fingerprint));
  need(payload.sources.every(source=>addedSources.has(source.operation_id)||priorSources.has(fingerprint(source)))&&(payload.research===undefined||addedResearch||fingerprint(payload.research)===fingerprint(originalInput.research)),'model_continuation_payload_unbound');
  // Editor-only work can refine coverage, not authorize unrelated candidates.
@@ -511,7 +525,7 @@ function apply(db,c,now,config,commandHash){
   // result. A later takeover cannot erase a resumed executor's late evidence.
   if(!(original&&original.owner_id===c.owner_id&&original.epoch===c.epoch)&&!resumed)owner(run,c,now);
  }else owner(run,c,now);
- const plan=JSON.parse(Buffer.from(run.plan));const budget=effectiveResearchBudget(db,run,plan,now,cache);let grants=[],recovery=null,publicationCapabilities={};
+ const plan=JSON.parse(Buffer.from(run.plan));const budget=effectiveResearchBudget(db,run,plan,now,cache);let grants=[],recovery=null,publicationCapabilities={},settlementCapabilities={};
  if(['archive_recovery_begin','archive_recovery_chunk','archive_recovery_commit'].includes(c.action)){
   recovery=applyArchiveRecovery(db,c,commandHash);
  }else if(c.action==='page_begin'){
@@ -623,7 +637,7 @@ function apply(db,c,now,config,commandHash){
     let candidate;try{candidate=JSON.parse(file.data);}catch{}
     if(op.kind==='model'&&JSON.parse(op.input)?.continuation_archive_sha256){
      const preview={...op,phase:'acknowledged',elapsed_seconds:elapsed,result_archive:c.args.archive_sha256,result_file:c.args.file_sha256};
-     need(['success','failed'].includes(classifiedResult(db,run,preview,cache)?.outcome),'model_continuation_result_binding');
+     need(candidate?.stage===op.operation_key&&candidate?.input_sha256===op.input_hash&&['success','failed'].includes(classifiedResult(db,run,preview,cache)?.outcome),'model_continuation_result_binding');
     }
     if(candidate?.status==='not_dispatched'){
      const preview={...op,phase:'acknowledged',elapsed_seconds:elapsed,result_archive:c.args.archive_sha256,result_file:c.args.file_sha256};
@@ -631,6 +645,7 @@ function apply(db,c,now,config,commandHash){
      if(classification?.outcome==='not_dispatched'){
       const observation=JSON.parse(stored.byHash.get(candidate.observation_sha256).data);
       need(researchMicros(observation.observed_at)<=BigInt(now)*1000n,'source_not_dispatched_future');
+      if(budget)settlementCapabilities={cancellation_settlement_version:CANCELLATION_SETTLEMENT_VERSION};
      }else need(!isLayeredResearchPlan(plan)&&['success','failed'].includes(classification?.outcome),'source_not_dispatched_evidence');
     }
    }
@@ -662,7 +677,7 @@ function apply(db,c,now,config,commandHash){
  }
  const lease=run.owner_id===c.owner_id&&run.epoch===c.epoch&&run.lease_until>now?now+LEASE_MS:run.lease_until;
  db.prepare('UPDATE research_control_runs SET revision=revision+1,lease_until=? WHERE request_id=?').run(lease,c.request_id);
- return {status:'committed',run:view(load(db,c.request_id)),page_round:currentPageRound(db,c.request_id),dispatch_granted:grants.length>0,operations:grants,...(recovery?{recovery}: {}),...publicationCapabilities};
+ return {status:'committed',run:view(load(db,c.request_id)),page_round:currentPageRound(db,c.request_id),dispatch_granted:grants.length>0,operations:grants,...(recovery?{recovery}: {}),...publicationCapabilities,...settlementCapabilities};
 }
 export function executeResearchControl(db,config,bytes,now=Date.now(),{onResult=()=>{},publicationCheck=null}={}){
  need(assertResearchControl(db,config),'authority_disabled');const c=decodeResearchControl(bytes),hash=digest(bytes);

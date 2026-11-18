@@ -911,6 +911,47 @@ class ResearchRecoveryCdTests(unittest.TestCase):
                 db.execute('INSERT INTO research_control_runs VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',
                            ('request','2026-11-13',b'{}','a'*64,'owner',1,1,1,1,0,None,None,permit))
 
+    def test_new_layered_cancel_settlement_fences_quota_downgrade_only_after_commit(self):
+        if shutil.which('node') is None:
+            self.skipTest('Node is not available')
+        self.install()
+        command = b'{"action":"settle","args":{"outcome":"acknowledged"}}'
+        with connection(self.database) as db:
+            db.execute('INSERT INTO research_control_commands VALUES(?,?,?,?,?)', ('legacy','request','a'*64,command,json.dumps({'status':'committed'})))
+            self.assertFalse(cd.cancellation_settlement_runtime_required(db))
+        scripts = self.root/'scripts'; scripts.mkdir()
+        (scripts/'handoff-state.mjs').write_text("export class HandoffState{constructor(){throw Error('state_opened')}};export const handoffScope=x=>x;")
+        (scripts/'notice-outbox.mjs').write_text("export class NoticeOutbox{};export const notificationScope=x=>x;")
+        (scripts/'run-handoff.mjs').write_text("export function validateConfig(){throw Error('config_opened')}")
+        old = 'export const REPOSITORY_RESEARCH_INPUTS_VERSION=1;export const LAYERED_RESEARCH_BUDGET_VERSION=1;'
+        for mode in ['historical', 'new-old-runtime', 'new-compatible-runtime']:
+            if mode == 'new-old-runtime':
+                with connection(self.database) as db:
+                    db.execute('INSERT INTO research_control_commands VALUES(?,?,?,?,?)', ('new','request','b'*64,command,json.dumps({'status':'committed','cancellation_settlement_version':1})))
+                    self.assertTrue(cd.cancellation_settlement_runtime_required(db))
+            (scripts/'research-control.mjs').write_text(old + ('export const CANCELLATION_SETTLEMENT_VERSION=1;' if mode=='new-compatible-runtime' else ''))
+            config, operation = self.config(); before = cd.snapshot(self.database)
+            def probe(config, release, arguments, **kwargs):
+                script = arguments[-1].replace('/probe/publisher.json',(self.root/'publisher.json').as_posix())
+                result = subprocess.run(['node','--input-type=module','-e',script],cwd=release,capture_output=True,text=True)
+                self.assertNotEqual(result.returncode,0)
+                if mode == 'new-old-runtime':
+                    self.assertIn('cancellation_settlements_require_compatible_release',result.stderr)
+                    self.assertNotIn('config_opened',result.stderr)
+                else:
+                    self.assertNotIn('cancellation_settlements_require_compatible_release',result.stderr)
+                    self.assertIn('config_opened',result.stderr)
+                self.assertNotIn('state_opened',result.stderr)
+                raise ValueError('synthetic probe finished')
+            with patch.object(cd,'container',side_effect=probe),patch.object(cd,'legacy_dependency_mount',return_value=[]),patch.object(os,'chown',create=True):
+                with self.assertRaisesRegex(ValueError,'synthetic probe finished'):
+                    cd.compatibility(config,self.root,operation,before)
+            self.assertEqual(cd.snapshot(self.database),before)
+        with connection(self.database) as db:
+            db.execute('UPDATE research_control_commands SET result=? WHERE command_id=?',(json.dumps({'status':'committed','cancellation_settlement_version':2}),'new'))
+            with self.assertRaisesRegex(ValueError,'cancellation_settlement_version_invalid'):
+                cd.cancellation_settlement_runtime_required(db)
+
     def test_only_new_versioned_permit_receipts_fence_rollback(self):
         self.install(); self.cancelled_permit(marked=False)
         before = cd.snapshot(self.database)

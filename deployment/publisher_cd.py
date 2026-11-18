@@ -783,6 +783,19 @@ def cancellation_page_runtime_required(database):
     return required
 
 
+def cancellation_settlement_runtime_required(database):
+    # Only new layered settlements declare this quota contract. Do not rewrite history.
+    if database.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='research_control_commands'").fetchone() is None:
+        return False
+    required = False
+    for raw_command, raw_result in database.execute("SELECT bytes,result FROM research_control_commands WHERE json_type(result,'$.cancellation_settlement_version') IS NOT NULL"):
+        command, result = json.loads(raw_command), json.loads(raw_result)
+        if result.get('cancellation_settlement_version') != 1 or result.get('status') != 'committed' or command.get('action') != 'settle' or command.get('args', {}).get('outcome') != 'acknowledged':
+            raise ValueError('cancellation_settlement_version_invalid')
+        required = True
+    return required
+
+
 def compatibility(config, release, operation, expected):
     """仅打开隔离的账本副本，不提供生产凭据或网络。"""
     probe = operation / ("probe-" + uuid.uuid4().hex)
@@ -800,6 +813,7 @@ def compatibility(config, release, operation, expected):
         needs_archive_recovery = archive_recovery_runtime_required(isolated)
         needs_model_continuation = model_continuation_runtime_required(isolated)
         needs_cancellation_pages = cancellation_page_runtime_required(isolated)
+        needs_cancellation_settlements = cancellation_settlement_runtime_required(isolated)
         needs_pages = page_runtime_required(isolated)
         needs_revision = revision_runtime_required(isolated)
         needs_repository_inputs = repository_inputs_runtime_required(isolated)
@@ -821,6 +835,8 @@ def compatibility(config, release, operation, expected):
         script += "const inputs=await import('./scripts/research-control.mjs');if(inputs.REPOSITORY_RESEARCH_INPUTS_VERSION!==1)throw Error('repository_inputs_require_compatible_release');"
     if needs_model_continuation:
         script += "const continuation=await import('./scripts/research-control.mjs');if(continuation.MODEL_CONTINUATION_VERSION!==1)throw Error('model_continuation_requires_compatible_release');"
+    if needs_cancellation_settlements:
+        script += "const settlements=await import('./scripts/research-control.mjs');if(settlements.CANCELLATION_SETTLEMENT_VERSION!==1)throw Error('cancellation_settlements_require_compatible_release');"
     if needs_cancellation_pages:
         script += "const cancellation=await import('./scripts/research-control.mjs');if(cancellation.CANCELLATION_PAGE_VERSION!==1)throw Error('cancellation_pages_require_compatible_release');"
     if needs_layered_budget:
