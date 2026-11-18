@@ -6,6 +6,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {validateWatchdogConfig,shanghaiDay,checkPublisherHealth,checkDailyDelivery,inspectWatchdog,WatchdogJournal,WatchdogSlack,advanceWatchdogAlerts,schedulerStatus,watchdogMain,readDayBindings} from '../scripts/publisher-watchdog.mjs';
 import {HandoffState} from '../scripts/handoff-state.mjs';
+import {installScheduledTables} from '../scripts/scheduled-delivery-state.mjs';
 import {withHandoffLock} from '../scripts/handoff-lock.mjs';
 import {encodeBundle} from '../scripts/report-handoff.mjs';
 import {digest} from '../scripts/archive.mjs';
@@ -18,6 +19,26 @@ const binding={request_id:'morning-20261104-r1',report_date:'2026-11-04',report_
 const sent={...binding,status:'sent',phase:'complete',parts_total:2,parts_sent:2,images:[{file_id:'scheduled-poster',status:'sent',error:null}]};
 const c={publisher_config:path.resolve('publisher.json'),state_dir:path.resolve('watchdog'),unit:'publisher.service',heartbeat_max_age_seconds:300,deadline_grace_seconds:60};
 const publisher={scheduled_delivery:{activation_date:'2026-11-04'}};
+
+test('the watchdog reads a first-notice refusal only for its original published bundle',{skip:process.platform!=='linux'},async()=>{
+ const directory=await mkdtemp(path.join(os.tmpdir(),'watchdog-refusal-')),file=path.join(directory,'handoff.sqlite');
+ const id='morning-20261101-r1',date='2026-11-01';
+ let state;
+ try{
+  await writeFile(file,'',{mode:0o600});
+  state=new HandoffState(file,{});
+  const bytes=await encodeBundle(FILES,id,BASE,'b'.repeat(40)),bundleHash=digest(bytes);
+  state.admit({request_id:id,hash:bundleHash,source_ts:'1793491200.000001'},bytes);
+  state.move(id,'received','verified',{commit,proof:{publication_status:'verified',commit,bundle_sha256:bundleHash}});
+  installScheduledTables(state.db,['scheduled_handoffs','scheduled_bridge_scope']);
+  const original={request_id:id,report_commit:commit,report_date:date,bundle_sha256:bundleHash};
+  const refusal={...original,status:'rejected',error:'first_notice_requires_all_six_articles'};
+  state.db.prepare("INSERT INTO scheduled_handoffs VALUES (?,?,'policy_rejected',?,0)").run(id,JSON.stringify(original),JSON.stringify(refusal));
+  assert.equal((await readDayBindings({state_dir:directory},date))[0].first_notice_refused,true);
+  state.db.prepare('UPDATE scheduled_handoffs SET binding=? WHERE request_id=?').run(JSON.stringify({...original,report_commit:'f'.repeat(40)}),id);
+  assert.equal((await readDayBindings({state_dir:directory},date))[0].first_notice_refused,undefined);
+ }finally{state?.close();await rm(directory,{recursive:true,force:true});}
+});
 const observation={category:'publisher_health',issues:['publisher_not_running']};
 const inspection={checked_at:new Date(now).toISOString(),observations:[observation]};
 const slackConfig={team_id:'T123',channel_id:'C123',bot_user_id:'U456',bot_id:'B456'};

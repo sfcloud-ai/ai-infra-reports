@@ -10,11 +10,34 @@ import {NoticeOutbox,notificationScope,advanceNotice} from '../scripts/notice-ou
 import {encodeNoticeCommand} from '../scripts/notice-command.mjs';
 import {digest} from '../scripts/archive.mjs';
 import {checkDailyDelivery} from '../scripts/publisher-watchdog.mjs';
+import {TOPIC_IDS} from '../scripts/page-delivery.mjs';
 import {installScheduledTables,requireSettledScheduled} from '../scripts/scheduled-delivery-state.mjs';
 import {readReports,migrateArchive,replaceCurrentReport,validateArchive,reindexArchive} from '../scripts/archive.mjs';
 import {publicationSite} from './helpers/publication-site.mjs';
 import {FILES,MERGE,DAY} from './helpers/cloud-sender-fixture.mjs';
 const id='morning-20261101-r2',dir=`reports/${DAY}/`;
+test('the publication path accepts six topics and blocks a one-page first report at cutover',async()=>{
+ const archive=migrateArchive(await readReports('tests/fixtures/archive'));
+ const day='2026-11-19',out='reports/'+day+'/',src=dir+'r1/';
+ const incoming=new Map([...FILES].map(([name,bytes])=>[out+name.slice(src.length),bytes]));
+ const report=JSON.parse(incoming.get(out+'report.json'));
+ report.date=day;
+ report.entries=report.entries.map((entry,i)=>({...entry,id:'cutover-'+i,event_key:'cutover-'+i,
+  title:'Fixture '+entry.title,update_of:null}));
+ incoming.set(out+'report.json',Buffer.from(JSON.stringify(report)));
+ assert.doesNotThrow(()=>replaceCurrentReport(archive,incoming));
+ const first=report.articles[0].id;
+ report.articles=report.articles.filter(a=>a.id===first);
+ report.entries=report.entries.filter(e=>e.article_id===first);
+ report.images=report.images.filter(image=>image.path===report.poster||image.article_id===first);
+ for(const name of incoming.keys()){
+  const relative=name.slice(out.length);
+  if(relative.startsWith('articles/')&&relative!=='articles/'+first+'.md'||relative.startsWith('assets/')&&!report.images.some(image=>image.path===relative))incoming.delete(name);
+ }
+ Object.assign(report,{schema_version:'1.2',page_delivery:{previous:null,added:[first],pending:TOPIC_IDS.slice(1).map(id=>({id,reason:'Awaiting verified sources'}))}});
+ incoming.set(out+'report.json',Buffer.from(JSON.stringify(report)));
+ assert.throws(()=>replaceCurrentReport(archive,incoming),/First publication requires six complete topic pages/);
+});
 function files(kind='correction'){
  const result=new Map([...FILES].map(([p,b])=>[p.replace('/r1/','/'),b]));
  const r=JSON.parse(result.get(dir+'report.json'));
@@ -153,6 +176,12 @@ test('watchdog follows revision receipts without hiding unknowns or treating a p
  responses.set(first.request_id,{...original,status:'queued',phase:'superseded',parts_sent:0,superseded_by:id});
  responses.set(id,{...base,delivery_kind:'initial',parts_total:2,parts_sent:2,images:original.images});
  assert.deepEqual((await checkDailyDelivery([first,second],query)).issues,[]);
+ responses.set(first.request_id,{status:'not_found'});
+ assert.deepEqual((await checkDailyDelivery([first,second],query)).issues,['daily_delivery_not_admitted']);
+ assert.deepEqual((await checkDailyDelivery([{...first,first_notice_refused:true},second],query)).issues,[]);
+ responses.set(id,{...base,delivery_kind:'revision_update'});
+ assert.deepEqual((await checkDailyDelivery([{...first,first_notice_refused:true},second],query)).issues,['daily_delivery_not_admitted']);
+ responses.set(id,{...base,delivery_kind:'initial',parts_total:2,parts_sent:2,images:original.images});
  responses.set(first.request_id,{...original,status:'unknown',phase:'unknown',parts_sent:0});
  assert.deepEqual((await checkDailyDelivery([first,second],query)).issues,['daily_delivery_incomplete']);
 });

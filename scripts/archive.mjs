@@ -1,4 +1,4 @@
-import {validatePageProgressReport,validatePageCorrectionReport} from './page-delivery.mjs';
+import {TOPIC_IDS,validatePageProgressReport,validatePageCorrectionReport} from './page-delivery.mjs';
 import {evidenceAssets,evidenceAssetReferences} from "./evidence-assets.mjs";
 import {validateReportFields} from './revision-notice.mjs';
 // Report-only, data-only contract shared by the publisher, CI and trusted merge gate.
@@ -219,6 +219,10 @@ function validateCurrentChange(base,head) {
   assert(changed.size===1,"one report revision per PR");
   const date=[...changed][0],old=previous.reports.find(r=>r.date===date),next=result.reports.find(r=>r.date===date);
   assert(next&&next.revision===(old?.revision||0)+1,"revisions must be consecutive");
+  if(!old && date>='2026-11-19'){
+    assert(next.schema_version==='1.0' && next.articles.map(article=>article.id).join()===TOPIC_IDS.join(),
+      'First publication requires six complete topic pages');
+  }
   if(next.page_delivery&&next.revision>1||old?.page_delivery){
     if(next.revision_notice?.kind==='page_completion')validatePageProgressReport(old,next);
     else validatePageCorrectionReport(old,next);
