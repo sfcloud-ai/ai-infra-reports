@@ -8,6 +8,10 @@ export const SCHEDULED_SCHEMA=Object.freeze({
 export function installScheduledTables(db,names){
  for(const name of names)db.exec(SCHEDULED_SCHEMA[name].replace('CREATE TABLE ','CREATE TABLE IF NOT EXISTS '));
 }
+export function firstNoticeRejected(result,binding){
+ return result?.status==='rejected'&&result.error==='first_notice_requires_all_six_articles'&&
+  result.request_id===binding.request_id&&result.report_commit===binding.report_commit&&result.bundle_sha256===binding.bundle_sha256;
+}
 export function scheduledSchemaObjects(db){
  const objects=db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name IN ('scheduled_handoffs','scheduled_bridge_scope','scheduled_status_replies') ORDER BY name").all();
  requireThat(objects.every(o=>o.type==='table'&&SCHEDULED_SCHEMA[o.name]===o.sql),'Unexpected scheduled delivery schema');
@@ -26,6 +30,11 @@ export function requireSettledScheduled(db){
  };
  for(const original of rows.values()){
   if(original.phase==='complete')continue; // 已有 legacy complete 原样保留。
+  if(original.phase==='policy_rejected'){
+   const {result,binding}=bound(original.request_id);
+   requireThat(firstNoticeRejected(result,binding),'Scheduled rejection binding differs');
+   continue;
+  }
   requireThat(['skipped','superseded'].includes(original.phase),'Unresolved scheduled delivery prevents migration');
   let id=original.request_id,current=bound(id);const seen=new Set();
   while(current.row.phase==='superseded'){

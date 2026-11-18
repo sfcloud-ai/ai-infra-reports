@@ -2,7 +2,7 @@
 // never itself sends; an uncertain response is followed only by original-ID status.
 import {spawn} from 'node:child_process';
 import {scopeDigest} from './handoff-state.mjs';
-import {installScheduledTables} from './scheduled-delivery-state.mjs';
+import {firstNoticeRejected,installScheduledTables} from './scheduled-delivery-state.mjs';
 import {decodeBundle,requireThat,REQUEST} from './report-handoff.mjs';
 import {validateCheckerConfig} from './notice-checker.mjs';
 import {safeDiagnostic,isSlackWriteUnexecuted} from './handoff-recovery.mjs';
@@ -52,7 +52,7 @@ export async function advanceScheduledDelivery(state,config,query=queryScheduled
   requireThat(job.detail.proof?.publication_status==='verified'&&job.detail.proof.bundle_sha256===job.hash&&job.detail.proof.commit===job.detail.commit,'Actual published source required before scheduling');
   const binding=JSON.stringify({request_id:id,report_date:bundle.report.date,report_commit:job.detail.commit,bundle_sha256:job.hash});
   let local=db.prepare('SELECT * FROM scheduled_handoffs WHERE request_id=?').get(id);
-  if(local){requireThat(local.binding===binding,'Scheduled original binding differs');if(['complete','skipped','superseded'].includes(local.phase))continue;}
+  if(local){requireThat(local.binding===binding,'Scheduled original binding differs');if(['complete','skipped','superseded','policy_rejected'].includes(local.phase))continue;}
   else{db.prepare("INSERT INTO scheduled_handoffs VALUES (?,?,'new',NULL,0)").run(id,binding);local={phase:'new'};}
   // New reports first, then persistent round-robin. An old unknown job may
   // remain unresolved forever without starving later dates or disappearing.
@@ -64,6 +64,12 @@ export async function advanceScheduledDelivery(state,config,query=queryScheduled
     // idempotent; it cannot duplicate sends or replace an earlier binding.
     db.prepare("UPDATE scheduled_handoffs SET phase='admission_pending' WHERE request_id=?").run(id);
     result=await query(c,{action:'admit',request_id:id,report_commit:job.detail.commit,bundle_base64:job.bytes.toString('base64')});
+    const expected=JSON.parse(binding);
+    if(firstNoticeRejected(result,expected)){
+     const refusal={...expected,status:'rejected',error:'first_notice_requires_all_six_articles'};
+     db.prepare("UPDATE scheduled_handoffs SET phase='policy_rejected',result=? WHERE request_id=?").run(JSON.stringify(refusal),id);
+     return {request_id:id,phase:'policy_rejected',wecom_status:'not_verified',error:refusal.error};
+    }
    }
    const expected=JSON.parse(binding);
    const revised=!!bundle.report.revision_notice;
@@ -162,6 +168,11 @@ export async function replyScheduledStatus(state,config,event,slack,query=queryS
    }
  if(job){
   result.publisher_bundle_sha256=job.hash;
+  const handoffs=db.prepare("SELECT 1 FROM sqlite_master WHERE name='scheduled_handoffs' AND type='table'").get();
+  const rejection=handoffs&&db.prepare("SELECT result FROM scheduled_handoffs WHERE request_id=? AND phase='policy_rejected'").get(requestId);
+  if(rejection&&firstNoticeRejected(JSON.parse(rejection.result),{request_id:requestId,report_commit:job.detail.commit,bundle_sha256:job.hash})){
+   result.scheduled_policy_error='first_notice_requires_all_six_articles';
+  }
   result.publisher_source_ts=job.source_ts;
   if(job.detail.recovery?.last_error)result.publisher_diagnostic=safeDiagnostic({diagnostic:job.detail.recovery.last_error},'publisher');
   if(job.detail.recovery?.next_at)result.publisher_next_attempt_at=job.detail.recovery.next_at;

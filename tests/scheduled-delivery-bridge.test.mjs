@@ -4,6 +4,7 @@ import {encodeBundle} from '../scripts/report-handoff.mjs';
 import {digest} from '../scripts/archive.mjs';
 import {HandoffState,handoffScope} from '../scripts/handoff-state.mjs';
 import {advanceScheduledDelivery,validateScheduledConfig} from '../scripts/scheduled-delivery-bridge.mjs';
+import {requireSettledScheduled} from '../scripts/scheduled-delivery-state.mjs';
 import {handoffTick,validateConfig} from '../scripts/run-handoff.mjs';
 import {SlackHandoff} from '../scripts/slack-handoff.mjs';
 import {FILES,MERGE} from './helpers/cloud-sender-fixture.mjs';
@@ -106,6 +107,27 @@ test('complete requires all real parts and rejects wrong binding',async()=>{
   assert.equal((await advanceScheduledDelivery(s,config,async()=>({...queued,status:'sent',phase:'complete',parts_sent:2}))).phase,'reconcile_pending');
   assert.equal((await advanceScheduledDelivery(s,config,async()=>({...queued,status:'sent',phase:'complete',parts_sent:2,images:[{file_id:'scheduled-poster',status:'sent',error:null}]}))).phase,'complete');
   assert.equal((await advanceScheduledDelivery(s,config,()=>assert.fail('completed report must not query or send again'))).phase,'idle');
+ }finally{s.close();}
+});
+test('a bound admission rejection survives retries and identifies the correction in status',async()=>{
+ const s=state(),calls=[];
+ let wrong=true,reply;
+ const query=async(config,request)=>{
+  calls.push(request.action);
+  return request.action==='status'?{status:'not_found'}:{status:'rejected',error:'first_notice_requires_all_six_articles',
+   request_id:id,report_commit:MERGE,bundle_sha256:wrong?'e'.repeat(64):hash};
+ };
+ try{
+  assert.equal((await advanceScheduledDelivery(s,config,query)).phase,'reconcile_pending');
+  wrong=false;
+  assert.equal((await advanceScheduledDelivery(s,config,query)).phase,'policy_rejected');
+  assert.equal((await advanceScheduledDelivery(s,config,query)).phase,'idle');
+  assert.deepEqual(calls,['status','admit','status','admit']);
+  requireSettledScheduled(s.db);
+  await replyScheduledStatus(s,config,{request_id:id,source_ts:'1793491202.000001',hash:'query-hash'},
+   {controlReceipt:async(_ts,text)=>{reply=JSON.parse(text.slice('!ai-report status-receipt '.length));return '1793491203.000001';}},query);
+  assert.equal(reply.status,'not_found');
+  assert.equal(reply.scheduled_policy_error,'first_notice_requires_all_six_articles');
  }finally{s.close();}
 });
 test('status distinguishes admitted Publisher from absent scheduler and includes safe diagnostics',async()=>{
