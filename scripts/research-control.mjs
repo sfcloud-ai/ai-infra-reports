@@ -127,12 +127,14 @@ function readPublicationBytes(db,run,args,cache){
  cache.archive=null;cache.archiveKey=null;
  return {bundle,audit,metadata};
 }
-function modelContinuationPublicationBound(db,run,args,metadata,cache){
+function modelContinuationPublicationBound(db,run,args,metadata,cache,page){
  const operations=db.prepare("SELECT * FROM research_control_ops WHERE request_id=? AND kind='model'").all(run.request_id);
  const current=new Map(operations.filter(op=>JSON.parse(op.input)?.continuation_archive_sha256).map(op=>[op.operation_id,op]));
  const hasProof=Array.isArray(metadata?.model_calls)&&metadata.model_calls.some(call=>Array.isArray(call?.attempt_records)&&call.attempt_records.some(attempt=>attempt?.prepublication_continuation_sha256!==undefined));
  if(!current.size&&!hasProof)return;
  need(Array.isArray(metadata?.model_calls)&&metadata.model_calls.every(call=>call&&typeof call.stage==='string'&&Array.isArray(call.attempt_records)&&call.attempt_records.every(attempt=>attempt&&typeof attempt==='object'&&!Array.isArray(attempt))),'publication_model_continuation_binding');
+ const revision=page?currentPageRound(db,run.request_id)?.revision:1;
+ need(integer(revision,1,Number.MAX_SAFE_INTEGER)&&metadata.model_calls.every(call=>call.attempt_records.every(attempt=>attempt.page_round===undefined||integer(attempt.page_round?.revision,1,revision))),'publication_model_continuation_binding');
  const seen=new Set(),files=commandArchive(db,run.request_id,args.archive_sha256,cache)?.byHash;
  const initial=attempt=>attempt.page_round===undefined||attempt.page_round?.revision===1;
  const matches=(attempt,op)=>attempt.input_sha256===op.input_hash&&attempt.result_sha256===op.result_file&&attempt.reserved_seconds===op.reserved_seconds&&attempt.elapsed_seconds===op.elapsed_seconds;
@@ -206,7 +208,7 @@ function publicationEvidence(db,run,plan,args,now,cache,page=false){
    need(summary.successful_attempts?.[kind]===count(actual.successful_attempts)&&summary.failed_attempts?.[kind]===count(actual.failed_attempts)&&summary.unknown_attempts?.[kind]===count(actual.unknown_attempts),'publication_budget_attempts');
   }
  }
- modelContinuationPublicationBound(db,run,args,metadata,cache);
+ modelContinuationPublicationBound(db,run,args,metadata,cache,page);
  // Legacy non-layered schema 1.3 does not carry audit metadata; preserve its existing contract.
  if(!budget&&metadata===null)return {...pageBinding};
  const cancelled=new Map(db.prepare("SELECT * FROM research_control_ops WHERE request_id=? AND kind='source'").all(run.request_id).filter(op=>classifiedResult(db,run,op,cache)?.outcome==='not_dispatched').map(op=>[op.operation_id,op]));
@@ -402,7 +404,7 @@ function prepublicationModelContinuation(db,run,op,prior,cache){
   }else {
    addedResearch=true;
    const claimed=new Set(payload.research?.outputs?.map(output=>output.sha256));
-   need(payload.research?.operation_id===evidence.operation_id&&payload.research?.result_sha256===evidence.result_file&&claimed.size===new Set(contents).size&&contents.every(hash=>claimed.has(hash)),'model_continuation_payload_research');
+   need(payload.research?.operation_id===evidence.operation_id&&payload.research?.result_sha256===evidence.result_file&&claimed.size===new Set(contents).size&&contents.every(hash=>claimed.has(hash))&&(payload.research.input_sha256===undefined||payload.research.input_sha256===evidence.input_hash)&&(payload.research.status===undefined||payload.research.status===(result.stage_status??result.status))&&(payload.research.elapsed_seconds===undefined||payload.research.elapsed_seconds===result.elapsed_seconds),'model_continuation_payload_research');
   }
   need(contents.some(hash=>!oldContents.has(hash)),'model_continuation_no_new_content');
  }

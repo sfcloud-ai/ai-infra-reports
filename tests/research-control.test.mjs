@@ -1578,11 +1578,11 @@ test('publication rechecks accumulated successful model time after continuation 
    run=execute(f.s,command('settle',{operation_id:second.operation_id,outcome:'acknowledged',elapsed_seconds:elapsed,archive_sha256:head,file_sha256:digest(data),native_result:null},run)).run;
    const bundle=await encodeBundle(FILES,id,'b'.repeat(40),'a'.repeat(40)),total=410+elapsed;
    const a=auditSummary({schema_version:'1.4',budget_policy:LAYERED_BUDGET_POLICY,limits:{source_attempts:2,model_attempts:2,source_attempt_seconds:180,model_stage_seconds:1200,run_seconds:3600},budget_accounting:{successful_attempts:{source:1,model:2},failed_attempts:{source:0,model:0},unknown_attempts:{source:0,model:0},successful_seconds:total,failed_seconds:0,reserved_unknown_seconds:0,charged_seconds:total}});
-   for(const scenario of elapsed===800?['missing','foreign','input','result','checkpoint','reserved','elapsed','prior','extra','valid']:['valid']){
+   for(const scenario of elapsed===800?['missing','foreign','input','result','checkpoint','reserved','elapsed','prior','extra','future','valid']:['valid']){
     const proof=Buffer.from(JSON.stringify({schema_version:'model_prepublication_continuation_evidence_v1',operation_id:scenario==='foreign'?randomUUID():second.operation_id,control_commands:[],source_attempts:[]}));
     const attempts=[{status:'partial',input_sha256:f.first.input_sha256,result_sha256:f.manifest.checkpoint_file_sha256,reserved_seconds:600,elapsed_seconds:400},{status:'ok',input_sha256:second.input_sha256,result_sha256:digest(data),checkpoint_sha256:f.manifest.checkpoint_file_sha256,reserved_seconds:800,elapsed_seconds:elapsed,...(scenario==='missing'?{}:{prepublication_continuation_sha256:digest(proof)})}];
     if(scenario==='input')attempts[1].input_sha256='f'.repeat(64);if(scenario==='result')attempts[1].result_sha256='f'.repeat(64);if(scenario==='checkpoint')attempts[1].checkpoint_sha256='f'.repeat(64);
-    if(scenario==='reserved')attempts[1].reserved_seconds=799;if(scenario==='elapsed')attempts[1].elapsed_seconds=799;if(scenario==='prior')attempts[0].result_sha256='f'.repeat(64);if(scenario==='extra')attempts.push({...attempts[1]});
+    if(scenario==='reserved')attempts[1].reserved_seconds=799;if(scenario==='elapsed')attempts[1].elapsed_seconds=799;if(scenario==='prior')attempts[0].result_sha256='f'.repeat(64);if(scenario==='extra')attempts.push({...attempts[1]});if(scenario==='future')attempts.push({...attempts[1],prepublication_continuation_sha256:undefined,page_round:{revision:2}});
     const metadata=Buffer.from(JSON.stringify({sources:[],model_calls:[{stage:'editor',attempt_records:attempts}]}));
     const audit=Buffer.from(JSON.stringify({...a,evidence_metadata_sha256:digest(metadata)})),h=archive(f.s,{'bundle.json':bundle,'audit.json':audit,'metadata.json':metadata,'proof.json':proof});
     const result=await issuePermit(f.s,command('permit',{archive_sha256:h,bundle_sha256:digest(bundle),audit_sha256:digest(audit)},run));
@@ -1662,7 +1662,11 @@ test('editor continuation binds newly archived research output bytes',()=>{
   assert.equal(execute(f.s,command('reserve',{operations:[misplaced]},run)).code,'model_continuation_payload_research');
   const extra=f.next(evidence,{sources:[],research:{operation_id:research.operation_id,result_sha256:digest(data),outputs:[{sha256:digest(output)},{sha256:'f'.repeat(64)}]}});
   assert.equal(execute(f.s,command('reserve',{operations:[extra]},run)).code,'model_continuation_payload_research');
-  const op=f.next(evidence,{sources:[],research:{operation_id:research.operation_id,result_sha256:digest(data),outputs:[{sha256:digest(output)}]}});
+  for(const changes of [{input_sha256:'f'.repeat(64)},{status:'failed'},{elapsed_seconds:11}]){
+   const contradicted=f.next(evidence,{sources:[],research:{operation_id:research.operation_id,result_sha256:digest(data),outputs:[{sha256:digest(output)}],...changes}});
+   assert.equal(execute(f.s,command('reserve',{operations:[contradicted]},run)).code,'model_continuation_payload_research');
+  }
+  const op=f.next(evidence,{sources:[],research:{operation_id:research.operation_id,result_sha256:digest(data),outputs:[{sha256:digest(output)}],input_sha256:research.input_sha256,status:'partial',elapsed_seconds:10}});
   assert.equal(execute(f.s,command('reserve',{operations:[op]},run)).status,'committed');
  }finally{f.s.close();}
  }
