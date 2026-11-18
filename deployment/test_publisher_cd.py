@@ -865,6 +865,8 @@ class ResearchRecoveryCdTests(unittest.TestCase):
         self.assertEqual(cd.snapshot(self.database), before)
 
     def test_continuation_blocks_old_runtime_before_config_and_state_open(self):
+        if shutil.which('node') is None:
+            self.skipTest('Node is not available')
         self.install(); self.continuation()
         scripts = self.root / 'scripts'; scripts.mkdir()
         (scripts/'handoff-state.mjs').write_text("export class HandoffState{constructor(){throw Error('state_opened')}};export const handoffScope=x=>x;")
@@ -924,6 +926,8 @@ class ResearchRecoveryCdTests(unittest.TestCase):
                 cd.cancellation_page_runtime_required(db)
 
     def test_cancellation_page_permit_blocks_old_runtime_before_open(self):
+        if shutil.which('node') is None:
+            self.skipTest('Node is not available')
         self.install(); self.cancelled_permit(page=True)
         scripts = self.root/'scripts'; scripts.mkdir()
         (scripts/'handoff-state.mjs').write_text("export class HandoffState{constructor(){throw Error('state_opened')}};export const handoffScope=x=>x;")
@@ -944,6 +948,8 @@ class ResearchRecoveryCdTests(unittest.TestCase):
         self.assertEqual(cd.snapshot(self.database),before)
 
     def test_historical_cancellation_does_not_fence_initial_upgrade(self):
+        if shutil.which('node') is None:
+            self.skipTest('Node is not available')
         self.install(); self.cancelled_permit(marked=False,page=True)
         scripts = self.root/'scripts'; scripts.mkdir()
         (scripts/'handoff-state.mjs').write_text("export class HandoffState{constructor(){throw Error('state_opened')}};export const handoffScope=x=>x;")

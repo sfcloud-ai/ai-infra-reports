@@ -1775,12 +1775,21 @@ test('actual permit rejects omitted batch cancellations and records a compatible
    const settled=execute(s,command('settle',{operation_id:op.operation_id,outcome:'acknowledged',elapsed_seconds:null,archive_sha256:h,file_sha256:digest(data),native_result:null},run),now+70000);assert.equal(settled.status,'committed');run=settled.run;
   }
   const bundle=await encodeBundle(FILES,id,'b'.repeat(40),'a'.repeat(40));
-  for(const count of [1,8]){
-   const metadata=Buffer.from(JSON.stringify({sources:ops.slice(0,count).map(op=>({id:op.operation_id,attempt_records:[{status:'not_dispatched'}]}))}));
+  for(const scenario of ['omitted','substituted','wrong_hash','wrong_url','duplicate','missing_records','bad_sources','null_source','null_attempt','valid']){
+   const count=scenario==='omitted'?1:8;
+   const sources=ops.slice(0,count).map(op=>({id:op.operation_id,url:op.input.url,attempt_records:[{status:'not_dispatched',operation_id:op.operation_id,not_dispatched_evidence_sha256:s.db.prepare('SELECT result_file FROM research_control_ops WHERE operation_id=?').get(op.operation_id).result_file}]}));
+   if(scenario==='substituted')sources[0].attempt_records[0].operation_id=randomUUID();
+   if(scenario==='wrong_hash')sources[0].attempt_records[0].not_dispatched_evidence_sha256='f'.repeat(64);
+   if(scenario==='wrong_url')sources[0].url='https://example.org/unrelated';
+   if(scenario==='missing_records')delete sources[0].attempt_records;
+   if(scenario==='duplicate')sources[0]=sources[1];
+   if(scenario==='null_source')sources[0]=null;
+   if(scenario==='null_attempt')sources[0].attempt_records[0]=null;
+   const metadata=Buffer.from(JSON.stringify({sources:scenario==='bad_sources'?{}:sources}));
    const summary=Buffer.from(JSON.stringify(auditSummary({schema_version:'1.4',budget_policy:LAYERED_BUDGET_POLICY,evidence_metadata_sha256:digest(metadata),limits:{source_attempts:2,model_attempts:2,source_attempt_seconds:180,model_stage_seconds:1200,run_seconds:3600},budget_accounting:{successful_attempts:{source:0,model:0},failed_attempts:{source:0,model:0},unknown_attempts:{source:count,model:0},successful_seconds:0,failed_seconds:0,reserved_unknown_seconds:count*30,charged_seconds:count*30}})));
    const h=archive(s,{'bundle.json':bundle,'metadata.json':metadata,'summary.json':summary}),c=command('permit',{archive_sha256:h,bundle_sha256:digest(bundle),audit_sha256:digest(summary)},run);
    const answer=await issuePermit(s,c);
-   if(count===1){assert.equal(answer.code,'publication_budget_accounting');assert.equal(answer.cancellation_page_version,undefined);assert.equal(answer.run.permit,null);}
+   if(scenario!=='valid'){assert.equal(answer.code,scenario==='omitted'?'publication_budget_accounting':['bad_sources','null_source','null_attempt'].includes(scenario)?'publication_cancellation_metadata':'publication_cancellation_binding',scenario);assert.equal(answer.cancellation_page_version,undefined);assert.equal(answer.run.permit,null);}
    else{
     assert.equal(answer.status,'committed');assert.equal(answer.cancellation_page_version,1);assert.equal(answer.run.charged_seconds,240);
     const parsed=await nativeFixtureControl(s)(Buffer.from(JSON.stringify(c)));assert.equal(parsed.cancellation_page_version,1);
@@ -1791,14 +1800,25 @@ test('actual permit rejects omitted batch cancellations and records a compatible
 });
 
 test('editor-only continuation requires its original research checkpoint shape',()=>{
- for(const research of [undefined,{outputs:[]},{result_sha256:'a'.repeat(64),outputs:[]}]){
+ for(const research of [undefined,{outputs:[]},{result_sha256:'a'.repeat(64),outputs:[]},{result_sha256:'a'.repeat(64),outputs:null}]){
   const f=continuationFixture();try{
    const input=Buffer.from(JSON.stringify({request_id:id,stage:'editor',sources:[],...(research===undefined?{}:{research})})),op=f.next();
    f.s.db.prepare('UPDATE research_control_ops SET input_hash=? WHERE operation_id=?').run(digest(input),f.first.operation_id);
    const original=f.s.db.prepare('SELECT bytes FROM research_archives WHERE hash=?').get(op.input.continuation_archive_sha256);
    const files=Object.fromEntries(decodeResearchArchive(Buffer.from(original.bytes)).files.map(file=>[file.path,file.data]));files['stage_artifacts/original-input.json']=input;
    op.input.continuation_archive_sha256=archive(f.s,files);
-   const answer=execute(f.s,command('reserve',{operations:[op]},f.run));assert.equal(answer.code,'model_continuation_prior_research');assert.equal(answer.run.charged_seconds,410);
+   const answer=execute(f.s,command('reserve',{operations:[op]},f.run));assert.equal(answer.code,research?.outputs===null?'model_continuation_stage_input':'model_continuation_prior_research');assert.equal(answer.run.charged_seconds,410);
+  }finally{f.s.close();}
+ }
+});
+
+test('continuation rejects unbound additional payload references but keeps original context',()=>{
+ for(const kind of ['source','research']){
+  const f=continuationFixture();try{
+   const original=JSON.parse(f.originalInput);
+   const extra=kind==='source'?{sources:[{operation_id:f.added.operation_id,result_sha256:f.manifest.added_evidence[0].file_sha256,body_sha256:digest(f.content)},{operation_id:randomUUID(),result_sha256:'e'.repeat(64),body_sha256:'f'.repeat(64)}]}:{research:{operation_id:randomUUID(),result_sha256:'e'.repeat(64),outputs:[{sha256:'f'.repeat(64)}]}};
+   assert.equal(execute(f.s,command('reserve',{operations:[f.next({},extra)]},f.run)).code,'model_continuation_payload_unbound');
+   assert.equal(execute(f.s,command('reserve',{operations:[f.next({},{research:original.research})]},f.run)).status,'committed');
   }finally{f.s.close();}
  }
 });

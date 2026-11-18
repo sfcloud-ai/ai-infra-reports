@@ -176,7 +176,20 @@ function publicationEvidence(db,run,plan,args,now,cache,page=false){
    need(summary.successful_attempts?.[kind]===count(actual.successful_attempts)&&summary.failed_attempts?.[kind]===count(actual.failed_attempts)&&summary.unknown_attempts?.[kind]===count(actual.unknown_attempts),'publication_budget_attempts');
   }
  }
- return {...pageBinding,...(metadata?.sources?.some(source=>source.attempt_records?.some(attempt=>attempt.status==='not_dispatched'))?{cancellation_page_version:CANCELLATION_PAGE_VERSION}:{})};
+ const cancelled=new Map(db.prepare("SELECT * FROM research_control_ops WHERE request_id=? AND kind='source'").all(run.request_id).filter(op=>classifiedResult(db,run,op,cache)?.outcome==='not_dispatched').map(op=>[op.operation_id,op]));
+ const retained=new Set();
+ if(metadata!==null){
+  need(Array.isArray(metadata.sources)&&metadata.sources.every(source=>source&&typeof source==='object'&&!Array.isArray(source)&&(source.attempt_records===undefined||Array.isArray(source.attempt_records)&&source.attempt_records.every(attempt=>attempt&&typeof attempt==='object'&&!Array.isArray(attempt)))),'publication_cancellation_metadata');
+  for(const source of metadata.sources)for(const attempt of source.attempt_records??[]){
+   if(attempt.status!=='not_dispatched')continue;
+   const op=cancelled.get(attempt.operation_id);let identity=null;
+   try{identity=researchSourceIdentity({method:'GET',url:source.url}).hash;}catch{}
+   need(op&&!retained.has(op.operation_id)&&identity===op.input_hash&&attempt.not_dispatched_evidence_sha256===op.result_file,'publication_cancellation_binding');
+   retained.add(op.operation_id);
+  }
+ }
+ need(retained.size===cancelled.size,'publication_cancellation_binding');
+ return {...pageBinding,...(retained.size?{cancellation_page_version:CANCELLATION_PAGE_VERSION}:{})};
 }
 export function researchSourceIdentity(input){
  need(exact(input,'method,url')&&input.method==='GET'&&typeof input.url==='string'&&input.url.length<=2000,'source_identity');
@@ -290,7 +303,7 @@ function stageInputContents(value,run,key){
  need(value&&value.request_id===run.request_id&&value.stage===key&&Array.isArray(value.sources)&&value.sources.every(source=>source&&typeof source==='object'&&!Array.isArray(source)&&Object.keys(source).every(field=>sourceFields.has(field))&&Object.hasOwn(source,'body_sha256')&&(string(source.body_sha256,HASH)||source.body_sha256===null&&source.body_file==null&&!['ok','success'].includes(source.status))),'model_continuation_stage_input');
  const researchFields=new Set(['operation_id','input_file','input_sha256','result_file','result_sha256','status','elapsed_seconds','outputs']),outputFields=new Set(['name','path','sha256','bytes']);
  need(value.research===undefined||value.research&&typeof value.research==='object'&&!Array.isArray(value.research)&&Object.keys(value.research).every(field=>researchFields.has(field))&&Object.hasOwn(value.research,'outputs'),'model_continuation_stage_input');
- const outputs=value.research?.outputs??[];
+ const outputs=value.research===undefined?[]:value.research.outputs;
  need(Array.isArray(outputs)&&outputs.every(output=>output&&typeof output==='object'&&!Array.isArray(output)&&Object.keys(output).every(field=>outputFields.has(field))&&string(output.sha256,HASH)),'model_continuation_stage_input');
  return new Set([...value.sources.map(source=>source.body_sha256),...outputs.map(output=>output.sha256)].filter(hash=>string(hash,HASH)));
 }
@@ -312,7 +325,7 @@ function prepublicationModelContinuation(db,run,op,prior,cache){
  stageInputContents(payload,run,op.key);const binding=payload.continuation;
  need(exact(binding,'previous_operation_id,checkpoint_archive_sha256,checkpoint_file_sha256,added_evidence')&&binding.previous_operation_id===prior.operation_id&&binding.checkpoint_archive_sha256===prior.result_archive&&binding.checkpoint_file_sha256===prior.result_file&&Array.isArray(binding.added_evidence)&&binding.added_evidence.length===manifest.added_evidence.length,'model_continuation_payload_binding');
 
- const seen=new Set();let addedResearchContinuation=false;
+ const seen=new Set(),addedSources=new Set();let addedResearchContinuation=false,addedResearch=false;
  for(const ref of manifest.added_evidence){
   need(exact(ref,'operation_id,archive_sha256,file_sha256')&&string(ref.operation_id,UUID)&&string(ref.archive_sha256,HASH)&&string(ref.file_sha256,HASH)&&!seen.has(ref.operation_id),'model_continuation_evidence');seen.add(ref.operation_id);
   const bound=binding.added_evidence[seen.size-1];need(exact(bound,'operation_id,archive_sha256,file_sha256')&&bound.operation_id===ref.operation_id&&bound.archive_sha256===ref.archive_sha256&&bound.file_sha256===ref.file_sha256,'model_continuation_payload_binding');
@@ -333,17 +346,24 @@ function prepublicationModelContinuation(db,run,op,prior,cache){
    need(contents.length>0&&contents.every(hash=>evidenceArchive.byHash.get(hash)?.data.length>0),'model_continuation_model_content');
   }
   if(evidence.kind==='source'){
+   addedSources.add(evidence.operation_id);
    const matches=payload.sources.filter(source=>source.operation_id===evidence.operation_id);
    need(matches.length===1&&matches[0].result_sha256===evidence.result_file&&matches[0].body_sha256===result.content_sha256,'model_continuation_payload_source');
    const match=matches[0];let identity=null;
    if(match.url!==undefined){try{identity=researchSourceIdentity({method:'GET',url:match.url}).hash;}catch{refuse('model_continuation_payload_source');}}
    need((match.url===undefined||identity===evidence.input_hash)&&(match.input_sha256===undefined||match.input_sha256===evidence.input_hash),'model_continuation_payload_source');
   }else {
+   addedResearch=true;
    const claimed=new Set(payload.research?.outputs?.map(output=>output.sha256));
    need(payload.research?.operation_id===evidence.operation_id&&payload.research?.result_sha256===evidence.result_file&&claimed.size===new Set(contents).size&&contents.every(hash=>claimed.has(hash)),'model_continuation_payload_research');
   }
   need(contents.some(hash=>!oldContents.has(hash)),'model_continuation_no_new_content');
  }
+ // New references must be authenticated in both directions; old context is retained verbatim in meaning.
+ const canonical=value=>Array.isArray(value)?value.map(canonical):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(key=>[key,canonical(value[key])])):value;
+ const fingerprint=value=>JSON.stringify(canonical(value));
+ const priorSources=new Set(originalInput.sources.map(fingerprint));
+ need(payload.sources.every(source=>addedSources.has(source.operation_id)||priorSources.has(fingerprint(source)))&&(payload.research===undefined||addedResearch||fingerprint(payload.research)===fingerprint(originalInput.research)),'model_continuation_payload_unbound');
  // Editor-only work can refine coverage, not authorize unrelated candidates.
  // The auditor compares retained candidate items through this exact old input.
  if(op.key==='editor'&&!addedResearchContinuation)need(string(originalInput.research?.result_sha256,HASH)&&originalInput.research.outputs.length>0,'model_continuation_prior_research');
