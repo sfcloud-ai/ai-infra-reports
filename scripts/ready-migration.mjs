@@ -22,7 +22,12 @@ function inspect(db){
  scheduledSchemaObjects(db);
  const intakeObjects=intakeSchemaObjects(db);
  if(intakeObjects.length){
-  requireThat(db.prepare("SELECT count(*) AS n FROM publisher_inbox WHERE phase!='admitted'").get().n===0,'Unresolved durable inbox prevents migration');
+  const unresolved=db.prepare("SELECT * FROM publisher_inbox WHERE phase!='admitted'").all();
+  requireThat(unresolved.every(row=>{
+   const evidence=JSON.parse(row.diagnostic);
+   return row.phase==='fenced'&&evidence?.stage==='intake_file'&&evidence.code==='publication_requires_six_complete_topics'
+    &&evidence.outcome==='not_admitted'&&['request_id','hash','file_id','source_ts'].every(key=>evidence[key]===row[key]);
+  }),'Unresolved durable inbox prevents migration');
   requireThat(db.prepare('SELECT count(*) AS n FROM publisher_intake_scan WHERE upper_bound IS NOT NULL OR page_cursor IS NOT NULL').get().n===0,'Unfinished durable scan prevents migration');
  }
  if(tables.some(t=>t.name==='scheduled_handoffs'))requireSettledScheduled(db);

@@ -16,7 +16,7 @@ import {handoffScope,scopeDigest} from './handoff-state.mjs';
 import {repositoryResearchInputs,repositoryResearchInputsHash,REPOSITORY_RESEARCH_INPUTS_VERSION} from './repository-research-inputs.mjs';
 import {requiredCoverageValid} from './research-coverage.mjs';
 import {resumablePageMetadataValid} from './research-page-coverage.mjs';
-import {completeEditionSnapshot} from './page-delivery.mjs';
+import {completeEditionSnapshot,WHOLE_EDITION_FROM} from './page-delivery.mjs';
 export {REPOSITORY_RESEARCH_INPUTS_VERSION};
 export const LAYERED_RESEARCH_BUDGET_VERSION=1;
 export const MODEL_CONTINUATION_VERSION=1;
@@ -31,6 +31,21 @@ const integer=(v,min,max)=>Number.isSafeInteger(v)&&v>=min&&v<=max;
 function refuse(code){throw Object.assign(Error(code),{researchControlCode:code});}
 const need=(ok,code)=>{if(!ok)refuse(code);};
 const publicationChecks=new WeakMap();
+const checkedPermitDatabases=new WeakSet();
+function checkOutstandingEditionPermits(db,pages){
+ if(checkedPermitDatabases.has(db))return;
+ const available=pages?` UNION ALL SELECT r.request_id,r.report_date,p.permit,p.request_id FROM research_page_rounds p
+  JOIN research_control_runs r ON r.request_id=p.run_id WHERE r.report_date>=? AND p.permit IS NOT NULL`:'';
+ const rows=db.prepare(`SELECT * FROM (SELECT request_id,report_date,permit,request_id AS publication_id
+  FROM research_control_runs WHERE report_date>=? AND permit IS NOT NULL${available}) pending
+  WHERE NOT EXISTS (SELECT 1 FROM jobs WHERE id=pending.publication_id)`).all(...(pages?[WHOLE_EDITION_FROM,WHOLE_EDITION_FROM]:[WHOLE_EDITION_FROM]));
+ for(const row of rows){
+  const {bundle}=readPublicationBytes(db,row,JSON.parse(row.permit),{});
+  const file=bundle.files.find(f=>f.path.endsWith('/report.json'));
+  need(file&&bundle.request_id===row.publication_id&&completeEditionSnapshot(JSON.parse(Buffer.from(file.base64,'base64')),row.report_date),'outstanding_permit_requires_complete_edition');
+ }
+ checkedPermitDatabases.add(db);
+}
 // Validate the complete original transport, including decoded rasters, before
 // committing an immutable permit. The witness stays inside this host process.
 export async function preparePublicationCheck(db,bytes){
@@ -65,11 +80,12 @@ function policy(c){
 export function assertResearchControl(db,c){
  const rows=db.prepare("SELECT name,sql FROM sqlite_master WHERE type='table' AND name LIKE 'research_control_%'").all();
  if(!c.research_control){requireThat(!rows.length,'Installed research authority cannot be removed');return false;}
- assertResearchArchive(db,c);assertResearchRecovery(db);pageAuthorityInstalled(db);const binding=policy(c);
+ assertResearchArchive(db,c);assertResearchRecovery(db);const pages=pageAuthorityInstalled(db),binding=policy(c);
  const parts=rows.some(r=>r.name==='research_control_report_parts');
  const fenced=assertArchiveRecoveryFence(db),schema={...RESEARCH_CONTROL_SCHEMA,...(parts?{research_control_report_parts:REPORT_PART_SCHEMA}:{}),...(fenced?{research_control_archive_recovery:ARCHIVE_RECOVERY_SCHEMA}:{})};
  requireThat(rows.length===Object.keys(schema).length&&rows.every(r=>r.sql===schema[r.name]),'Original research authority schema required');
- const installed=db.prepare('SELECT * FROM research_control_policy').all();requireThat(installed.length===1&&installed[0].id===1&&installed[0].binding===binding,'Original research authority binding required');return true;
+ const installed=db.prepare('SELECT * FROM research_control_policy').all();requireThat(installed.length===1&&installed[0].id===1&&installed[0].binding===binding,'Original research authority binding required');
+ checkOutstandingEditionPermits(db,pages);return true;
 }
 // Activate only from the locked, post-deployment administration entry point.
 export function installReportParts(db,c){

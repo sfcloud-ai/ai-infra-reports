@@ -26,6 +26,7 @@ test('the publication path accepts six topics and blocks a one-page first report
   title:'Fixture '+entry.title,update_of:null}));
  incoming.set(out+'report.json',Buffer.from(JSON.stringify(report)));
  const complete=replaceCurrentReport(archive,incoming);
+ const fullFiles=new Map(incoming);
  const makeBundle=()=>encodeBundle(incoming,'morning-20261119-r'+report.revision,'a'.repeat(40),'b'.repeat(40));
  await decodeBundle(await makeBundle(),{forPublication:true});
  const first=report.articles[0].id;
@@ -41,12 +42,19 @@ test('the publication path accepts six topics and blocks a one-page first report
  assert.throws(()=>replaceCurrentReport(archive,incoming),/Publication requires six complete topic pages/);
  const partial=await makeBundle();
  assert.equal((await decodeBundle(partial)).report.articles.length,1);
+ const existingPartial=new Map([...complete].filter(([name])=>!name.startsWith(out)));
+ for(const [name,bytes] of incoming)existingPartial.set(name,bytes);
+ reindexArchive(existingPartial);validateArchive(existingPartial);
  await assert.rejects(decodeBundle(partial,{forPublication:true}),{researchPublicationRejection:'publication_requires_six_complete_topics'});
  Object.assign(report,{schema_version:'1.1',revision:2,revision_notice:{kind:'material_update',summary:'Coverage update'}});
  delete report.page_delivery;
  incoming.set(out+'report.json',Buffer.from(JSON.stringify(report)));
  await assert.rejects(decodeBundle(await makeBundle(),{forPublication:true}),{researchPublicationRejection:'publication_requires_six_complete_topics'});
  assert.throws(()=>replaceCurrentReport(complete,incoming),/Publication requires six complete topic pages/);
+ const replacement=JSON.parse(fullFiles.get(out+'report.json'));
+ Object.assign(replacement,{schema_version:'1.1',revision:2,revision_notice:report.revision_notice});
+ fullFiles.set(out+'report.json',Buffer.from(JSON.stringify(replacement)));
+ assert.doesNotThrow(()=>replaceCurrentReport(existingPartial,fullFiles));
 });
 function files(kind='correction'){
  const result=new Map([...FILES].map(([p,b])=>[p.replace('/r1/','/'),b]));
@@ -148,6 +156,13 @@ test('a refused pre-send revision resumes after an earlier delivery starts',asyn
   assert.equal(refusal.bundle_sha256,bundle.hash);
   assert.ok(refusal.diagnostic);
   priorReceipt={...receipt,parts_sent:1};
+  const lostReadmission=async(c,request)=>{
+   if(request.action==='admit')throw Error('Readmission outcome unknown');
+   return query(c,request);
+  };
+  assert.equal((await advanceScheduledDelivery(s,config,lostReadmission)).phase,'reconcile_pending');
+  assert.equal(s.db.prepare('SELECT phase FROM scheduled_handoffs WHERE request_id=?').get(id).phase,'admission_pending');
+  assert.equal((await advanceScheduledDelivery(s,config,query)).phase,'awaiting_first_delivery');
   assert.equal((await advanceScheduledDelivery(s,config,query)).phase,'complete');
   assert.equal(admits,2);
  }finally{s.close();}

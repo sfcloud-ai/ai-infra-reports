@@ -64,6 +64,30 @@ function archive(s,files){
  const hash=digest(bytes);storeResearchArchive(s.db,{request_id:id,hash,source_ts:'1793491201.'+String(s.db.prepare('SELECT count(*) n FROM research_archives').get().n).padStart(6,'0'),file_id:'FARCHIVE'},bytes);return hash;
 }
 const repositoryPlan=plan;
+test('runtime probe detects an outstanding incomplete permit in a restored ledger',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'edition-permit-')),file=join(dir,'handoff.sqlite');
+ const day='2026-11-19',request='morning-20261119-r1';
+ let s=setup(file);
+ try{
+  const frozen=Buffer.from(JSON.stringify({...JSON.parse(plan),report_date:day,request_id:request}));
+  const claim={...command('claim',{plan_base64:frozen.toString('base64')}),request_id:request};
+  const run=executeResearchControl(s.db,config,Buffer.from(JSON.stringify(claim)),now+18*86400000);
+  assert.equal(run.status,'claimed',JSON.stringify(run));
+  const files=new Map([...FILES].map(([p,b])=>[p.replace(DAY,day),b]));
+  const name=[...files.keys()].find(p=>p.endsWith('/report.json')),report=JSON.parse(files.get(name));
+  report.date=day;report.entries=report.entries.filter(entry=>entry.article_id!==report.articles[0].id);
+  files.set(name,Buffer.from(JSON.stringify(report)));
+  const bundle=await encodeBundle(files,request,'b'.repeat(40),'a'.repeat(40)),audit=Buffer.from('{}');
+  const original=Buffer.from(JSON.stringify({schema_version:'research_archive_v1',command_id:randomUUID(),request_id:request,
+   report_date:day,previous_sha256:null,files:[['bundle.json',bundle],['audit.json',audit]].map(([path,data])=>({path,sha256:digest(data),content_base64:data.toString('base64')}))}));
+  storeResearchArchive(s.db,{request_id:request,hash:digest(original),source_ts:'1795045000.000001',file_id:'FORIGINAL'},original);
+  const permit=JSON.stringify({request_id:request,permit_id:randomUUID(),archive_sha256:digest(original),bundle_sha256:digest(bundle),audit_sha256:digest(audit)});
+  s.db.prepare('UPDATE research_control_runs SET permit=? WHERE request_id=?').run(permit,request);
+  s.close();s=new HandoffState(file,handoffScope(config));
+  assert.throws(()=>assertResearchControl(s.db,config),/outstanding_permit_requires_complete_edition/);
+  assert.equal(s.db.prepare('SELECT permit FROM research_control_runs WHERE request_id=?').get(request).permit,permit);
+ }finally{s.close();await rm(dir,{recursive:true,force:true});}
+});
 function start(s,bytes=plan){if(JSON.parse(bytes).schema_version==='research_plan_v4')installResearchRecovery(s.db,'synthetic layered activation');const claim=execute(s,command('claim',{plan_base64:bytes.toString('base64')}));assert.equal(claim.status,'claimed');const result=execute(s,command('inputs',{},claim.run));assert.equal(result.status,'committed');return result.run;}
 function message(text,ts,file){return {type:'message',user:SCOPE.sender_user_id,app_id:SCOPE.sender_user_app_id,ts,text:text+' '+SCOPE.sender_attribution_text,...(file?{files:[{id:file}]}:{}),blocks:[{type:'rich_text',elements:[{type:'rich_text_section',elements:[{type:'text',text}]}]},{type:'context',elements:[{type:'mrkdwn',text:SCOPE.sender_attribution_text,verbatim:false}]}]};}
 const source=(key='https://example.org/changes',kind='source')=>{const input=kind==='source'?{method:'GET',url:key}:null,hash=input?researchSourceIdentity(input).hash:'d'.repeat(64);return {operation_id:randomUUID(),kind,key:input?hash:key,input_sha256:hash,input,max_seconds:180};};

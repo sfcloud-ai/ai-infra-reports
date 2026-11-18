@@ -13,6 +13,7 @@ import {scopeDigest} from './handoff-state.mjs';
 import {safeDiagnostic,recoveryDelay} from './handoff-recovery.mjs';
 
 import {installIntakeTables} from './publisher-intake-state.mjs';
+import {requireCompleteEdition} from './page-delivery.mjs';
 
 const TS=/^\d{10}\.\d{6}$/;
 export function validateIntakeConfig(config){
@@ -126,13 +127,19 @@ export class PublisherInbox{
     const message=await slack.exactPublish(row.source_ts);
     const reread=acceptQueuedPublish(message,this.config,{from:this.config.durable_intake.not_before,to:row.source_ts},now);
     requireThat(reread&&Object.keys(event).every(key=>reread[key]===event[key]),'Original publish message changed');
-    const bytes=await slack.download(event),bundle=await decodeBundle(bytes,{forPublication:true});
+    const bytes=await slack.download(event),bundle=await decodeBundle(bytes);
     requireThat(bundle.data.request_id===row.request_id&&bundle.hash===row.hash,'Original publish bundle mismatch');
+    requireCompleteEdition(bundle.report);
     consumeFencedEnvelope(this.state,this.config.producer_fence,event,bundle.report.date);
     this.state.admit(event,bytes);
    }
    this.db.prepare("UPDATE publisher_inbox SET phase='admitted',next_at=0,diagnostic=NULL WHERE source_ts=?").run(row.source_ts);
   }catch(error){
+   if(error.researchPublicationRejection==='publication_requires_six_complete_topics'){
+    const diagnostic={stage:'intake_file',code:error.researchPublicationRejection,outcome:'not_admitted',...event};
+    this.db.prepare("UPDATE publisher_inbox SET phase='fenced',next_at=0,diagnostic=? WHERE source_ts=? AND phase='pending'").run(JSON.stringify(diagnostic),row.source_ts);
+    return diagnostic;
+   }
    if(error.code==='producer_upload_fenced'){
     this.db.prepare("UPDATE publisher_inbox SET phase='fenced',diagnostic=? WHERE source_ts=? AND phase='pending'").run(JSON.stringify({stage:'producer_fence',code:'producer_upload_fenced',outcome:'not_admitted'}),row.source_ts);
     return {request_id:row.request_id,source_ts:row.source_ts,code:'producer_upload_fenced'};

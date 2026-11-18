@@ -475,8 +475,8 @@ def snapshot(path, settled=True):
                                 or database.execute("SELECT 1 FROM slack_staged_bundles WHERE phase!='admitted'").fetchone()):
                 raise Deferred('unfinished_slack_submission')
             if intake:
-                pending = database.execute("SELECT request_id,hash,file_id,source_ts,phase FROM publisher_inbox WHERE phase!='admitted'").fetchall()
-                if any(row[4] != 'fenced' or not fence or not fenced_intake_is_ineligible(database, fence, row[:4]) for row in pending):
+                pending = database.execute("SELECT request_id,hash,file_id,source_ts,phase,diagnostic FROM publisher_inbox WHERE phase!='admitted'").fetchall()
+                if any(row[4] != 'fenced' or not (settled_edition_intake(row) or fence and fenced_intake_is_ineligible(database, fence, row[:4])) for row in pending):
                     raise Deferred('in_flight_or_unknown_operation')
             if 'scheduled_handoffs' in {row[0] for row in tables}:
                 require_settled_scheduled(database)
@@ -785,7 +785,16 @@ def model_continuation_runtime_required(database):
     return database.execute("SELECT 1 FROM research_control_ops WHERE kind='model' AND json_type(input,'$.continuation_archive_sha256') IS NOT NULL LIMIT 1").fetchone() is not None
 
 
+def settled_edition_intake(row):
+    diagnostic = json.loads(row[5]) if row[5] else None
+    return diagnostic == dict(request_id=row[0], hash=row[1], file_id=row[2], source_ts=row[3],
+                              stage='intake_file', code='publication_requires_six_complete_topics', outcome='not_admitted')
+
+
 def first_notice_rejection_runtime_required(database):
+    if database.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='publisher_inbox'").fetchone():
+        if database.execute("SELECT 1 FROM publisher_inbox WHERE phase='fenced' AND json_extract(diagnostic,'$.code')='publication_requires_six_complete_topics' LIMIT 1").fetchone():
+            return True
     if database.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='scheduled_handoffs'").fetchone() is None:
         return False
     return database.execute("SELECT 1 FROM scheduled_handoffs WHERE phase IN ('policy_rejected','awaiting_first_delivery') LIMIT 1").fetchone() is not None

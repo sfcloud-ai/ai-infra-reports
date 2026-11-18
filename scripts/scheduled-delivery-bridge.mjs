@@ -100,6 +100,10 @@ export async function advanceScheduledDelivery(state,config,query=queryScheduled
    }
    let result=await query(c,{action:'status',request_id:id});
    if(result?.status==='not_found'){
+    if(local.phase==='admission_pending'&&firstNoticeRejected(JSON.parse(local.result),JSON.parse(binding))){
+     db.prepare("UPDATE scheduled_handoffs SET phase='awaiting_first_delivery' WHERE request_id=?").run(id);
+     return {request_id:id,phase:'awaiting_first_delivery',wecom_status:'not_verified'};
+    }
     // Same original bytes and ID only. The receiver transaction makes admission
     // idempotent; it cannot duplicate sends or replace an earlier binding.
     db.prepare("UPDATE scheduled_handoffs SET phase='admission_pending' WHERE request_id=?").run(id);
@@ -129,7 +133,7 @@ export async function advanceScheduledDelivery(state,config,query=queryScheduled
   }catch(error){
    // Do not stop publication or reissue a send. Next tick queries original ID.
    const diagnostic=safeDiagnostic(error,'scheduled_delivery');
-   db.prepare("UPDATE scheduled_handoffs SET result=CASE WHEN phase='awaiting_first_delivery' THEN json_set(result,'$.diagnostic',json(?)) ELSE ? END WHERE request_id=?")
+   db.prepare("UPDATE scheduled_handoffs SET result=CASE WHEN phase IN ('awaiting_first_delivery','admission_pending') AND json_extract(result,'$.error')='first_notice_requires_all_six_articles' THEN json_set(result,'$.diagnostic',json(?)) ELSE ? END WHERE request_id=?")
     .run(JSON.stringify(diagnostic),JSON.stringify({request_id:id,diagnostic}),id);
    return {request_id:id,phase:'reconcile_pending',wecom_status:'not_verified',diagnostic};
   }

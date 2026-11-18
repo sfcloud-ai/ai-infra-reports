@@ -3,7 +3,7 @@
 import {isDeepStrictEqual as equal} from 'node:util';
 import {decodeResearchArchive} from './research-archive.mjs';
 import {digest} from './archive.mjs';
-import {validatePageDelivery,validatePageProgressReport,validatePageCorrectionReport,TOPIC_IDS} from './page-delivery.mjs';
+import {validatePageDelivery,validatePageProgressReport,validatePageCorrectionReport,replacesPageEdition,TOPIC_IDS} from './page-delivery.mjs';
 const fail=code=>{throw Object.assign(Error(code),{researchControlCode:code});};
 const need=(ok,code)=>{if(!ok)fail(code);};
 export const PAGE_AUTHORITY_VERSION=1;
@@ -52,7 +52,10 @@ export function assertPageCorrectionDelivery(db,bundle){
   const raw=Buffer.from(predecessor.bytes);need(digest(raw)===predecessor.hash,'page_correction_previous');
   const data=JSON.parse(raw),file=data.files.find(f=>f.path.endsWith('/report.json'));
   const priorReport=JSON.parse(Buffer.from(file.base64,'base64'));
-  if(priorReport.schema_version==='1.2')need(report.schema_version==='1.2','page_correction_schema_downgrade');
+  if(replacesPageEdition(priorReport,report)){
+   const detail=JSON.parse(predecessor.detail);
+   need(detail.proof?.publication_status==='verified'&&detail.proof.commit===detail.commit&&detail.proof.bundle_sha256===predecessor.hash,'page_correction_previous');
+  }else if(priorReport.schema_version==='1.2')need(report.schema_version==='1.2','page_correction_schema_downgrade');
  }
  if(report.schema_version!=='1.2')return;
  const previous=report.page_delivery?.previous;
