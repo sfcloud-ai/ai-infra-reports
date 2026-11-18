@@ -1,0 +1,120 @@
+{
+  "schema_version": "1.4",
+  "date": "2026-11-06",
+  "audit_valid": true,
+  "readiness": "ready",
+  "blockers": [],
+  "candidate_count": 1,
+  "selected_count": 1,
+  "status_entry_count": 0,
+  "delivery_allowed": false,
+  "warnings": [
+    {
+      "code": "timing_unavailable",
+      "path": "sources[20].elapsed_seconds"
+    },
+    {
+      "code": "not_dispatched_reservation_retained",
+      "path": "sources[20].attempt_records[1]"
+    },
+    {
+      "code": "timing_unavailable",
+      "path": "sources[20].attempt_records[1].elapsed_seconds"
+    }
+  ],
+  "budget_unknown": true,
+  "coverage_incomplete": [],
+  "coverage_contract": "daily_required_v2",
+  "required_checks": [
+    "model_serving",
+    "hardware",
+    "model_architecture",
+    "embodied_training",
+    "small_models",
+    "inference_engines",
+    "vllm",
+    "sglang",
+    "deepinfer",
+    "vllm_blog",
+    "sglang_blog",
+    "lmsys_blog",
+    "deepseek_articles",
+    "deepinfer_articles",
+    "glm_blog",
+    "qwen_blog",
+    "glm_models",
+    "deepseek_models",
+    "qwen_models",
+    "discovery_memory",
+    "discovery_scheduling",
+    "discovery_compute",
+    "discovery_data_path"
+  ],
+  "coverage_checked": [
+    "deepinfer",
+    "deepinfer_articles",
+    "deepseek_articles",
+    "deepseek_models",
+    "discovery_compute",
+    "discovery_data_path",
+    "discovery_memory",
+    "discovery_scheduling",
+    "embodied_training",
+    "glm_blog",
+    "glm_models",
+    "hardware",
+    "inference_engines",
+    "lmsys_blog",
+    "model_architecture",
+    "model_serving",
+    "qwen_blog",
+    "qwen_models",
+    "sglang",
+    "sglang_blog",
+    "small_models",
+    "vllm",
+    "vllm_blog"
+  ],
+  "coverage_unchecked": [],
+  "limits": {
+    "source_attempts": 2,
+    "model_attempts": 2,
+    "source_attempt_seconds": 180,
+    "model_stage_seconds": 500,
+    "run_seconds": 1200
+  },
+  "inputs": {
+    "prompt_commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "history_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "prompt_hashes": {
+      "research.md": "30d6d0106d7bb4c7acb7bb4220e981ea414a86c2cbbac90757ed0e830a7db968",
+      "editor.md": "78b6fe25326eadb6533cf519848222b9de9d37a99570ce1b4d5f8e575530aa49",
+      "sources.md": "879bbb19f2425e9194185bf771fccd8c3919320d3191da86642cbad2da32bfe4",
+      "delivery.md": "a1eca6d2a2784364d6853b8ce4de8ffd619a652dd84f041d5f6166b419f9a110",
+      "audit.md": "6d2d72bb3f30714faa41216818eae2a7e7c4160e3818f4564dbf079f07ab34fe"
+    },
+    "history_sha256": "438f15df62839fb8a1897e57c6bacfdd2c40dd034045949575e96d8353cbea83",
+    "draft_sha256": "186f246167a4f40dd435c030f354c6d847e003803b513d3177452a148522a9d6"
+  },
+  "evidence_metadata_sha256": "9fc3f5ca0e7c07e51fc9986d98973bac12ac04333c6f09d699afdee4905b215c",
+  "budget_accounting": {
+    "successful_attempts": {
+      "source": 24,
+      "model": 2
+    },
+    "successful_seconds": 73,
+    "failed_attempts": {
+      "source": 0,
+      "model": 0
+    },
+    "failed_seconds": 0,
+    "unknown_attempts": {
+      "source": 1,
+      "model": 0
+    },
+    "reserved_unknown_seconds": 180,
+    "charged_seconds": 253
+  },
+  "run_elapsed_seconds": 600.0,
+  "budget_policy": "successful_work_hourly_continuation_v1"
+}

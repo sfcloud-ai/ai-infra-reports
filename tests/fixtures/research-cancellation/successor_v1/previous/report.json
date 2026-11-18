@@ -1,0 +1,50 @@
+{
+  "date": "2026-11-06",
+  "revision": 1,
+  "entries": [
+    {
+      "event_key": "cache-fix",
+      "source_urls": [
+        "https://example.org/change"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    }
+  ],
+  "schema_version": "1.2",
+  "articles": [
+    {
+      "id": "model-serving-gpu",
+      "title": "合成测试"
+    }
+  ],
+  "page_delivery": {
+    "previous": null,
+    "added": [
+      "model-serving-gpu"
+    ],
+    "pending": [
+      {
+        "id": "hardware-status",
+        "reason": "尚未完成该页研究，不代表无更新"
+      },
+      {
+        "id": "model-architecture-status",
+        "reason": "尚未完成该页研究，不代表无更新"
+      },
+      {
+        "id": "embodied-training",
+        "reason": "尚未完成该页研究，不代表无更新"
+      },
+      {
+        "id": "small-model-status",
+        "reason": "尚未完成该页研究，不代表无更新"
+      },
+      {
+        "id": "inference-engines",
+        "reason": "尚未完成该页研究，不代表无更新"
+      }
+    ]
+  },
+  "subtitle": "部分晨报｜覆盖缺口：硬件、架构、具身、小模型、引擎。缺页原因详见页面，未检查不代表无更新。"
+}

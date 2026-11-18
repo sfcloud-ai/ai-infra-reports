@@ -1,0 +1,13 @@
+{
+  "date": "2026-11-06",
+  "revision": 1,
+  "entries": [
+    {
+      "event_key": "cache-fix",
+      "source_urls": [
+        "https://example.org/change"
+      ],
+      "update_of": null
+    }
+  ]
+}

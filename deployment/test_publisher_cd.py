@@ -845,6 +845,171 @@ class ResearchRecoveryCdTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'unsupported_research_recovery_schema'):
             cd.snapshot(self.database)
 
+    def continuation(self):
+        with connection(self.database) as database:
+            database.execute("INSERT INTO research_control_ops VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                             ('continuation', 'request', 'model', 'editor', 'e'*64,
+                              json.dumps({'continuation_archive_sha256': 'f'*64}), 'owner', 1,
+                              800, 'intent', None, None, None, None))
+
+    def test_continuation_runtime_requirement_uses_existing_immutable_input(self):
+        with connection(self.database) as database:
+            self.assertFalse(cd.model_continuation_runtime_required(database))
+        self.install()
+        with connection(self.database) as database:
+            self.assertFalse(cd.model_continuation_runtime_required(database))
+        self.continuation()
+        before = cd.snapshot(self.database)
+        with connection(self.database) as database:
+            self.assertTrue(cd.model_continuation_runtime_required(database))
+        self.assertEqual(cd.snapshot(self.database), before)
+
+    def test_continuation_blocks_old_runtime_before_config_and_state_open(self):
+        if shutil.which('node') is None:
+            self.skipTest('Node is not available')
+        self.install(); self.continuation()
+        scripts = self.root / 'scripts'; scripts.mkdir()
+        (scripts/'handoff-state.mjs').write_text("export class HandoffState{constructor(){throw Error('state_opened')}};export const handoffScope=x=>x;")
+        (scripts/'notice-outbox.mjs').write_text("export class NoticeOutbox{};export const notificationScope=x=>x;")
+        (scripts/'run-handoff.mjs').write_text("export function validateConfig(){throw Error('config_opened')}")
+        (scripts/'research-control.mjs').write_text('export const REPOSITORY_RESEARCH_INPUTS_VERSION=1;export const LAYERED_RESEARCH_BUDGET_VERSION=1;')
+        config, operation = self.config(); before = cd.snapshot(self.database)
+        def probe(config, release, arguments, **kwargs):
+            result = subprocess.run(['node','--input-type=module','-e',arguments[-1]], cwd=release, capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('model_continuation_requires_compatible_release', result.stderr)
+            self.assertNotIn('config_opened', result.stderr)
+            self.assertNotIn('state_opened', result.stderr)
+            raise ValueError('candidate_incompatible')
+        with patch.object(cd,'container',side_effect=probe), patch.object(cd,'legacy_dependency_mount',return_value=[]), patch.object(os,'chown',create=True):
+            with self.assertRaisesRegex(ValueError,'candidate_incompatible'):
+                cd.compatibility(config,self.root,operation,before)
+        self.assertEqual(cd.snapshot(self.database),before)
+
+    def cancelled_permit(self, grant=True, page=False, marked=True):
+        metadata = {'sources': [{'attempt_records': [{'status': 'not_dispatched'}]}]}
+        encoded = lambda x: json.dumps(x).encode()
+        mh = hashlib.sha256(encoded(metadata)).hexdigest()
+        audit = {'evidence_metadata_sha256': mh}
+        ah = hashlib.sha256(encoded(audit)).hexdigest()
+        files = [{'path': p, 'sha256': hashlib.sha256(encoded(v)).hexdigest(),
+                  'content_base64': base64.b64encode(encoded(v)).decode()}
+                 for p, v in [('audit.json', audit), ('metadata.json', metadata)]]
+        archive = encoded({'files': files}); h = hashlib.sha256(archive).hexdigest()
+        permit = json.dumps({'archive_sha256': h, 'audit_sha256': ah}) if grant else None
+        with connection(self.database) as db:
+            if grant and marked:
+                command = encoded({'action': 'page_permit' if page else 'permit'})
+                result = json.dumps({'status': 'committed', 'cancellation_page_version': 1})
+                db.execute('INSERT INTO research_control_commands VALUES(?,?,?,?,?)', ('permit-command','request',hashlib.sha256(command).hexdigest(),command,result))
+            db.execute('INSERT INTO research_archives VALUES(?,?,?,?,?,?,?,?,?)',
+                       ('archive','2026-11-13','request',h,None,'[]',archive,'1794461161.000001','FARCHIVE'))
+            if page:
+                for sql in cd.RESEARCH_PAGE_SCHEMA.values(): db.execute(sql)
+                db.execute('INSERT INTO research_page_rounds VALUES(?,?,?,?,?,?,?)', ('r2','request',2,'{}','[]',1,permit))
+            else:
+                db.execute('INSERT INTO research_control_runs VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                           ('request','2026-11-13',b'{}','a'*64,'owner',1,1,1,1,0,None,None,permit))
+
+    def test_new_layered_cancel_settlement_fences_quota_downgrade_only_after_commit(self):
+        if shutil.which('node') is None:
+            self.skipTest('Node is not available')
+        self.install()
+        command = b'{"action":"settle","args":{"outcome":"acknowledged"}}'
+        with connection(self.database) as db:
+            db.execute('INSERT INTO research_control_commands VALUES(?,?,?,?,?)', ('legacy','request','a'*64,command,json.dumps({'status':'committed'})))
+            self.assertFalse(cd.cancellation_settlement_runtime_required(db))
+        scripts = self.root/'scripts'; scripts.mkdir()
+        (scripts/'handoff-state.mjs').write_text("export class HandoffState{constructor(){throw Error('state_opened')}};export const handoffScope=x=>x;")
+        (scripts/'notice-outbox.mjs').write_text("export class NoticeOutbox{};export const notificationScope=x=>x;")
+        (scripts/'run-handoff.mjs').write_text("export function validateConfig(){throw Error('config_opened')}")
+        old = 'export const REPOSITORY_RESEARCH_INPUTS_VERSION=1;export const LAYERED_RESEARCH_BUDGET_VERSION=1;'
+        for mode in ['historical', 'new-old-runtime', 'new-compatible-runtime']:
+            if mode == 'new-old-runtime':
+                with connection(self.database) as db:
+                    db.execute('INSERT INTO research_control_commands VALUES(?,?,?,?,?)', ('new','request','b'*64,command,json.dumps({'status':'committed','cancellation_settlement_version':1})))
+                    self.assertTrue(cd.cancellation_settlement_runtime_required(db))
+            (scripts/'research-control.mjs').write_text(old + ('export const CANCELLATION_SETTLEMENT_VERSION=1;' if mode=='new-compatible-runtime' else ''))
+            config, operation = self.config(); before = cd.snapshot(self.database)
+            def probe(config, release, arguments, **kwargs):
+                script = arguments[-1].replace('/probe/publisher.json',(self.root/'publisher.json').as_posix())
+                result = subprocess.run(['node','--input-type=module','-e',script],cwd=release,capture_output=True,text=True)
+                self.assertNotEqual(result.returncode,0)
+                if mode == 'new-old-runtime':
+                    self.assertIn('cancellation_settlements_require_compatible_release',result.stderr)
+                    self.assertNotIn('config_opened',result.stderr)
+                else:
+                    self.assertNotIn('cancellation_settlements_require_compatible_release',result.stderr)
+                    self.assertIn('config_opened',result.stderr)
+                self.assertNotIn('state_opened',result.stderr)
+                raise ValueError('synthetic probe finished')
+            with patch.object(cd,'container',side_effect=probe),patch.object(cd,'legacy_dependency_mount',return_value=[]),patch.object(os,'chown',create=True):
+                with self.assertRaisesRegex(ValueError,'synthetic probe finished'):
+                    cd.compatibility(config,self.root,operation,before)
+            self.assertEqual(cd.snapshot(self.database),before)
+        with connection(self.database) as db:
+            db.execute('UPDATE research_control_commands SET result=? WHERE command_id=?',(json.dumps({'status':'committed','cancellation_settlement_version':2}),'new'))
+            with self.assertRaisesRegex(ValueError,'cancellation_settlement_version_invalid'):
+                cd.cancellation_settlement_runtime_required(db)
+
+    def test_only_new_versioned_permit_receipts_fence_rollback(self):
+        self.install(); self.cancelled_permit(marked=False)
+        before = cd.snapshot(self.database)
+        with connection(self.database) as db:
+            self.assertFalse(cd.cancellation_page_runtime_required(db))
+        self.assertEqual(cd.snapshot(self.database),before)
+        with connection(self.database) as db:
+            command = b'{"action":"permit"}'
+            db.execute('INSERT INTO research_control_commands VALUES(?,?,?,?,?)', ('new','request','e'*64,command,json.dumps({'status':'committed','cancellation_page_version':1})))
+            self.assertTrue(cd.cancellation_page_runtime_required(db))
+            db.execute('UPDATE research_control_commands SET result=?', (json.dumps({'status':'committed','cancellation_page_version':2}),))
+            with self.assertRaisesRegex(ValueError,'cancellation_permit_version_invalid'):
+                cd.cancellation_page_runtime_required(db)
+
+    def test_cancellation_page_permit_blocks_old_runtime_before_open(self):
+        if shutil.which('node') is None:
+            self.skipTest('Node is not available')
+        self.install(); self.cancelled_permit(page=True)
+        scripts = self.root/'scripts'; scripts.mkdir()
+        (scripts/'handoff-state.mjs').write_text("export class HandoffState{constructor(){throw Error('state_opened')}};export const handoffScope=x=>x;")
+        (scripts/'notice-outbox.mjs').write_text("export class NoticeOutbox{};export const notificationScope=x=>x;")
+        (scripts/'run-handoff.mjs').write_text("export const PAGE_AUTHORITY_VERSION=1;export function validateConfig(){throw Error('config_opened')}")
+        (scripts/'research-page-authority.mjs').write_text('export const PAGE_AUTHORITY_VERSION=1;')
+        (scripts/'research-control.mjs').write_text('export const REPOSITORY_RESEARCH_INPUTS_VERSION=1;export const LAYERED_RESEARCH_BUDGET_VERSION=1;export const MODEL_CONTINUATION_VERSION=1;')
+        config,operation=self.config();before=cd.snapshot(self.database)
+        def probe(config,release,arguments,**kwargs):
+            result=subprocess.run(['node','--input-type=module','-e',arguments[-1]],cwd=release,capture_output=True,text=True)
+            self.assertNotEqual(result.returncode,0)
+            self.assertIn('cancellation_pages_require_compatible_release',result.stderr)
+            self.assertNotIn('config_opened',result.stderr);self.assertNotIn('state_opened',result.stderr)
+            raise ValueError('candidate_incompatible')
+        with patch.object(cd,'container',side_effect=probe),patch.object(cd,'legacy_dependency_mount',return_value=[]),patch.object(os,'chown',create=True):
+            with self.assertRaisesRegex(ValueError,'candidate_incompatible'):
+                cd.compatibility(config,self.root,operation,before)
+        self.assertEqual(cd.snapshot(self.database),before)
+
+    def test_historical_cancellation_does_not_fence_initial_upgrade(self):
+        if shutil.which('node') is None:
+            self.skipTest('Node is not available')
+        self.install(); self.cancelled_permit(marked=False,page=True)
+        scripts = self.root/'scripts'; scripts.mkdir()
+        (scripts/'handoff-state.mjs').write_text("export class HandoffState{constructor(){throw Error('state_opened')}};export const handoffScope=x=>x;")
+        (scripts/'notice-outbox.mjs').write_text("export class NoticeOutbox{};export const notificationScope=x=>x;")
+        (scripts/'run-handoff.mjs').write_text("export const PAGE_AUTHORITY_VERSION=1;export function validateConfig(){throw Error('config_opened')}")
+        (scripts/'research-page-authority.mjs').write_text('export const PAGE_AUTHORITY_VERSION=1;')
+        (scripts/'research-control.mjs').write_text('export const REPOSITORY_RESEARCH_INPUTS_VERSION=1;export const LAYERED_RESEARCH_BUDGET_VERSION=1;export const MODEL_CONTINUATION_VERSION=1;')
+        config,operation=self.config();before=cd.snapshot(self.database)
+        def probe(config,release,arguments,**kwargs):
+            result=subprocess.run(['node','--input-type=module','-e',arguments[-1].replace('/probe/publisher.json',(self.root/'publisher.json').as_posix())],cwd=release,capture_output=True,text=True)
+            self.assertNotEqual(result.returncode,0)
+            self.assertNotIn('cancellation_pages_require_compatible_release',result.stderr)
+            self.assertIn('config_opened',result.stderr);self.assertNotIn('state_opened',result.stderr)
+            raise ValueError('candidate_incompatible')
+        with patch.object(cd,'container',side_effect=probe),patch.object(cd,'legacy_dependency_mount',return_value=[]),patch.object(os,'chown',create=True):
+            with self.assertRaisesRegex(ValueError,'candidate_incompatible'):
+                cd.compatibility(config,self.root,operation,before)
+        self.assertEqual(cd.snapshot(self.database),before)
+
     def test_old_runtime_rejected_before_config_and_state_open(self):
         node = shutil.which('node')
         if node is None:

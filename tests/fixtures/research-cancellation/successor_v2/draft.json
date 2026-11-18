@@ -1,0 +1,61 @@
+{
+  "date": "2026-11-06",
+  "revision": 2,
+  "entries": [
+    {
+      "event_key": "cache-fix",
+      "source_urls": [
+        "https://example.org/change"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "event_key": "new-page-2",
+      "source_urls": [
+        "https://example.org/change"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status"
+    }
+  ],
+  "schema_version": "1.2",
+  "articles": [
+    {
+      "id": "model-serving-gpu",
+      "title": "Synthetic verified page"
+    },
+    {
+      "id": "hardware-status",
+      "title": "新增测试页"
+    }
+  ],
+  "page_delivery": {
+    "previous": {
+      "request_id": "morning-20261106-r1",
+      "bundle_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "added": [
+      "hardware-status"
+    ],
+    "pending": [
+      {
+        "id": "model-architecture-status",
+        "reason": "Synthetic pending evidence"
+      },
+      {
+        "id": "embodied-training",
+        "reason": "Synthetic pending evidence"
+      },
+      {
+        "id": "small-model-status",
+        "reason": "Synthetic pending evidence"
+      },
+      {
+        "id": "inference-engines",
+        "reason": "Synthetic pending evidence"
+      }
+    ]
+  },
+  "subtitle": "部分晨报｜覆盖缺口：架构、具身、小模型、引擎。缺页原因详见页面，未检查不代表无更新。"
+}

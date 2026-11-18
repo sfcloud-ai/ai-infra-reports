@@ -1,0 +1,699 @@
+{
+  "schema_version": "1.4",
+  "scope": "new_daily",
+  "date": "2026-11-06",
+  "as_of": "2026-11-06T07:20:00+08:00",
+  "started_at": "2026-11-06T07:20:00+08:00",
+  "finished_at": "2026-11-06T07:32:00+08:00",
+  "window_hours": 24,
+  "inputs": {
+    "history_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "prompt_commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "prompt_hashes": {
+      "research.md": "30d6d0106d7bb4c7acb7bb4220e981ea414a86c2cbbac90757ed0e830a7db968",
+      "editor.md": "78b6fe25326eadb6533cf519848222b9de9d37a99570ce1b4d5f8e575530aa49",
+      "sources.md": "879bbb19f2425e9194185bf771fccd8c3919320d3191da86642cbad2da32bfe4",
+      "delivery.md": "a1eca6d2a2784364d6853b8ce4de8ffd619a652dd84f041d5f6166b419f9a110",
+      "audit.md": "dec9772fe52f43465a86fcbb5298b8328b3cc6cf74df6524f85a6dffbf0d7050"
+    },
+    "history_sha256": "438f15df62839fb8a1897e57c6bacfdd2c40dd034045949575e96d8353cbea83",
+    "candidates_sha256": "7e4533ccbde41f1e13d7e75bf24c74e64639962cadb93010c404e5ae753fb5dc",
+    "draft_sha256": "37b92f6f310f0c0fb6f23e0191064102369114cfd9364699788ee819bc5ce9ea"
+  },
+  "limits": {
+    "source_attempts": 2,
+    "model_attempts": 2,
+    "source_attempt_seconds": 180,
+    "model_stage_seconds": 500,
+    "run_seconds": 1200
+  },
+  "sources": [
+    {
+      "id": "source",
+      "url": "https://example.org/change",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 10,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "80577fca4c73782d795ac63fb787c692916cb5d8ab6b17b2f00f8dd93cc57292",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 10,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-model_serving",
+      "url": "https://arxiv.org/search/?query=multi-model+serving",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "82d26a8b11765f0c499eeb9476366574e49b09c433ef5171c21fb9a7ece8f520",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-hardware",
+      "url": "https://developer.nvidia.com/blog/",
+      "status": "ok",
+      "attempts": 2,
+      "elapsed_seconds": null,
+      "retrieved_at": "2026-11-06T07:31:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "c94e19fb727c335085c7c66058aab214a98e5c982e96df4562781c46f1088171",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "not_dispatched",
+          "elapsed_seconds": null,
+          "error": "grant expired before dispatch",
+          "reserved_seconds": 180,
+          "timing_unavailable_reason": "No dispatch; reservation retained without refund",
+          "operation_id": "9e17bbe2-f0c1-4d4a-b703-d4aab0fb3a5d",
+          "not_dispatched_evidence_sha256": "3bc3c2bd4a3b46f595582b6b135b43c22f64f9111ab6aa5fac378f65c42f0ffe"
+        },
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ],
+      "timing_unavailable_reason": "Original reservation remains held"
+    },
+    {
+      "id": "coverage-model_architecture",
+      "url": "https://huggingface.co/Qwen",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "f498e9184271b7c0ecb640aaaca31c5ccae9c489dabaa2d19eff54368125284d",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-embodied_training",
+      "url": "https://github.com/Physical-Intelligence/openpi",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "2c671ea0435c72aa256b0f0c4886655ed7334a89b726b0b754846153ac877574",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-small_models",
+      "url": "https://huggingface.co/HuggingFaceTB",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "cdca63865cd28d5b50d370beceafa2b6658ab082267676c9eded568a7c190c67",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-inference_engines",
+      "url": "https://github.com/vllm-project/vllm/releases",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "37b180cc68edb1d219686aa94045c534d678a39756d0f16b7c3fb64998ef1555",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-vllm",
+      "url": "https://api.github.com/repos/vllm-project/vllm/commits",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "ae91ceea7d93a4f9e59b80d7f02120446d9d987eed6de203df762e61f3afb421",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-sglang",
+      "url": "https://api.github.com/repos/sgl-project/sglang/commits",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "e1f858edb1ec04246ea50aa567f679842ca2265ed3e492c5c49aed764d3dd29c",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-deepinfer",
+      "url": "https://github.com/deepseek-ai/DeepInfer/commits",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "6fe6cf382cd2bb844a57465da19d4e211a28969f106675dae128a53e9b4bd014",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-vllm_blog",
+      "url": "https://vllm.ai/blog/archive",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "ac9ac38e09379fac4877d4bccee19046ea39db657eace74113e3c52b26f30436",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-sglang_blog",
+      "url": "https://www.sglang.io/blog",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "d096742a89ef4dc83347d0fd4e9f1d82237cbc6d437d07ecd551b8928c094d46",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-lmsys_blog",
+      "url": "https://www.lmsys.org/blog/",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "be24ef5adc17f033d8077cedbfe8e6d7decd38ead903a3e2ac700f2b103e0c35",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-deepseek_articles",
+      "url": "https://www.deepseek.com/news/",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "101d1d57c97f5832ae42d06a772f1d4438e954ae482fb98ab36677c79c6a9ee0",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-deepinfer_articles",
+      "url": "https://github.com/deepseek-ai/open-infra-index",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "edabd771f9dab7290ddb2b5c50632dcf90b58118f198dd8acc97f319126994c3",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-glm_blog",
+      "url": "https://z.ai/blog",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "5b6e28943f8d7affef4fac9908b5af4c47772b6dcf4544b28ca163c7022d57f0",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-qwen_blog",
+      "url": "https://qwen.ai/blog",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "5520812ed2870785b146d8bd1be2388405f9ee0d5a66293d22d0b404ce8d2cdf",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-glm_models",
+      "url": "https://huggingface.co/api/models?author=zai-org",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "4d2f31982b34990b393193ac7c804a328677fa57b8ce6e4ec76b83e7773311b6",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-deepseek_models",
+      "url": "https://huggingface.co/api/models?author=deepseek-ai",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "a39f188808115e9da6104108dc8a190a749e964f0dadb9f789954fb89e9ae6fb",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "coverage-qwen_models",
+      "url": "https://huggingface.co/api/models?author=Qwen",
+      "status": "ok",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": "984684aa89c4c6d3d02c684ce0de31ee79ce3fdc85130caad4602f22a2cc6fe3",
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 1,
+          "error": "",
+          "reserved_seconds": 180
+        }
+      ]
+    },
+    {
+      "id": "hardware-failed",
+      "url": "https://developer.nvidia.com/blog/other/",
+      "status": "failed",
+      "attempts": 1,
+      "elapsed_seconds": 1,
+      "retrieved_at": "2026-11-06T07:22:00+08:00",
+      "published_at": "2026-11-06T06:00:00+08:00",
+      "content_sha256": null,
+      "error": "transport failure",
+      "attempt_records": [
+        {
+          "status": "failed",
+          "elapsed_seconds": 1,
+          "error": "transport failure",
+          "reserved_seconds": 180
+        }
+      ]
+    }
+  ],
+  "checks": {
+    "model_serving": {
+      "status": "checked",
+      "source_ids": [
+        "coverage-model_serving"
+      ],
+      "reason": "合成完整覆盖证据"
+    },
+    "hardware": {
+      "status": "checked",
+      "source_ids": [
+        "coverage-hardware"
+      ],
+      "reason": "真实合成新增检查"
+    },
+    "model_architecture": {
+      "status": "not_checked",
+      "source_ids": [],
+      "reason": "尚未检查"
+    },
+    "embodied_training": {
+      "status": "not_checked",
+      "source_ids": [],
+      "reason": "尚未检查"
+    },
+    "small_models": {
+      "status": "not_checked",
+      "source_ids": [],
+      "reason": "尚未检查"
+    },
+    "inference_engines": {
+      "status": "not_checked",
+      "source_ids": [],
+      "reason": "尚未检查"
+    },
+    "vllm": {
+      "status": "not_checked",
+      "source_ids": [],
+      "reason": "尚未检查"
+    },
+    "sglang": {
+      "status": "not_checked",
+      "source_ids": [],
+      "reason": "尚未检查"
+    },
+    "deepinfer": {
+      "status": "not_checked",
+      "source_ids": [],
+      "reason": "尚未检查"
+    },
+    "vllm_blog": {
+      "status": "not_checked",
+      "source_ids": [],
+      "reason": "尚未检查"
+    },
+    "sglang_blog": {
+      "status": "not_checked",
+      "source_ids": [],
+      "reason": "尚未检查"
+    },
+    "lmsys_blog": {
+      "status": "not_checked",
+      "source_ids": [],
+      "reason": "尚未检查"
+    },
+    "deepseek_articles": {
+      "status": "not_checked",
+      "source_ids": [],
+      "reason": "尚未检查"
+    },
+    "deepinfer_articles": {
+      "status": "not_checked",
+      "source_ids": [],
+      "reason": "尚未检查"
+    },
+    "glm_blog": {
+      "status": "not_checked",
+      "source_ids": [],
+      "reason": "尚未检查"
+    },
+    "qwen_blog": {
+      "status": "not_checked",
+      "source_ids": [],
+      "reason": "尚未检查"
+    },
+    "glm_models": {
+      "status": "not_checked",
+      "source_ids": [],
+      "reason": "尚未检查"
+    },
+    "deepseek_models": {
+      "status": "not_checked",
+      "source_ids": [],
+      "reason": "尚未检查"
+    },
+    "qwen_models": {
+      "status": "not_checked",
+      "source_ids": [],
+      "reason": "尚未检查"
+    }
+  },
+  "status_entries": [],
+  "decisions": [
+    {
+      "event_key": "new-page-2",
+      "disposition": "selected",
+      "source_ids": [
+        "source"
+      ],
+      "reason": "合成入选理由",
+      "history_entry_ids": []
+    }
+  ],
+  "model_calls": [
+    {
+      "stage": "research",
+      "status": "ok",
+      "attempts": 2,
+      "elapsed_seconds": 40,
+      "model": {
+        "name": null,
+        "version": null,
+        "unavailable_reason": "测试环境未暴露模型信息"
+      },
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 20,
+          "error": "",
+          "input_sha256": "ce151c3c566c7b31485d6cfeb9ab8ff27797abff378bdc4279d2dbc0b5f5e97b",
+          "checkpoint_sha256": null,
+          "result_sha256": "9b584ca0ff3daefafadb6f8f39b1d32f12ff0af2c206379334c6fa5c1b0869d9",
+          "reserved_seconds": 400
+        },
+        {
+          "status": "ok",
+          "elapsed_seconds": 20,
+          "error": "",
+          "input_sha256": "ce151c3c566c7b31485d6cfeb9ab8ff27797abff378bdc4279d2dbc0b5f5e97b",
+          "checkpoint_sha256": "9b584ca0ff3daefafadb6f8f39b1d32f12ff0af2c206379334c6fa5c1b0869d9",
+          "result_sha256": "06691d45472ba64c7624e9dae136d197bba8796e21a3ebcd4ded704ec1beada3",
+          "reserved_seconds": 400,
+          "page_round": {
+            "revision": 2,
+            "page_ids": [
+              "hardware-status"
+            ],
+            "previous_audit_sha256": "1d2bd993690186cab82699f99256e4a8148e64622ae1de549f44b4775457ccab"
+          }
+        }
+      ]
+    },
+    {
+      "stage": "editor",
+      "status": "ok",
+      "attempts": 2,
+      "elapsed_seconds": 40,
+      "model": {
+        "name": null,
+        "version": null,
+        "unavailable_reason": "测试环境未暴露模型信息"
+      },
+      "error": "",
+      "attempt_records": [
+        {
+          "status": "ok",
+          "elapsed_seconds": 20,
+          "error": "",
+          "input_sha256": "ce151c3c566c7b31485d6cfeb9ab8ff27797abff378bdc4279d2dbc0b5f5e97b",
+          "checkpoint_sha256": null,
+          "result_sha256": "9b584ca0ff3daefafadb6f8f39b1d32f12ff0af2c206379334c6fa5c1b0869d9",
+          "reserved_seconds": 400
+        },
+        {
+          "status": "ok",
+          "elapsed_seconds": 20,
+          "error": "",
+          "input_sha256": "ce151c3c566c7b31485d6cfeb9ab8ff27797abff378bdc4279d2dbc0b5f5e97b",
+          "checkpoint_sha256": "9b584ca0ff3daefafadb6f8f39b1d32f12ff0af2c206379334c6fa5c1b0869d9",
+          "result_sha256": "1774baebc6e917f5b0a78e52ae582d468904c5377c22a7e20966c3c3cdf6e642",
+          "reserved_seconds": 400,
+          "page_round": {
+            "revision": 2,
+            "page_ids": [
+              "hardware-status"
+            ],
+            "previous_audit_sha256": "1d2bd993690186cab82699f99256e4a8148e64622ae1de549f44b4775457ccab"
+          }
+        }
+      ]
+    }
+  ],
+  "coverage_contract": "daily_required_v1",
+  "coverage_policy": "publish_verified_with_gaps",
+  "coverage_notice": {
+    "checks": [
+      "model_architecture",
+      "embodied_training",
+      "small_models",
+      "inference_engines",
+      "vllm",
+      "sglang",
+      "deepinfer",
+      "vllm_blog",
+      "sglang_blog",
+      "lmsys_blog",
+      "deepseek_articles",
+      "deepinfer_articles",
+      "glm_blog",
+      "qwen_blog",
+      "glm_models",
+      "deepseek_models",
+      "qwen_models"
+    ],
+    "text": "部分晨报｜覆盖缺口：架构、具身、小模型、引擎。缺页原因详见页面，未检查不代表无更新。"
+  },
+  "budget_policy": "successful_work_hourly_continuation_v1",
+  "page_scope": {
+    "contract": "verified_pages_v1",
+    "page_delivery": {
+      "previous": {
+        "request_id": "morning-20261106-r1",
+        "bundle_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "added": [
+        "hardware-status"
+      ],
+      "pending": [
+        {
+          "id": "model-architecture-status",
+          "reason": "尚未完成该页研究，不代表无更新"
+        },
+        {
+          "id": "embodied-training",
+          "reason": "尚未完成该页研究，不代表无更新"
+        },
+        {
+          "id": "small-model-status",
+          "reason": "尚未完成该页研究，不代表无更新"
+        },
+        {
+          "id": "inference-engines",
+          "reason": "尚未完成该页研究，不代表无更新"
+        }
+      ]
+    },
+    "checked_pages": [
+      "hardware-status"
+    ],
+    "previous_evidence": {
+      "request_id": "morning-20261106-r1",
+      "bundle_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "audit_sha256": "1d2bd993690186cab82699f99256e4a8148e64622ae1de549f44b4775457ccab",
+      "archive_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "report_commit": "cccccccccccccccccccccccccccccccccccccccc"
+    }
+  }
+}
