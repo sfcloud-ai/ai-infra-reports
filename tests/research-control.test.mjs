@@ -1393,7 +1393,8 @@ test('full ready schema 1.2 still requires installed page decoder authority with
 });
 
 test('expired undispatched source remains charged but admits a fresh bounded retry',async()=>{
- for(const inputPlan of [plan,layeredPlan()]){const s=setup();try{
+ const single=JSON.parse(layeredPlan());single.limits.max_attempts_per_source=1;
+ for(const inputPlan of [plan,layeredPlan(),Buffer.from(JSON.stringify(single))]){const s=setup();try{
   let run=start(s,inputPlan);const op=source('https://example.org/changes?b=2&a=1'),c=command('reserve',{operations:[op]},run);queue(s,c);
   const receipt='1793491210.000001';
   await advanceResearchControl(s,config,{controlReceipt:async()=>receipt},now);
@@ -1411,6 +1412,7 @@ test('expired undispatched source remains charged but admits a fresh bounded ret
   assert.equal(replay.code,'operation_unsettled');
   assert.equal(execute(s,command('resume',{operation_id:op.operation_id},settled.run),now+70000).code,'resume_original_intent');
   const retried=execute(s,command('reserve',{operations:[source('https://example.org/changes?a=1&b=2')]},settled.run),now+70000);
+  if(JSON.parse(inputPlan).limits.max_attempts_per_source===1){assert.equal(retried.code,'attempt_budget');assert.equal(retried.run.charged_seconds,180);continue;}
   assert.equal(retried.status,'committed');assert.equal(retried.run.charged_seconds,360);
   assert.equal(execute(s,command('reserve',{operations:[source('https://example.org/changes?a=1&b=2')]},retried.run),now+70000).code,inputPlan===plan?'attempt_budget':'research_original_result_unknown');
   if(inputPlan===plan){
@@ -1472,13 +1474,13 @@ test('no-dispatch expiry honors the original embedded lease after current owner 
  }finally{s.close();}
 });
 
-function continuationFixture(status='partial',earlySource=false,oldBody=false){
+function continuationFixture(status='partial',earlySource=false,oldBody=false,originalOverride=null,priorResultChanges={}){
  const s=setup(),p=JSON.parse(layeredPlan());p.model_stages=['research','editor','review'];let run=start(s,Buffer.from(JSON.stringify(p)));
  const added=source();if(earlySource)run=execute(s,command('reserve',{operations:[added]},run)).run;
- const originalInput=Buffer.from(JSON.stringify({request_id:id,stage:'editor',sources:oldBody?[{body_sha256:digest(Buffer.from('new original source body'))}]:[],research:{result_sha256:'a'.repeat(64),outputs:[{sha256:'b'.repeat(64)}]}}));
+ const originalInput=Buffer.from(JSON.stringify(originalOverride??{request_id:id,stage:'editor',sources:oldBody?[{body_sha256:digest(Buffer.from('new original source body'))}]:[],research:{result_sha256:'a'.repeat(64),outputs:[{sha256:'b'.repeat(64)}]}}));
  const first={...source('editor','model'),max_seconds:600,input_sha256:digest(originalInput)};
  run=execute(s,command('reserve',{operations:[first]},run)).run;
- const result=Buffer.from(JSON.stringify({request_id:id,operation_id:first.operation_id,status,elapsed_seconds:400}));
+ const result=Buffer.from(JSON.stringify({request_id:id,operation_id:first.operation_id,stage:'editor',input_sha256:first.input_sha256,status,elapsed_seconds:400,...priorResultChanges}));
  const head=archive(s,{'stage_artifacts/prior.json':result});
  run=execute(s,command('settle',{operation_id:first.operation_id,outcome:'acknowledged',elapsed_seconds:400,archive_sha256:head,file_sha256:digest(result),native_result:null},run)).run;
  if(!earlySource)run=execute(s,command('reserve',{operations:[added]},run)).run;
@@ -1663,10 +1665,10 @@ test('editor continuation binds newly archived research output bytes',()=>{
 });
 
 test('research output declarations are a complete validated union',()=>{
- for(const mode of ['union','invalid','missing']){
+ for(const mode of ['union','invalid','missing','blank']){
   const f=continuationFixture();try{
    const research={...source('research','model'),max_seconds:30};let run=execute(f.s,command('reserve',{operations:[research]},f.run)).run;
-   const first=Buffer.from('first new output'),second=Buffer.from('second new output');
+   const first=Buffer.from('first new output'),second=Buffer.from(mode==='blank'?' \r\n\t':'second new output');
    const result=Buffer.from(JSON.stringify({request_id:id,operation_id:research.operation_id,status:'ok',elapsed_seconds:10,outputs:[{sha256:digest(first)}],output_sha256:mode==='invalid'?'invalid':digest(second)}));
    const files={'stage_artifacts/result.json':result,'stage_artifacts/first.txt':first};if(mode!=='missing')files['stage_artifacts/second.txt']=second;
    const head=archive(f.s,files);run=execute(f.s,command('settle',{operation_id:research.operation_id,outcome:'acknowledged',elapsed_seconds:10,archive_sha256:head,file_sha256:digest(result),native_result:null},run)).run;
@@ -1699,6 +1701,12 @@ test('untimed continuation stays reconcilable until original timing is known',()
   const rejected=execute(f.s,command('settle',{operation_id:op.operation_id,outcome:'acknowledged',elapsed_seconds:null,archive_sha256:h,file_sha256:digest(data),native_result:null},run));
   assert.equal(rejected.code,'model_continuation_timing_required');assert.equal(rejected.run.charged_seconds,1210);
   assert.equal(f.s.db.prepare('SELECT phase FROM research_control_ops WHERE operation_id=?').get(op.operation_id).phase,'intent');
+  for(const resultElapsed of [null,21]){
+   const mismatched=Buffer.from(JSON.stringify({request_id:id,operation_id:op.operation_id,status:'ok',elapsed_seconds:resultElapsed})),mh=archive(f.s,{'mismatched.json':mismatched});
+   const answer=execute(f.s,command('settle',{operation_id:op.operation_id,outcome:'acknowledged',elapsed_seconds:20,archive_sha256:mh,file_sha256:digest(mismatched),native_result:null},run));
+   assert.equal(answer.code,'model_continuation_result_binding');assert.equal(answer.run.charged_seconds,1210);
+   assert.equal(f.s.db.prepare('SELECT phase FROM research_control_ops WHERE operation_id=?').get(op.operation_id).phase,'intent');
+  }
   run=execute(f.s,command('settle',unknown(op.operation_id),run)).run;
   const known=Buffer.from(JSON.stringify({request_id:id,operation_id:op.operation_id,status:'ok',elapsed_seconds:20})),kh=archive(f.s,{'stage_artifacts/known-continuation.json':known});
   const settled=execute(f.s,command('settle',{operation_id:op.operation_id,outcome:'acknowledged',elapsed_seconds:20,archive_sha256:kh,file_sha256:digest(known),native_result:null},run));
@@ -1727,12 +1735,8 @@ test('no-dispatch observation cannot precede a late grant receipt',async()=>{
 
 test('prior model source contents require comparable explicit hashes',()=>{
  for(const sourceEntry of [{body:'old inline body'},{body_sha256:null,body:'old inline body'},{body_sha256:null,body_file:'old-body.txt'},{body_sha256:null,status:'ok'}]){
-  const f=continuationFixture();try{
-   const input=Buffer.from(JSON.stringify({request_id:id,stage:'editor',sources:[sourceEntry]})),op=f.next();
-   f.s.db.prepare('UPDATE research_control_ops SET input_hash=? WHERE operation_id=?').run(digest(input),f.first.operation_id);
-   const original=f.s.db.prepare('SELECT bytes FROM research_archives WHERE hash=?').get(op.input.continuation_archive_sha256);
-   const files=Object.fromEntries(decodeResearchArchive(Buffer.from(original.bytes)).files.map(file=>[file.path,file.data]));files['stage_artifacts/original-input.json']=input;
-   op.input.continuation_archive_sha256=archive(f.s,files);
+  const f=continuationFixture('partial',false,false,{request_id:id,stage:'editor',sources:[sourceEntry]});try{
+   const op=f.next();
    assert.equal(execute(f.s,command('reserve',{operations:[op]},f.run)).code,'model_continuation_stage_input');
   }finally{f.s.close();}
  }
@@ -1748,12 +1752,8 @@ test('continuation cannot relabel a stored source URL or input identity',()=>{
 });
 test('prior model research must use explicit hashed outputs',()=>{
  for(const research of ['inline prior output',{text:'inline prior output'},{outputs:[{sha256:'f'.repeat(64),text:'inline prior output'}]}]){
-  const f=continuationFixture();try{
-   const input=Buffer.from(JSON.stringify({request_id:id,stage:'editor',sources:[],research})),op=f.next();
-   f.s.db.prepare('UPDATE research_control_ops SET input_hash=? WHERE operation_id=?').run(digest(input),f.first.operation_id);
-   const original=f.s.db.prepare('SELECT bytes FROM research_archives WHERE hash=?').get(op.input.continuation_archive_sha256);
-   const files=Object.fromEntries(decodeResearchArchive(Buffer.from(original.bytes)).files.map(file=>[file.path,file.data]));files['stage_artifacts/original-input.json']=input;
-   op.input.continuation_archive_sha256=archive(f.s,files);
+  const f=continuationFixture('partial',false,false,{request_id:id,stage:'editor',sources:[],research});try{
+   const op=f.next();
    assert.equal(execute(f.s,command('reserve',{operations:[op]},f.run)).code,'model_continuation_stage_input');
   }finally{f.s.close();}
  }
@@ -1818,12 +1818,8 @@ test('actual permit rejects omitted batch cancellations and records a compatible
 
 test('editor-only continuation requires its original research checkpoint shape',()=>{
  for(const research of [undefined,{outputs:[]},{result_sha256:'a'.repeat(64),outputs:[]},{result_sha256:'a'.repeat(64),outputs:null}]){
-  const f=continuationFixture();try{
-   const input=Buffer.from(JSON.stringify({request_id:id,stage:'editor',sources:[],...(research===undefined?{}:{research})})),op=f.next();
-   f.s.db.prepare('UPDATE research_control_ops SET input_hash=? WHERE operation_id=?').run(digest(input),f.first.operation_id);
-   const original=f.s.db.prepare('SELECT bytes FROM research_archives WHERE hash=?').get(op.input.continuation_archive_sha256);
-   const files=Object.fromEntries(decodeResearchArchive(Buffer.from(original.bytes)).files.map(file=>[file.path,file.data]));files['stage_artifacts/original-input.json']=input;
-   op.input.continuation_archive_sha256=archive(f.s,files);
+  const f=continuationFixture('partial',false,false,{request_id:id,stage:'editor',sources:[],...(research===undefined?{}:{research})});try{
+   const op=f.next();
    const answer=execute(f.s,command('reserve',{operations:[op]},f.run));assert.equal(answer.code,research?.outputs===null?'model_continuation_stage_input':'model_continuation_prior_research');assert.equal(answer.run.charged_seconds,410);
   }finally{f.s.close();}
  }
@@ -1838,4 +1834,60 @@ test('continuation rejects unbound additional payload references but keeps origi
    assert.equal(execute(f.s,command('reserve',{operations:[f.next({},{research:original.research})]},f.run)).status,'committed');
   }finally{f.s.close();}
  }
+});
+
+test('continuation requires original model stage and input bindings',()=>{
+ for(const fields of [{stage:undefined},{stage:'research'},{input_sha256:undefined},{input_sha256:'f'.repeat(64)}]){
+  const f=continuationFixture('partial',false,false,null,fields);try{
+   const answer=execute(f.s,command('reserve',{operations:[f.next()]},f.run));
+   assert.equal(answer.code,'model_continuation_prior_binding');assert.equal(answer.run.charged_seconds,410);
+  }finally{f.s.close();}
+ }
+});
+test('continuation refuses whitespace-only successful source bytes',()=>{
+ const f=continuationFixture();try{
+  const content=Buffer.from(' \t\r\n'),data=Buffer.from(JSON.stringify({request_id:id,operation_id:f.added.operation_id,url:f.added.input.url,status:'ok',elapsed_seconds:10,response_complete:true,curl_exit_code:0,error:'',http_status:200,content_sha256:digest(content)}));
+  const h=archive(f.s,{'result.json':data,'body.txt':content});
+  f.s.db.prepare('UPDATE research_control_ops SET result_archive=?,result_file=? WHERE operation_id=?').run(h,digest(data),f.added.operation_id);
+  const op=f.next({added_evidence:[{operation_id:f.added.operation_id,archive_sha256:h,file_sha256:digest(data)}]},{sources:[{operation_id:f.added.operation_id,result_sha256:digest(data),body_sha256:digest(content)}]});
+  assert.equal(execute(f.s,command('reserve',{operations:[op]},f.run)).code,'model_continuation_source_content');
+ }finally{f.s.close();}
+});
+
+test('continuation authority includes its peer and a real next-window ordinary retry',async()=>{
+ const s=setup();try{
+  const p=JSON.parse(layeredPlan());p.model_stages=['research','editor'];const planBytes=Buffer.from(JSON.stringify(p));let run=start(s,planBytes),clock=now;
+  const call=(action,args)=>{const answer=execute(s,command(action,args,run),clock);assert.equal(answer.status,'committed',JSON.stringify(answer));run=answer.run;return answer;};
+  const settled=(op,value,files={})=>{const data=Buffer.from(JSON.stringify(value)),h=archive(s,{...files,['stage_artifacts/'+digest(data)+'.json']:data});call('settle',{operation_id:op.operation_id,outcome:'acknowledged',elapsed_seconds:value.elapsed_seconds,archive_sha256:h,file_sha256:digest(data),native_result:null});return {op,data,archive:h,file:digest(data)};};
+  const oldResearch=Buffer.from('retained real research'),researchInput=Buffer.from(JSON.stringify({request_id:id,stage:'research',sources:[]}));
+  const research={...source('research','model'),max_seconds:100,input_sha256:digest(researchInput)};call('reserve',{operations:[research]});
+  const rr=settled(research,{request_id:id,operation_id:research.operation_id,stage:'research',input_sha256:research.input_sha256,status:'ok',elapsed_seconds:10,outputs:[{sha256:digest(oldResearch)}]},{'research.txt':oldResearch});
+  const editorInput=Buffer.from(JSON.stringify({request_id:id,stage:'editor',sources:[],research:{operation_id:research.operation_id,result_sha256:rr.file,outputs:[{sha256:digest(oldResearch)}]}}));
+  const editor={...source('editor','model'),max_seconds:100,input_sha256:digest(editorInput)};call('reserve',{operations:[editor]});
+  const er=settled(editor,{request_id:id,operation_id:editor.operation_id,stage:'editor',input_sha256:editor.input_sha256,status:'ok',elapsed_seconds:10});
+  const added=source(),body=Buffer.from('new source');call('reserve',{operations:[added]});
+  const sr=settled(added,{request_id:id,operation_id:added.operation_id,url:added.input.url,status:'ok',elapsed_seconds:10,response_complete:true,curl_exit_code:0,http_status:200,error:'',content_sha256:digest(body)},{'source.txt':body});
+  const binding={previous_operation_id:editor.operation_id,checkpoint_archive_sha256:er.archive,checkpoint_file_sha256:er.file,added_evidence:[{operation_id:added.operation_id,archive_sha256:sr.archive,file_sha256:sr.file}]};
+  const payload=Buffer.from(JSON.stringify({request_id:id,stage:'editor',sources:[{operation_id:added.operation_id,result_sha256:sr.file,body_sha256:digest(body)}],continuation:binding}));
+  const manifest=Buffer.from(JSON.stringify({schema_version:'model_prepublication_continuation_v1',request_id:id,stage:'editor',...binding,payload_sha256:digest(payload)})),mh=archive(s,{'manifest.json':manifest,'payload.json':payload,'prior.json':editorInput});
+  const continuation={...source('editor','model'),max_seconds:100,input_sha256:digest(manifest),input:{previous_operation_id:editor.operation_id,checkpoint_archive_sha256:er.archive,checkpoint_file_sha256:er.file,continuation_archive_sha256:mh}};call('reserve',{operations:[continuation]});
+  const failed=settled(continuation,{request_id:id,operation_id:continuation.operation_id,stage:'editor',input_sha256:continuation.input_sha256,status:'failed',elapsed_seconds:10,error:'synthetic model failure'});
+  const retry={...source('editor','model'),max_seconds:100,input_sha256:digest(payload),input:{previous_operation_id:continuation.operation_id,checkpoint_archive_sha256:failed.archive,checkpoint_file_sha256:failed.file}};
+  assert.equal(execute(s,command('reserve',{operations:[retry]},run),clock).code,'research_window_attempts_exhausted');
+  const grant={schema_version:'research_recovery_grant_v1',grant_id:randomUUID(),request_id:id,generation:config.research_control.generation,plan_hash:run.plan_hash,previous_sha256:null,authorization_reference:'synthetic next-window approval',effective_not_before:nextResearchContinuationAt(now),window_seconds:3600,failed_attempts_consume_success_budget:false,continuation_policy:'hourly_20_until_complete'};
+  const grantBytes=Buffer.from(JSON.stringify(grant));approveResearchRecoveryGrant(s.db,grantBytes,grant.authorization_reference,now);call('recovery_grant',{grant_base64:grantBytes.toString('base64')});clock=grant.effective_not_before;
+  const claimed=execute(s,command('claim',{plan_base64:planBytes.toString('base64')},run),clock);assert.equal(claimed.status,'claimed');run=claimed.run;
+  call('reserve',{operations:[retry]});const final=settled(retry,{request_id:id,operation_id:retry.operation_id,stage:'editor',input_sha256:retry.input_sha256,status:'ok',elapsed_seconds:10});
+  const proof=Buffer.from(JSON.stringify({schema_version:'model_prepublication_continuation_evidence_v1',operation_id:continuation.operation_id,control_commands:[],source_attempts:[]}));
+  const record=(item,status,checkpoint=null)=>({status,input_sha256:item.op.input_sha256,result_sha256:item.file,checkpoint_sha256:checkpoint,reserved_seconds:item.op.max_seconds,elapsed_seconds:10});
+  const bundle=await encodeBundle(FILES,id,'b'.repeat(40),'a'.repeat(40));
+  for(const mutation of ['peer','retry','checkpoint','round','valid']){
+   const calls=[{stage:'research',attempt_records:[record(rr,'ok')]},{stage:'editor',attempt_records:[record(er,'ok'),{...record(failed,'failed',er.file),prepublication_continuation_sha256:digest(proof)},record(final,'ok',failed.file)]}];
+   if(mutation==='peer')calls[0].attempt_records[0].result_sha256='f'.repeat(64);if(mutation==='retry')calls[1].attempt_records[2].result_sha256='f'.repeat(64);if(mutation==='checkpoint')calls[1].attempt_records[2].checkpoint_sha256='f'.repeat(64);if(mutation==='round')calls[1].attempt_records[2].page_round={revision:2};
+   const metadata=Buffer.from(JSON.stringify({sources:[],model_calls:calls})),audit=Buffer.from(JSON.stringify(auditSummary({schema_version:'1.4',budget_policy:LAYERED_BUDGET_POLICY,evidence_metadata_sha256:digest(metadata),limits:{source_attempts:2,model_attempts:2,source_attempt_seconds:180,model_stage_seconds:1200,run_seconds:3600},budget_accounting:{successful_attempts:{source:1,model:3},failed_attempts:{source:0,model:1},unknown_attempts:{source:0,model:0},successful_seconds:40,failed_seconds:10,reserved_unknown_seconds:0,charged_seconds:40}})));
+   const h=archive(s,{'bundle.json':bundle,'metadata.json':metadata,'audit.json':audit,'proof.json':proof}),cmd=command('permit',{archive_sha256:h,bundle_sha256:digest(bundle),audit_sha256:digest(audit)},run),raw=Buffer.from(JSON.stringify(cmd));
+   const answer=executeResearchControl(s.db,config,raw,clock,{publicationCheck:await preparePublicationCheck(s.db,raw)});
+   if(mutation==='valid')assert.equal(answer.status,'committed',JSON.stringify(answer));else assert.equal(answer.code,'publication_model_continuation_binding',mutation);
+  }
+ }finally{s.close();}
 });

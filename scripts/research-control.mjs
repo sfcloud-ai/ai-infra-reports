@@ -133,18 +133,27 @@ function modelContinuationPublicationBound(db,run,args,metadata,cache){
  if(!current.size&&!hasProof)return;
  need(Array.isArray(metadata?.model_calls)&&metadata.model_calls.every(call=>call&&typeof call.stage==='string'&&Array.isArray(call.attempt_records)&&call.attempt_records.every(attempt=>attempt&&typeof attempt==='object'&&!Array.isArray(attempt))),'publication_model_continuation_binding');
  const seen=new Set(),files=commandArchive(db,run.request_id,args.archive_sha256,cache)?.byHash;
+ const initial=attempt=>attempt.page_round===undefined||attempt.page_round?.revision===1;
  const matches=(attempt,op)=>attempt.input_sha256===op.input_hash&&attempt.result_sha256===op.result_file&&attempt.reserved_seconds===op.reserved_seconds&&attempt.elapsed_seconds===op.elapsed_seconds;
  for(const call of metadata.model_calls)for(const attempt of call.attempt_records){
   if(attempt.prepublication_continuation_sha256===undefined)continue;
   need(string(attempt.prepublication_continuation_sha256,HASH),'publication_model_continuation_binding');
   let proof;try{proof=JSON.parse(files?.get(attempt.prepublication_continuation_sha256)?.data);}catch{}
   const op=current.get(proof?.operation_id),input=op?JSON.parse(op.input):null;
-  need(proof?.schema_version==='model_prepublication_continuation_evidence_v1'&&op&&!seen.has(op.operation_id)&&op.phase==='acknowledged'&&op.request_id===run.request_id&&op.operation_key===call.stage&&matches(attempt,op)&&attempt.checkpoint_sha256===input.checkpoint_file_sha256,'publication_model_continuation_binding');
+  need(proof?.schema_version==='model_prepublication_continuation_evidence_v1'&&initial(attempt)&&op&&!seen.has(op.operation_id)&&op.phase==='acknowledged'&&op.request_id===run.request_id&&op.operation_key===call.stage&&matches(attempt,op)&&attempt.checkpoint_sha256===input.checkpoint_file_sha256,'publication_model_continuation_binding');
   const prior=operations.find(item=>item.operation_id===input.previous_operation_id);
   need(prior&&prior.phase==='acknowledged'&&prior.operation_key===call.stage&&prior.result_archive===input.checkpoint_archive_sha256&&prior.result_file===input.checkpoint_file_sha256&&call.attempt_records.filter(item=>matches(item,prior)).length===1,'publication_model_continuation_binding');
   seen.add(op.operation_id);
  }
  need(seen.size===current.size,'publication_model_continuation_binding');
+ // Only the initial-round feature and its output dependencies are in this contract.
+ // Later page keys and runs without continuation retain their existing rules.
+ const keys=new Set([...current.values()].map(op=>op.operation_key));
+ if(keys.has('research')||keys.has('editor')){keys.add('research');keys.add('editor');}
+ for(const key of keys){
+  const actual=operations.filter(op=>op.operation_key===key),retained=metadata.model_calls.filter(call=>call.stage===key).flatMap(call=>call.attempt_records.filter(initial));
+  need(actual.length===retained.length&&actual.every(op=>op.phase==='acknowledged'&&retained.filter(attempt=>matches(attempt,op)&&(!JSON.parse(op.input)?.previous_operation_id||attempt.checkpoint_sha256===JSON.parse(op.input).checkpoint_file_sha256)).length===1),'publication_model_continuation_binding');
+ }
 }
 function publicationEvidence(db,run,plan,args,now,cache,page=false){
  const {bundle,audit,metadata}=readPublicationBytes(db,run,args,cache);
@@ -334,6 +343,9 @@ function prepublicationModelContinuation(db,run,op,prior,cache){
  need(isLayeredResearchPlan(JSON.parse(Buffer.from(run.plan))),'model_continuation_layered_plan');
  need(run.permit===null,'model_continuation_prepublication_only');
  need(classifiedResult(db,run,prior,cache)?.outcome==='success','model_continuation_prior_success');
+ let priorResult;try{priorResult=JSON.parse(commandArchive(db,run.request_id,prior.result_archive,cache)?.byHash.get(prior.result_file)?.data);}catch{}
+ need(priorResult?.stage===op.key&&priorResult?.input_sha256===prior.input_hash,'model_continuation_prior_binding');
+ const nonblank=data=>data?.some(byte=>![9,10,11,12,13,32].includes(byte))===true;
  const stored=commandArchive(db,run.request_id,op.input.continuation_archive_sha256,cache);
  const bytes=stored?.byHash.get(op.input_sha256)?.data;let manifest;
  try{manifest=JSON.parse(bytes);}catch{}
@@ -360,13 +372,13 @@ function prepublicationModelContinuation(db,run,op,prior,cache){
   if(evidence.kind==='model'&&JSON.parse(evidence.input)?.continuation_archive_sha256)addedResearchContinuation=true;
   const evidenceArchive=commandArchive(db,run.request_id,evidence.result_archive,cache);
   let result;try{result=JSON.parse(evidenceArchive.byHash.get(evidence.result_file).data);}catch{refuse('model_continuation_evidence_json');}
-  if(evidence.kind==='source')need(['ok','success'].includes(result.status)&&result.response_complete===true&&result.curl_exit_code===0&&result.error===''&&integer(result.http_status,200,299)&&string(result.content_sha256,HASH)&&evidenceArchive.byHash.get(result.content_sha256)?.data.length>0,'model_continuation_source_content');
+  if(evidence.kind==='source')need(['ok','success'].includes(result.status)&&result.response_complete===true&&result.curl_exit_code===0&&result.error===''&&integer(result.http_status,200,299)&&string(result.content_sha256,HASH)&&nonblank(evidenceArchive.byHash.get(result.content_sha256)?.data),'model_continuation_source_content');
   const contents=[];
   if(evidence.kind==='source')contents.push(result.content_sha256);
   else {
    if(result.outputs!==undefined){need(Array.isArray(result.outputs)&&result.outputs.every(output=>string(output?.sha256,HASH)),'model_continuation_model_content');contents.push(...result.outputs.map(output=>output.sha256));}
    if(result.output_sha256!==undefined){need(string(result.output_sha256,HASH),'model_continuation_model_content');contents.push(result.output_sha256);}
-   need(contents.length>0&&contents.every(hash=>evidenceArchive.byHash.get(hash)?.data.length>0),'model_continuation_model_content');
+   need(contents.length>0&&contents.every(hash=>nonblank(evidenceArchive.byHash.get(hash)?.data)),'model_continuation_model_content');
   }
   if(evidence.kind==='source'){
    addedSources.add(evidence.operation_id);
@@ -545,7 +557,7 @@ function apply(db,c,now,config,commandHash){
     }else need(op.input===null,'research_operation_input');
     if(budget){
      need(budget.window.active,'research_continuation_not_due');
-     const key=JSON.stringify([op.kind,op.key]),successes=budget.accounting.successful_attempts[key]??0;
+     const key=JSON.stringify([op.kind,op.key]),successes=(budget.accounting.successful_attempts[key]??0)+(op.kind==='source'?budget.operations.filter(item=>item.kind==='source'&&item.operation_key===op.key&&classifiedResult(db,run,item,cache)?.outcome==='not_dispatched').length:0);
      const unresolved=budget.operations.some(item=>item.kind===op.kind&&item.operation_key===op.key&&(!classifiedResult(db,run,item,cache)||(item.elapsed_seconds===null&&classifiedResult(db,run,item,cache)?.outcome!=='not_dispatched')));
      need(!unresolved,'research_original_result_unknown');
      need(op.kind==='source'?string(op.key,HASH)&&successes<budget.limits.max_attempts_per_source:pageModelKeyAllowed(activePageResearch(db,run,plan),op.key)&&successes<budget.limits.max_attempts_per_model,'attempt_budget');
@@ -609,6 +621,10 @@ function apply(db,c,now,config,commandHash){
     need(c.args.native_result===null,'research_result_kind');need(archive(db,c.request_id,c.args.archive_sha256).some(f=>f.sha256===c.args.file_sha256),'result_bytes_missing');
     const stored=commandArchive(db,run.request_id,c.args.archive_sha256,cache),file=stored?.byHash.get(c.args.file_sha256);
     let candidate;try{candidate=JSON.parse(file.data);}catch{}
+    if(op.kind==='model'&&JSON.parse(op.input)?.continuation_archive_sha256){
+     const preview={...op,phase:'acknowledged',elapsed_seconds:elapsed,result_archive:c.args.archive_sha256,result_file:c.args.file_sha256};
+     need(['success','failed'].includes(classifiedResult(db,run,preview,cache)?.outcome),'model_continuation_result_binding');
+    }
     if(candidate?.status==='not_dispatched'){
      const preview={...op,phase:'acknowledged',elapsed_seconds:elapsed,result_archive:c.args.archive_sha256,result_file:c.args.file_sha256};
      const classification=classifiedResult(db,run,preview,cache);
