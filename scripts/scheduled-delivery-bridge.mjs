@@ -26,12 +26,15 @@ export function scheduledQueryBudget(request){
  requireThat(request&&['admit','status','inspect'].includes(request.action),'Known scheduled action required');
  return request.action==='admit'?180000:10000;
 }
+function deliveryStarted(result,binding){
+ return result&&Object.entries(binding).every(([k,v])=>result[k]===v)&&
+  (['sending','sent','unknown'].includes(result.status)||result.parts_sent>0);
+}
 function earlierStartedRequest(db,day,revision){
- const rows=db.prepare("SELECT request_id,binding,result FROM scheduled_handoffs WHERE json_valid(binding) AND json_extract(binding,'$.report_date')=? AND phase IN ('observed','complete','superseded') ORDER BY request_id").all(day);
+ const rows=db.prepare("SELECT request_id,binding,result FROM scheduled_handoffs WHERE json_valid(binding) AND json_extract(binding,'$.report_date')=? AND phase IN ('observed','complete','superseded') ORDER BY (json_extract(result,'$.parts_sent')>0) DESC,poll_order DESC").all(day);
  for(const row of rows){
   const binding=JSON.parse(row.binding),result=JSON.parse(row.result);
-  if(result&&row.request_id===binding.request_id&&Object.entries(binding).every(([k,v])=>result[k]===v)&&
-     (result.report_revision??1)<revision&&(['sending','sent','unknown'].includes(result.status)||result.parts_sent>0))return row.request_id;
+  if(row.request_id===binding.request_id&&deliveryStarted(result,binding)&&(result.report_revision??1)<revision)return binding;
  }
  return null;
 }
@@ -68,9 +71,11 @@ export async function advanceScheduledDelivery(state,config,query=queryScheduled
   // remain unresolved forever without starving later dates or disappearing.
   db.prepare('UPDATE scheduled_handoffs SET poll_order=(SELECT COALESCE(MAX(poll_order),0)+1 FROM scheduled_handoffs) WHERE request_id=?').run(id);
   try{
-   const started=revised?earlierStartedRequest(db,bundle.report.date,bundle.report.revision):null;
    if(local.phase==='awaiting_first_delivery'){
-    if(!started||started===JSON.parse(local.result).observed_started_request)continue;
+    const prior=earlierStartedRequest(db,bundle.report.date,bundle.report.revision);
+    if(!prior)continue;
+    const receipt=await query(c,{action:'status',request_id:prior.request_id});
+    if(!deliveryStarted(receipt,prior))return {request_id:id,phase:local.phase,wecom_status:'not_verified'};
    }
    let result=await query(c,{action:'status',request_id:id});
    if(result?.status==='not_found'){
@@ -82,7 +87,6 @@ export async function advanceScheduledDelivery(state,config,query=queryScheduled
     if(firstNoticeRejected(result,expected)){
      const phase=revised?'awaiting_first_delivery':'policy_rejected';
      const refusal={...expected,status:'rejected',error:'first_notice_requires_all_six_articles'};
-     if(revised)refusal.observed_started_request=started;
      db.prepare('UPDATE scheduled_handoffs SET phase=?,result=? WHERE request_id=?').run(phase,JSON.stringify(refusal),id);
      return {request_id:id,phase,wecom_status:'not_verified',error:refusal.error};
     }
@@ -104,7 +108,8 @@ export async function advanceScheduledDelivery(state,config,query=queryScheduled
   }catch(error){
    // Do not stop publication or reissue a send. Next tick queries original ID.
    const diagnostic=safeDiagnostic(error,'scheduled_delivery');
-   db.prepare('UPDATE scheduled_handoffs SET result=? WHERE request_id=?').run(JSON.stringify({request_id:id,diagnostic}),id);
+   db.prepare("UPDATE scheduled_handoffs SET result=CASE WHEN phase='awaiting_first_delivery' THEN json_set(result,'$.diagnostic',json(?)) ELSE ? END WHERE request_id=?")
+    .run(JSON.stringify(diagnostic),JSON.stringify({request_id:id,diagnostic}),id);
    return {request_id:id,phase:'reconcile_pending',wecom_status:'not_verified',diagnostic};
   }
  }

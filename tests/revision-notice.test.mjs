@@ -90,7 +90,10 @@ test('bridge accepts actual one-part revision receipt and does not invent an ima
 });
 test('a refused pre-send revision resumes after an earlier delivery starts',async()=>{
  const s=state();let admits=0;
+ const original={request_id:'morning-20261101-r1',report_date:DAY,bundle_sha256:'d'.repeat(64),report_commit:MERGE};
+ let priorReceipt={...original,parts_sent:0,parts_total:2,status:'failed'};
  const query=async(c,request)=>{
+  if(request.request_id===original.request_id)return priorReceipt;
   if(request.action==='status')return {status:'not_found'};
   if(++admits===1)return {request_id:id,report_commit:MERGE,bundle_sha256:bundle.hash,status:'rejected',error:'first_notice_requires_all_six_articles'};
   return base;
@@ -99,9 +102,19 @@ test('a refused pre-send revision resumes after an earlier delivery starts',asyn
   assert.equal((await advanceScheduledDelivery(s,config,query)).phase,'awaiting_first_delivery');
   assert.equal((await advanceScheduledDelivery(s,config,query)).phase,'idle');
   assert.equal(admits,1);
-  const original={request_id:'morning-20261101-r1',report_date:DAY,bundle_sha256:'d'.repeat(64),report_commit:MERGE};
-  const receipt={...original,parts_sent:1,parts_total:2,status:'sending',phase:'sending'};
+  const receipt={...original,parts_sent:0,parts_total:2,status:'sending',phase:'sending'};
   s.db.prepare('INSERT INTO scheduled_handoffs VALUES (?,?,?,?,0)').run(original.request_id,JSON.stringify(original),'observed',JSON.stringify(receipt));
+  assert.equal((await advanceScheduledDelivery(s,config,query)).phase,'awaiting_first_delivery');
+  assert.equal(admits,1);
+  const transportFailure=async()=>{throw Error('Scheduled endpoint timeout');};
+  assert.equal((await advanceScheduledDelivery(s,config,transportFailure)).phase,'reconcile_pending');
+  const waiting=s.db.prepare('SELECT phase,result FROM scheduled_handoffs WHERE request_id=?').get(id);
+  const refusal=JSON.parse(waiting.result);
+  assert.equal(waiting.phase,'awaiting_first_delivery');
+  assert.equal(refusal.error,'first_notice_requires_all_six_articles');
+  assert.equal(refusal.bundle_sha256,bundle.hash);
+  assert.ok(refusal.diagnostic);
+  priorReceipt={...receipt,parts_sent:1};
   assert.equal((await advanceScheduledDelivery(s,config,query)).phase,'complete');
   assert.equal(admits,2);
  }finally{s.close();}
