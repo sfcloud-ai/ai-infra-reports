@@ -1960,6 +1960,78 @@
       "revision": 1,
       "fingerprint": "fd30d3afc08bf8ec9f786bb0b37a1168cb6c2bde59fdcbb1008ee17cfad0a697",
       "content_sha256": "9ab475d6ad1874ef5511532d1ba526da0fd917b226ff90e248929d6b75989277"
+    },
+    {
+      "id": "2026-11-17-lerobot-praxis-backward-5328",
+      "event_key": "lerobot-praxis-backward-5328",
+      "date": "2026-11-17",
+      "revision": 1,
+      "fingerprint": "3abbd2bd3fef5f00ebca8c0c6c389304991b411f9e82b4afdb9021860055074a",
+      "content_sha256": "7e607f9e8b2055095cde4a29fba9b61d4979693484f97fc095350330257f8fff"
+    },
+    {
+      "id": "2026-11-17-nvidia-mlperf-endpoints-v1-20261116",
+      "event_key": "nvidia-mlperf-endpoints-v1-20261116",
+      "date": "2026-11-17",
+      "revision": 1,
+      "fingerprint": "da77908cbd2dac7d9ad892c76e51340e8fa21c2ba97455ae9f5a2a5e2e9588cf",
+      "content_sha256": "ce151aab7a447fe44f82f43ad496fd0f79f3cc8cb906abfb20ee620d8f0b5ebd"
+    },
+    {
+      "id": "2026-11-17-nvidia-mlperf-training-v61-20261116",
+      "event_key": "nvidia-mlperf-training-v61-20261116",
+      "date": "2026-11-17",
+      "revision": 1,
+      "fingerprint": "6f21e333d6f515656fe4d41e32e6dd0d6acbd375872b9b6cee1e060b308dfbe6",
+      "content_sha256": "f8538176728bab0fafc0d24a8763f149557e3aa887e7b084cb77f5399de94c75"
+    },
+    {
+      "id": "2026-11-17-sglang-deepseek41-cp-bcg-40333",
+      "event_key": "sglang-deepseek41-cp-bcg-40333",
+      "date": "2026-11-17",
+      "revision": 1,
+      "fingerprint": "4b131ebb50e8cf4582c4c7a8906c10fca472a24c635357fbd9047a5b8a4793e7",
+      "content_sha256": "00622b24ca97310d5b66748a4f217a8ea1095bbe9a1dbfd37858c6256f663b72"
+    },
+    {
+      "id": "2026-11-17-sglang-hisparse-hicache-dataplane-49473",
+      "event_key": "sglang-hisparse-hicache-dataplane-49473",
+      "date": "2026-11-17",
+      "revision": 1,
+      "fingerprint": "536bf7b3f7cbd3c2b9a0b704fc4bd765ee3b5e9b03f6ef3a3068d9ec84140610",
+      "content_sha256": "f51379a6f1d48773e8a1e29f267881c908a57b8125d9523aacd06498957e4b7a"
+    },
+    {
+      "id": "2026-11-17-sglang-lfm3-text-output-46858",
+      "event_key": "sglang-lfm3-text-output-46858",
+      "date": "2026-11-17",
+      "revision": 1,
+      "fingerprint": "68446e1484a0d905b6b08edaafd5037c23ce24c33dcfc7cbfa20ad7e717ac098",
+      "content_sha256": "20fbd233196f0d70b2e6bb53e0dfd35fc4fae5bb34172b1f48b5462f07d57f37"
+    },
+    {
+      "id": "2026-11-17-tileops-cold-measurement-2985",
+      "event_key": "tileops-cold-measurement-2985",
+      "date": "2026-11-17",
+      "revision": 1,
+      "fingerprint": "9d7143e3a1343300e28602d8ae69ad79af17872cbf3809591e892bd5fce2466a",
+      "content_sha256": "29a0543f5acd28aa43f6473aed2c6f32de4789ff29b71c339d849781ab02e0b2"
+    },
+    {
+      "id": "2026-11-17-vllm-cpu-offload-async-init-66583",
+      "event_key": "vllm-cpu-offload-async-init-66583",
+      "date": "2026-11-17",
+      "revision": 1,
+      "fingerprint": "85eb9b550bac3b82d1a1240eb92bee27488469e388ff6fd7523a2548ebe48095",
+      "content_sha256": "9277a12ee98e0cd760e05d88dfa8a82555a9436c73a14e1fc111be672d353b4f"
+    },
+    {
+      "id": "2026-11-17-vllm-mamba-midblock-prefill-66938",
+      "event_key": "vllm-mamba-midblock-prefill-66938",
+      "date": "2026-11-17",
+      "revision": 1,
+      "fingerprint": "25f385097044883b25c12df48b4e5e1d4b1d5a444b5b9b4cb8a04d97b184c9db",
+      "content_sha256": "24ce7fc84e953a6b16a939e33d6ffb66e03fd92a4d37319eb3dd2a8ed0b70448"
     }
   ]
 }
