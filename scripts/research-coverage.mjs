@@ -18,7 +18,7 @@ export function requiredCoverageValid(audit,plan,bundle,previous=null,metadata=n
   ||!sameSet(audit.required_checks,required)||(!pageScoped&&!sameSet(audit.coverage_unchecked,[]))
   ||!Array.isArray(audit.coverage_checked)||!Array.isArray(audit.coverage_incomplete)
   ||!sameSet([...audit.coverage_checked,...audit.coverage_incomplete],required))return false;
- if(discovery&&(!isLayeredResearchPlan(plan)||!/^[a-f0-9]{64}$/.test(audit.evidence_metadata_sha256??''))||!discoveryCoverageBound(audit,metadata))return false;
+ if(discovery&&(!isLayeredResearchPlan(plan)||!/^[a-f0-9]{64}$/.test(audit.evidence_metadata_sha256??''))||!discoveryCoverageBound(audit,metadata,pageScoped?previous?.metadata:null))return false;
  const gaps=audit.coverage_incomplete.length;
  if(gaps?(audit.readiness!=='partial'||!Number.isSafeInteger(audit.selected_count)||audit.selected_count<1)
   :!['ready','zero_items'].includes(audit.readiness)||!Number.isSafeInteger(audit.selected_count)

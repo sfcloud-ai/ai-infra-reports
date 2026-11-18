@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {requiredCoverageValid,REQUIRED_RESEARCH_CHECKS} from '../scripts/research-coverage.mjs';
-import {DISCOVERY_CONTRACT,DISCOVERY_CHECKS} from '../scripts/research-discovery.mjs';
+import {DISCOVERY_CONTRACT,DISCOVERY_CHECKS,discoveryCoverageBound} from '../scripts/research-discovery.mjs';
 import {PAGE_CHECKS,pageCoverageValid} from '../scripts/research-page-coverage.mjs';
 import {auditBudget,LAYERED_BUDGET_POLICY} from '../scripts/research-budget.mjs';
 const hash=b=>createHash('sha256').update(b).digest('hex');
@@ -44,4 +44,24 @@ test('a ready page requires its versioned discovery checks',()=>{
   const a=structuredClone(f.audit);a.coverage_checked=a.coverage_checked.filter(c=>c!==family);a.coverage_incomplete=[family];a.coverage_unchecked=[family];
   assert.equal(pageCoverageValid(a,f.bundle),false);
  }
+});
+
+// A verified predecessor may predate cancellation query completeness. Do not
+// invent queries for its frozen failed attempts when a successor cancels.
+test('successor cancellation preserves authenticated legacy query prefix',()=>{
+ const f=fixture(),source=f.metadata.sources[0],query=f.metadata.discovery.queries[0];
+ source.status='failed';source.attempt_records=[{status:'timeout'},{status:'timeout'}];query.attempt=2;
+ f.metadata.checks.discovery_memory.status='failed';
+ f.audit.coverage_checked=f.audit.coverage_checked.filter(c=>c!=='discovery_memory');
+ const previous=structuredClone(f.metadata);
+ assert.equal(discoveryCoverageBound(f.audit,f.metadata),true);
+ source.attempt_records.push({status:'not_dispatched'});
+ f.metadata.discovery.queries.push({...query,id:'cancel-query',mode:'followup',attempt:3});
+ assert.equal(discoveryCoverageBound(f.audit,f.metadata),false);
+ assert.equal(discoveryCoverageBound(f.audit,f.metadata,previous),true);
+ f.metadata.discovery.queries.pop();
+ assert.equal(discoveryCoverageBound(f.audit,f.metadata,previous),false);
+ f.metadata.discovery.queries.push({...query,id:'cancel-query',mode:'followup',attempt:3});
+ source.attempt_records[0].status='ok';
+ assert.equal(discoveryCoverageBound(f.audit,f.metadata,previous),false);
 });

@@ -34,12 +34,14 @@ export function discoverySourcesPreserved(current,previous){
   return equal(without(old,fields),without(next,fields))&&(old.elapsed_seconds===null||next.elapsed_seconds===null||typeof next.elapsed_seconds==='number'&&next.elapsed_seconds>=old.elapsed_seconds);
  });
 }
-export function discoveryCoverageBound(audit,metadata){
+export function discoveryCoverageBound(audit,metadata,previous=null){
  if(audit.coverage_contract!==DISCOVERY_CONTRACT)return metadata?.discovery===undefined;
  if(!metadata||metadata.schema_version!=='1.4'||metadata.coverage_contract!==audit.coverage_contract||!metadata.discovery
   ||!Array.isArray(metadata.discovery.queries)||metadata.discovery.queries.length>16||!metadata.checks||!Array.isArray(metadata.sources))return false;
  if(!Array.isArray(audit.coverage_checked)||!Array.isArray(audit.coverage_unchecked))return false;
  const queries=metadata.discovery.queries,ids=new Set(),sources=new Map(),outcomes=new Map(),operations=new Set();
+ // The caller authenticates the predecessor and preserves its query/attempt prefix.
+ const priorAttempts=new Map((previous?.sources??[]).map(source=>[source.id,source.attempt_records?.length??0]));
  for(const source of metadata.sources){
   if(!source||typeof source.id!=='string'||sources.has(source.id))return false;
   if(onlyUndispatched(source)&&source.retrieved_at!==null)return false;
@@ -60,7 +62,7 @@ export function discoveryCoverageBound(audit,metadata){
  for(const id of new Set(queries.map(q=>q.source_id))){
   const attempts=sources.get(id).attempt_records;
   const cancelled=attempts?.some(attempt=>attempt?.status==='not_dispatched');
-  if(attempts?.some((attempt,i)=>!attempt||(cancelled||attempt.status==='ok')&&!operations.has(JSON.stringify([id,i+1]))))return false;
+  if(attempts?.some((attempt,i)=>!attempt||(cancelled&&i>=(priorAttempts.get(id)??0)||attempt.status==='ok')&&!operations.has(JSON.stringify([id,i+1]))))return false;
  }
  for(const family of DISCOVERY_CHECKS){
   const check=metadata.checks[family],refs=[...new Set(queries.filter(q=>q.family===family&&q.mode==='current').map(q=>q.source_id))];
