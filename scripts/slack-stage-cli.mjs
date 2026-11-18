@@ -1,3 +1,4 @@
+import {REPORT_SPLIT_THRESHOLD,reportParts,reportPartName} from './report-bundle-parts.mjs';
 // One ephemeral data-staging attempt. Never grants publication or reconstructs
 // a Producer journal. Native tool replies enter only through trusted stdin.
 import {readFile} from 'node:fs/promises';
@@ -34,6 +35,18 @@ export async function stageFile(bytes,channel,callTool,{upload,probe=false,resea
   const bundle=await decodeBundle(bytes);requireThat(bundle.data.request_id===`morning-${bundle.report.date.replaceAll('-','')}-r1`||(bundle.report.schema_version==='1.2'&&bundle.report.revision>1&&authority),'Daily revision-one staging required');
   id=bundle.data.request_id;name='ai-brief-bundle.json';comment=`!ai-report stage-v2 ${id} ${bundle.hash} ${authority.permit_id}`;
  }
+ if(authority?.permit_id&&!research&&bytes.length>REPORT_SPLIT_THRESHOLD&&await authority.multipartRequired()){
+  const [first,...rest]=reportParts(bytes);
+  // The first file also anchors submit-v2. Send it last to minimize host waits.
+  for(const part of [...rest,first]){
+   const result=await stageArtifact({bytes:part.data,id,name:reportPartName(part.index),comment:comment+'/'+part.index,
+    channel,callTool,upload,authority:authority.forPart(part.index,digest(bytes)),observe,revision:false,contentType:'application/octet-stream'});
+   if(part.index===0)return {...result,bundle_sha256:digest(bytes)};
+  }
+ }
+ return stageArtifact({bytes,id,name,comment,channel,callTool,upload,authority,observe,revision});
+}
+async function stageArtifact({bytes,id,name,comment,channel,callTool,upload,authority,observe,revision,contentType}){
  const recovered=await authority?.recover?.(bytes);
  if(recovered?.complete)return {type:'staging_attempt_finished',request_id:id,bundle_sha256:digest(bytes),file_id:recovered.file_id,source_ts:recovered.source_ts,publication_allowed:false,next_action:'read_original_stage_and_publisher_status'};
  let ticket;
@@ -47,7 +60,7 @@ export async function stageFile(bytes,channel,callTool,{upload,probe=false,resea
  // Unknown/error stops this attempt; no ticket refresh, repeat or auto-submit.
  await authority?.before('post',ticket.file_id,bytes);
  let result;
- try{result=await upload({bytes,ticket},{transport:'managed_proxy'});}catch(error){observe({type:'staging_post_observed',request_id:id,file_id:ticket.file_id,bundle_sha256:digest(bytes),metrics:null,outcome:'unknown'});throw error;}
+ try{result=await upload({bytes,ticket,...(contentType?{contentType}:{})},{transport:'managed_proxy'});}catch(error){observe({type:'staging_post_observed',request_id:id,file_id:ticket.file_id,bundle_sha256:digest(bytes),metrics:null,outcome:'unknown'});throw error;}
  const m=result.metrics;
  const numeric=['curl_exit','http_status','num_connects','num_redirects','upload_bytes','response_bytes','header_bytes','time_namelookup','time_connect','time_appconnect','time_starttransfer','ssl_verify_result'];
  const metrics=Object.fromEntries(numeric.map(k=>[k,typeof m?.[k]==='number'&&Number.isFinite(m[k])&&m[k]>=0?m[k]:null]));

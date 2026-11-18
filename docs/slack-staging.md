@@ -23,7 +23,7 @@ original ledger fingerprint, exact config and installation evidence privately.
 Runtime never installs this policy. Removing or changing it blocks startup.
 The policy disables new local Producer completion registrations, while retaining
 the original fence and every old record. It is not an alternative way to replay
-an old unknown upload. CD must defer while staging or publication is unfinished.
+an old unknown upload. CD defers while intake or publication has runnable work. Verified fragments waiting for an external share remain in the ledger through compatible upgrades.
 
 ## Daily input
 
@@ -52,6 +52,17 @@ an old unknown upload. CD must defer while staging or publication is unfinished.
    TLS verification, fixed Slack host, no redirects and no retry. Only confirmed
    original-byte upload permits native completion with the exact comment:
    `!ai-report stage-v2 REQUEST_ID BUNDLE_SHA256 ORIGINAL_PERMIT_ID`.
+   Reports above 3 MiB use the same client and permit. The client sends at
+   most eight 1 MiB files, each with its own original ticket, POST, share
+   and a zero-based index appended as `/INDEX` to the permit in the comment.
+   The Publisher checks each range against the original archived report.
+   It persists verified parts, accepts out-of-order arrival, and stages the
+   joined bytes only after rechecking the full size, SHA-256 and report.
+   Part zero supplies the one staging file ID and timestamp for submission.
+   A missing part leaves staging pending. A fresh client reconciles original
+   operations and skips acknowledged parts. An uncertain write requires the
+   original receipt before that step can advance. One report still fits within
+   8 MiB encoded and 6 MiB of decoded files.
 3. Read the original file/share and issue the existing `!ai-report status
    REQUEST_ID`. Verify the real Publisher identity and source-bound receipt.
    `publisher_submission.bundle` must contain the original request/date/hash,
@@ -83,6 +94,14 @@ status. The one-shot CLI does not retry or refresh unknown operations. Losing a
 cloud session no longer loses a bundle already staged on the host. Losing bytes
 before confirmed staging is still an unresolved transfer, not permission to
 invent replacement bytes or report success.
+
+After the first release with multipart support is healthy and its matching fixed
+CD controller is installed, run the controller's `enable-report-parts <active SHA>`
+once before selecting the new sender. The controller verifies the active release,
+fresh service health, the controller and deployment locks, and the Publisher's
+original ledger lock before enabling storage. Waiting
+fragments survive compatible upgrades. Queued or retryable intake still defers
+deployment until the host processes it.
 
 ## Transport probe
 

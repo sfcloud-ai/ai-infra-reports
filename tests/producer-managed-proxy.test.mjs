@@ -29,7 +29,10 @@ test('proxy failure retains distinct provenance and no secret result',async()=>{
   c.stdin.on('finish',()=>{c.stdout.write('0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0');c.emit('close',6);});return c;
  };
  const r=await uploadProducerBytes({bytes:Buffer.from('x'),ticket:producerTicket({file_id:'FSYNTHETIC',upload_url:url})},{spawnCurl,transport:'managed_proxy',environment:{PATH:'/bin',https_proxy:proxy}});
+ assert.ok(observed.args.includes('Content-Type: application/json'));
  assert.equal(r.adapter,'producer_curl_managed_proxy_v1');assert.equal(r.metrics.curl_exit,6);assert.equal(observed.options.env.https_proxy,proxy);assert.equal(observed.options.stdio[2],'ignore');assert(!JSON.stringify(r).includes(url));assert(!JSON.stringify(r).includes(proxy));
+ await uploadProducerBytes({bytes:Buffer.from([0,255]),ticket:producerTicket({file_id:'FSYNTHETIC',upload_url:url}),contentType:'application/octet-stream'},{spawnCurl,transport:'managed_proxy',environment:{PATH:'/bin',https_proxy:proxy}});
+ assert.ok(observed.args.includes('Content-Type: application/octet-stream'));assert.ok(observed.args.includes('Content-Length: 2'));
 });
 test('missing proxy never falls back to direct',async()=>{
  let called=false;await assert.rejects(uploadProducerBytes({bytes:Buffer.from('x'),ticket:producerTicket({file_id:'FSYNTHETIC',upload_url:url})},{spawnCurl:()=>{called=true;},transport:'managed_proxy',environment:{}}),/proxy unavailable/);assert.equal(called,false);

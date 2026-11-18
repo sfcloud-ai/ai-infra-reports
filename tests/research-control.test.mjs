@@ -1,3 +1,6 @@
+import {producerInspection} from '../scripts/producer-inspect.mjs';
+import {replyScheduledStatus} from '../scripts/scheduled-delivery-bridge.mjs';
+import {inspectDay} from '../scripts/producer-day.mjs';
 import {installResearchRecovery,approveResearchRecoveryGrant,nextResearchContinuationAt} from '../scripts/research-recovery.mjs';
 // Isolated host authority fixtures. No real provider calls or native uploads.
 import test from 'node:test';
@@ -15,13 +18,13 @@ import {DISCOVERY_CHECKS,DISCOVERY_CONTRACT} from '../scripts/research-discovery
 import {auditBudget,LAYERED_BUDGET_POLICY} from '../scripts/research-budget.mjs';
 import {HandoffState,handoffScope} from '../scripts/handoff-state.mjs';
 import {installFence} from '../scripts/producer-admission-fence.mjs';
-import {installSubmission,advanceSubmission} from '../scripts/slack-submission.mjs';
+import {installSubmission,advanceSubmission,queueSubmission,acceptSubmission,submissionStatus,pendingSubmissions} from '../scripts/slack-submission.mjs';
 import {PublisherInbox} from '../scripts/publisher-inbox.mjs';
 import {propose} from '../scripts/propose.mjs';
 import {FakeGitHub} from './helpers/fake-github.mjs';
 import {encodeBundle} from '../scripts/report-handoff.mjs';
 import {installResearchArchive,storeResearchArchive,decodeResearchArchive} from '../scripts/research-archive.mjs';
-import {installResearchControl,migrateResearchControl,assertResearchControl,executeResearchControl,researchSourceIdentity,decodeResearchControl,preparePublicationCheck,RESEARCH_CONTROL_SCHEMA,researchOperationDispatchValid} from '../scripts/research-control.mjs';
+import {installResearchControl,installReportParts,migrateResearchControl,assertResearchControl,executeResearchControl,researchSourceIdentity,decodeResearchControl,preparePublicationCheck,RESEARCH_CONTROL_SCHEMA,researchOperationDispatchValid} from '../scripts/research-control.mjs';
 import {advanceResearchControl,queueResearchControl,pendingResearchControls,researchControlHealth} from '../scripts/research-control-inbox.mjs';
 import {handoffTick} from '../scripts/run-handoff.mjs';
 import {nativeResearchAuthority,researchCommandText,verifyResearchControlReceipt,CONTROL_THREAD_TOOL} from '../scripts/research-control-client.mjs';
@@ -853,6 +856,137 @@ test('r1 publication base advances independently through permit stage submit and
   assert.equal(api.calls.filter(c=>c.method!=='GET').length,writes);
   assert.deepEqual(Buffer.from(execute(s,command('status',{offset:0}),clock).plan_base64,'base64'),inputPlan);
 
+ }finally{s.close();}
+});
+
+test('multipart stage uses one permit and submit across missing, corrupt and duplicate shares',async()=>{
+ const s=setup();try{
+  const run=start(s),files=new Map(FILES),meta=[...files.keys()].find(p=>p.endsWith('/report.json'));
+  const descriptor=JSON.parse(files.get(meta)),asset=descriptor.images[0],dir=meta.slice(0,-'report.json'.length);
+  const image='assets/second-view.png';files.set(dir+image,files.get(dir+asset.path));descriptor.images.push({...asset,path:image});
+  files.set(meta,Buffer.from(JSON.stringify(descriptor)));
+  const original=await encodeBundle(files,id,'b'.repeat(40),'a'.repeat(40));
+  // Reach the exact logical bound with legal JSON whitespace. The two raster
+  // files, all original Markdown and the surrounding bytes must survive intact.
+  const bytes=Buffer.concat([original,Buffer.alloc(8*1024*1024-original.length,32)]),hash=digest(bytes);
+  const audit=Buffer.from(JSON.stringify(auditSummary({readiness:'partial'},files)));
+  const checkpoint=archive(s,{'bundle.json':bytes,'audit.json':audit});
+  const issued=await issuePermit(s,command('permit',{archive_sha256:checkpoint,bundle_sha256:hash,audit_sha256:digest(audit)},run));
+  assert.equal(issued.status,'committed',issued.code);
+  const permit=issued.run.permit.permit_id;
+  const shared=[],uploads=new Map(),messages=[];let anchorMessageReads=0,anchorDownloads=0;
+  const callTool=async(tool,args)=>{
+   if(tool===PRODUCER_TOOLS.ticket){
+    const file_id='F'+(uploads.size+1);uploads.set(file_id,{name:args.filename,size:args.content_length});
+    return {file_id,upload_url:'https://files.slack.com/upload/v1/synthetic-ticket-'+file_id};
+   }
+   assert.equal(tool,PRODUCER_TOOLS.complete);const index=Number(args.initial_comment.split('/').at(-1));
+   shared[index]=message(args.initial_comment,'179349120'+(2+index)+'.000001',args.file_id);return {};
+  };
+  const upload=async({bytes:data,ticket,contentType})=>{
+   assert.equal(contentType,'application/octet-stream');const entry=uploads.get(ticket.file_id);assert.equal(entry.size,data.length);entry.data=Buffer.from(data);
+   return {adapter:'producer_curl_managed_proxy_v1',file_id:ticket.file_id,url_sha256:ticket.url_sha256,bundle_sha256:digest(data),metrics:{curl_exit:0,http_status:200,upload_bytes:data.length,num_redirects:0,ssl_verify_result:0}};
+  };
+  const slack={historyPage:async({from,to})=>({messages:messages.filter(m=>m.ts>=from&&m.ts<=to),next_cursor:null}),exactPublish:async ts=>{
+   if(ts===shared[0]?.ts)assert.equal(++anchorMessageReads,1,'a verified anchor need not be retrieved from Slack again');
+   return messages.find(m=>m.ts===ts);
+  },download:async(row,{name,limit})=>{
+   if(row.source_ts===shared[0]?.ts)assert.equal(++anchorDownloads,1);
+   const file=uploads.get(row.file_id);assert.equal(file.name,name);assert.ok(file.data.length<=limit);return file.data;
+  }};
+  const inbox=new PublisherInbox(s,config),query=at=>async()=>({complete:true,observed_at:at,read_context:{scheduler_scope_sha256:'c'.repeat(64)},scheduler:null,scheduler_day_claim:null});
+  const native=nativeFixtureControl(s);let racedOperation=null,casRefusals=0;
+  const authority=nativeResearchAuthority({request_id:id,owner_id:ownerA,archive_sha256:checkpoint,permit_id:permit},async raw=>{
+   const cmd=JSON.parse(raw),op=cmd.args.operations?.[0];
+   if(cmd.action==='reserve'&&op.input.part===2&&op.input.step==='post'){
+    if(racedOperation===null){
+     racedOperation=op.operation_id;messages.push(shared[1]);
+     queueSubmission(s.db,acceptSubmission(shared[1],config,now));
+
+     // Isolate the scan clock so future history still arrives normally below.
+     const probe=await mkdtemp(join(tmpdir(),'partial-day-'));let copy;
+     try{
+      const path=join(probe,'original.sqlite');s.db.prepare('VACUUM INTO ?').run(path);
+      copy=new HandoffState(path,handoffScope(config));const cloneInbox=new PublisherInbox(copy,config);
+      await cloneInbox.scan(slack,now);
+      assert.equal(submissionStatus(copy.db,id).pending[0].phase,'pending');
+      const inspect=()=>producerInspection(copy,config,{kind:'inspect',request_id:id,report_date:DAY,query_id:randomUUID(),bundle_sha256:hash},shared[1].ts,query(now),()=>now);
+      const queued=await inspect();assert.equal(queued.complete,false);assert.equal(queued.reason,'multipart_staging_pending');
+      await advanceSubmission(copy,config,slack,query(now),now);
+      const day=await inspectDay(copy,config,{kind:'day',request_id:id,report_date:DAY,query_id:randomUUID()},shared[1].ts,query(now),()=>now);
+      assert.equal(day.state,'pending');assert.equal(day.pending_submissions[0].phase,'receiving');
+      const partial=await inspect();assert.equal(partial.complete,false);assert.equal(partial.reason,'multipart_staging_pending');
+      assert.equal(Object.hasOwn(partial,'publisher'),false);
+      const request={kind:'inspect',request_id:id,report_date:DAY,query_id:randomUUID(),bundle_sha256:hash,source_ts:'1793491202.123456',hash:'a'.repeat(64)};
+      const posted=[];
+      const receipt={controlReceipt:async(ts,text)=>{assert.equal(ts,request.source_ts);posted.push(JSON.parse(text.slice('!ai-report inspect-receipt '.length)));return '1793491211.125000';}};
+      await replyScheduledStatus(copy,config,request,receipt,query(Date.now()));
+      await replyScheduledStatus(copy,config,request,receipt,query(Date.now()));
+      assert.equal(posted.length,1);assert.equal(posted[0].query_id,request.query_id);assert.equal(posted[0].complete,false);
+      assert.equal(copy.db.prepare('SELECT phase FROM scheduled_status_replies WHERE source_ts=?').get(request.source_ts).phase,'sent');
+      const later=now+20*60000;
+      const health=await handoffTick(copy,config,{...slack,history:async()=>[]},{now:()=>later,scheduleQuery:query(later)});
+      assert.equal(health.waiting_report_parts[0]?.phase,'receiving');assert.deepEqual(health.blocked_intake,[]);
+      assert.equal(health.healthy,true);assert.equal(health.next_delay_ms,120000);
+      const snapshot=spawnSync(process.platform==='win32'?'python':'python3',['-B','-c',
+       'from pathlib import Path;from deployment.publisher_cd import snapshot;import sys;print(snapshot(Path(sys.argv[1])))',path],{encoding:'utf8'});
+      assert.equal(snapshot.status,0,snapshot.stderr);
+      // The health response has a 16-row display limit. Older waiting parts
+      // must never hide the deadline of runnable work just beyond that limit.
+      const event=copy.db.prepare("INSERT INTO slack_submission_events(source_ts,request_id,hash,kind,file_id,phase,next_at) VALUES(?,?,?,'part-0','FOLDER',?,?)");
+      for(let i=0;i<16;i++)event.run('1793491201.'+String(i).padStart(6,'0'),id,hash,'receiving',0);
+      event.run('1793491299.000001',id,hash,'pending',later+7000);
+      const backlog=await handoffTick(copy,config,{...slack,history:async()=>[]},{now:()=>later,scheduleQuery:query(later)});
+      assert.equal(backlog.waiting_report_parts.length,15);assert.equal(backlog.blocked_intake.length,1);
+      assert.equal(backlog.healthy,false);assert.equal(backlog.next_delay_ms,7000);
+     }finally{copy?.close();await rm(probe,{recursive:true,force:true});}
+     await advanceSubmission(s,config,slack,query(now),now);
+     assert.equal(submissionStatus(s.db,id).pending[0]?.phase,'receiving');
+     assert.equal(pendingSubmissions(s.db)[0]?.phase,'receiving');
+    }else assert.equal(op.operation_id,racedOperation);
+   }
+   const result=await native(raw);
+   if(result.code==='revision_conflict')casRefusals++;
+   return result;
+  },()=>now);
+  await assert.rejects(stageFile(bytes,SCOPE.channel_id,callTool,{authority,upload}),/grant required/);
+  assert.equal(uploads.size,0);assert.equal(s.db.prepare("SELECT count(*) n FROM sqlite_master WHERE name='research_control_report_parts'").get().n,0);
+  assert.equal(installReportParts(s.db,config),true);assert.equal(installReportParts(s.db,config),false);
+  await stageFile(bytes,SCOPE.channel_id,callTool,{authority,upload});assert.equal(shared.length,8);
+  assert.equal(casRefusals,1);assert.equal(uploads.size,8);
+  messages.length=0;
+  messages.push(...shared);await inbox.scan(slack,now);
+  await advanceSubmission(s,config,slack,query(now),now);
+  assert.equal(s.db.prepare("SELECT phase FROM slack_submission_events WHERE kind='part-0'").get().phase,'receiving');
+  assert.equal(s.db.prepare('SELECT count(*) n FROM slack_staged_bundles').get().n,0);
+  const last=uploads.get(shared[2].files[0].id),originalPart=last.data;
+  last.data=Buffer.from(originalPart);last.data[0]^=1;await advanceSubmission(s,config,slack,query(now),now);
+  assert.equal(s.db.prepare('SELECT count(*) n FROM research_control_report_parts').get().n,2);last.data=originalPart;
+  const dirCopy=await mkdtemp(join(tmpdir(),'multipart-snapshot-'));
+  try{
+   const file=join(dirCopy,'partial.sqlite');s.db.prepare('VACUUM INTO ?').run(file);
+   const check=spawnSync(process.platform==='win32'?'python':'python3',['-B','-c',
+    'from pathlib import Path;from deployment.publisher_cd import snapshot;import sys;print(snapshot(Path(sys.argv[1]),settled=False))',file],{encoding:'utf8'});
+   assert.equal(check.status,0,check.stderr);assert.match(check.stdout.trim(),/^[a-f0-9]{64}$/);
+   const settled=spawnSync(process.platform==='win32'?'python':'python3',['-B','-c',
+    'from pathlib import Path;from deployment.publisher_cd import snapshot;import sys;snapshot(Path(sys.argv[1]))',file],{encoding:'utf8'});
+   assert.notEqual(settled.status,0);assert.match(settled.stderr,/unfinished_slack_submission/);
+  }finally{await rm(dirCopy,{recursive:true,force:true});}
+  for(let i=0;i<16;i++){
+   const {n}=s.db.prepare("SELECT min(next_at) n FROM slack_submission_events WHERE phase='pending'").get();
+   if(n===null)break;const at=Math.max(now,n)+10;await advanceSubmission(s,config,slack,query(at),at);
+  }
+  const staged=s.db.prepare('SELECT * FROM slack_staged_bundles WHERE request_id=?').get(id);
+  assert.ok(staged);assert.deepEqual(Buffer.from(staged.bytes),bytes);assert.equal(staged.source_ts,shared[0].ts);
+  assert.equal(s.metadata(id),null);assert.equal(s.db.prepare('SELECT count(*) n FROM research_control_report_parts').get().n,0);
+  assert.equal(s.db.prepare("SELECT count(*) n FROM slack_submission_events WHERE kind LIKE 'part-%' AND phase='done'").get().n,8);
+  const repeated=await stageFile(bytes,SCOPE.channel_id,()=>assert.fail('duplicate stage write'),{authority,upload:()=>assert.fail('duplicate POST')});
+  assert.equal(repeated.source_ts,staged.source_ts);assert.equal(repeated.bundle_sha256,hash);
+  await authority.before('submit',staged.file_id,bytes,staged.source_ts);
+  messages.push(message(`!ai-report submit-v2 ${id} ${hash} ${staged.source_ts} ${permit}`,'1793491211.000001'));
+  await inbox.scan(slack,now+2000);await advanceSubmission(s,config,slack,query(now+2000),now+2000);
+  assert.equal(s.metadata(id)?.hash,hash);assert.equal(s.db.prepare('SELECT count(*) n FROM jobs').get().n,1);
+  await assert.rejects(authority.before('submit',staged.file_id,bytes,staged.source_ts),/reconciliation/);
  }finally{s.close();}
 });
 

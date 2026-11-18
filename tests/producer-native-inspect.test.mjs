@@ -36,6 +36,15 @@ test('native inspect uses journaled query and real formatted tool metadata befor
 test('unknown query never sends another query on repeated reads or no search result',()=>fixture(async({inspect})=>{
  const write=inspect.next(ID);for(let i=0;i<3;i++){assert.equal(inspect.next(ID).type,'read');inspect.observeSource(ID,search(inspect,[]));assert.equal(inspect.query(ID).operation_id,write.operation_id);}assert.equal(inspect.query(ID).attempt,1);
 }));
+test('authenticated incomplete multipart inspection resolves the read and cannot authorize an upload',()=>fixture(async({inspect,state})=>{
+ inspect.next(ID);inspect.observeSource(ID,search(inspect));
+ const original=state.get(ID);state.save(original,{...original.detail,preflight_at:TARGET+10,preflight_empty:true});
+ const {publisher_day,publisher,scheduler_day_claim,scheduler,...identity}=payload();
+ const pending={...identity,complete:false,reason:'multipart_staging_pending'};
+ const observed=inspect.observeReceipt(ID,thread(inspect,pending));
+ assert.equal(observed.type,'pending');assert.equal(observed.write_allowed,false);assert.equal(inspect.query(ID).phase,'resolved');
+ assert.equal(state.get(ID).detail.preflight_at,null);assert.equal(state.next(ID).type,'read');
+}));
 test('strict source invocation rejects scope, footer, ambiguous and incomplete search evidence',async()=>{
  for(const edit of [v=>v.arguments.after='0',v=>v.arguments.filters='in:<#COTHER>',v=>v.result.isError=true,v=>{const b=JSON.parse(v.result.content[0].text);b.pagination_info='More pages';v.result.content[0].text=JSON.stringify(b);},v=>{v.result.content[0].text=v.result.content[0].text.replace('U123','U999');},v=>{v.result.content[0].text=v.result.content[0].text.replace('Sent using','Changed footer');}])await fixture(async({inspect,state})=>{inspect.next(ID);const v=search(inspect);edit(v);assert.throws(()=>inspect.observeSource(ID,v));assert.equal(state.get(ID).detail.preflight_at,undefined);assert.equal(inspect.query(ID).phase,'unknown');});
  await fixture(async({inspect})=>{inspect.next(ID);assert.throws(()=>inspect.observeSource(ID,search(inspect,[source,'1793491200.011000'])),/Ambiguous/);});

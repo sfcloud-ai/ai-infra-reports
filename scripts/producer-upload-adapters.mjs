@@ -26,14 +26,15 @@ export function producerCurlEnvironment(transport='direct',env=process.env){
  }
  return out;
 }
-export function curlUploadPlan({url,input,output,size,transport='direct'}){
+export function curlUploadPlan({url,input,output,size,transport='direct',contentType='application/json'}){
  requireThat(['direct','managed_proxy'].includes(transport),'Unsupported upload transport');
+ requireThat(['application/json','application/octet-stream'].includes(contentType),'Unsupported upload content type');
  // The raw signed string is sent over stdin, never argv, logs or error text.
  producerTicket({file_id:'FVALIDATE',upload_url:url});
- return {args:['-q','--config','-','--silent','--request','POST','--proto','=https','--proto-redir','=https','--max-redirs','0','--retry','0',...(transport==='direct'?['--noproxy','*']:[]),'--connect-timeout','15','--max-time','60','--max-filesize','65536','--header','Content-Type: application/json','--header','Content-Length: '+size,'--data-binary','@'+input,'--output',output,'--write-out',curlNames.map(n=>`%{${n}}`).join('\t')],stdin:`url = "${url}"\n`};
+ return {args:['-q','--config','-','--silent','--request','POST','--proto','=https','--proto-redir','=https','--max-redirs','0','--retry','0',...(transport==='direct'?['--noproxy','*']:[]),'--connect-timeout','15','--max-time','60','--max-filesize','65536','--header','Content-Type: '+contentType,'--header','Content-Length: '+size,'--data-binary','@'+input,'--output',output,'--write-out',curlNames.map(n=>`%{${n}}`).join('\t')],stdin:`url = "${url}"\n`};
 }
-export async function uploadProducerBytes({bytes,ticket},{spawnCurl=spawn,transport='direct',environment=process.env}={}){
- return uploadBytes({bytes,ticket},{spawnCurl,transport,environment},8*1024*1024);
+export async function uploadProducerBytes({bytes,ticket,contentType},{spawnCurl=spawn,transport='direct',environment=process.env}={}){
+ return uploadBytes({bytes,ticket},{spawnCurl,transport,environment},8*1024*1024,contentType);
 }
 // Research checkpoints use a separate explicit cap; original report uploads
 // retain their 8 MiB contract. The caller validates the archive before tickets.
@@ -41,7 +42,7 @@ export async function uploadResearchArchiveBytes(request,options={}){
  requireThat(options.transport==='managed_proxy','Research upload requires original managed proxy');
  return uploadBytes(request,options,16*1024*1024);
 }
-async function uploadBytes({bytes,ticket},{spawnCurl=spawn,transport='direct',environment=process.env}={},limit){
+async function uploadBytes({bytes,ticket},{spawnCurl=spawn,transport='direct',environment=process.env}={},limit,contentType='application/json'){
  requireThat(Buffer.isBuffer(bytes)&&bytes.length>0&&bytes.length<=limit,'Bounded original upload bytes required');
  const t=producerTicket({file_id:ticket.file_id,upload_url:ticket.upload_url});
  requireThat(t.url_sha256===ticket.url_sha256,'Original ticket changed');
@@ -49,7 +50,7 @@ async function uploadBytes({bytes,ticket},{spawnCurl=spawn,transport='direct',en
  const dir=await mkdtemp(join(tmpdir(),'producer-post-'));
  try{
   const input=join(dir,'bundle'),output=join(dir,'response');await writeFile(input,bytes,{mode:0o600});
-  const plan=curlUploadPlan({url:t.upload_url,input,output,size:bytes.length,transport});
+  const plan=curlUploadPlan({url:t.upload_url,input,output,size:bytes.length,transport,contentType});
   const metrics=await new Promise((resolve,reject)=>{
    const child=spawnCurl('curl',plan.args,{shell:false,stdio:['pipe','pipe','ignore'],env:curlEnvironment});
    let stdout='',done=false;

@@ -198,7 +198,10 @@ export async function handoffTick(state,config,slack,io){
   if(config.research_archive){
    try{const error=await advanceResearchArchive(state,config,slack,now());if(error&&errors.length<16)errors.push(error);}catch(error){capture('research_archive',error);}
   }
-  const blocked_intake=[...(inbox?.pending()??[]),...(config.slack_submission?pendingSubmissions(state.db):[])];
+  const inboxPending=inbox?.pending()??[];
+  const staging=config.slack_submission?pendingSubmissions(state.db):[];
+  const blocked_intake=[...inboxPending,...staging.filter(row=>row.phase!=='receiving')];
+  const waiting_report_parts=staging.filter(row=>row.phase==='receiving');
   const pending=state.pendingMetadata();
   // A quiet/backoff tick must not erase a durable failure from service health.
   // Keep the report degraded until the original request finishes or is reconciled.
@@ -219,7 +222,12 @@ export async function handoffTick(state,config,slack,io){
    due.push(...queued.map(row=>row.next_at||now()+1000));
   }
   if(inbox){
-   due.push(...blocked_intake.map(row=>row.next_at||now()+1000));
+   // Verified fragments wait for another authenticated share; they are not runnable inbox work.
+   due.push(...inboxPending.map(row=>row.next_at||now()+1000));
+   if(config.slack_submission){
+    const deadline=state.db.prepare("SELECT min(next_at) AS next FROM slack_submission_events WHERE phase='pending'").get().next;
+    if(deadline!==null)due.push(deadline||now()+1000);
+   }
    if(pending.some(job=>job.phase==='received'&&!job.detail.recovery?.next_at))due.push(now()+1000);
    const scan=state.db.prepare('SELECT page_cursor,watermark FROM publisher_intake_scan WHERE id=1').get();
    if(scan?.page_cursor)due.push(now()+1000);
@@ -232,7 +240,7 @@ export async function handoffTick(state,config,slack,io){
    }
   }
   const next_delay_ms=due.length?Math.max(1000,Math.min(120000,Math.min(...due)-now())):120000;
-  return {...(id?{request_id:id,phase:state.metadata(id).phase}:noticeResult??{phase:'idle'}),...(noticeResult?{notice:noticeResult}:{}),...(scheduled?{scheduled}:{}),...(inbox?{blocked_intake}:{}),errors,blocked_reports,blocked_research,blocked_control,frozen_control,control_warnings,healthy:errors.length===0&&blocked_reports.length===0&&blocked_intake.length===0&&blocked_research.length===0&&blocked_control.length===0,next_delay_ms};
+  return {...(id?{request_id:id,phase:state.metadata(id).phase}:noticeResult??{phase:'idle'}),...(noticeResult?{notice:noticeResult}:{}),...(scheduled?{scheduled}:{}),...(inbox?{blocked_intake}:{}),...(waiting_report_parts.length?{waiting_report_parts}:{}),errors,blocked_reports,blocked_research,blocked_control,frozen_control,control_warnings,healthy:errors.length===0&&blocked_reports.length===0&&blocked_intake.length===0&&blocked_research.length===0&&blocked_control.length===0,next_delay_ms};
 }
 export async function runHandoff(configFile){
  requireThat(process.platform==="linux","Live publisher requires the reviewed Linux service layout");

@@ -1,3 +1,4 @@
+import {partScope} from './report-bundle-parts.mjs';
 // Disposable native-tool client. Authority and original bytes live on the host.
 import {randomUUID} from 'node:crypto';
 import {digest} from './archive.mjs';
@@ -31,14 +32,36 @@ export function controlCommand(request_id,action,args,owner_id=null,run=null){
  const c={schema_version:'research_control_v2',command_id:randomUUID(),request_id,action,owner_id,epoch:run?.epoch??0,expected_revision:run?.revision??0,args};
  const bytes=Buffer.from(JSON.stringify(c));decodeResearchControl(bytes);return bytes;
 }
-export function nativeResearchAuthority({request_id,owner_id,permit_id=null,archive_sha256},control,now=Date.now){
+export function nativeResearchAuthority({request_id,owner_id,permit_id=null,archive_sha256},control,now=Date.now,artifact=null){
  requireThat(UUID.test(owner_id)&&(permit_id===null||UUID.test(permit_id))&&/^[a-f0-9]{64}$/.test(archive_sha256),'Original research upload binding required');
  let currentOperation=null,publicationRequestId=request_id;
  const current=async()=>{
-  const observed=await control(controlCommand(request_id,'upload_status',{archive_sha256,permit_id}));
+  const observed=await control(controlCommand(request_id,'upload_status',{archive_sha256,permit_id,...(artifact?{part:artifact.index}:{})}));
   requireThat(observed.status==='observed'&&observed.run?.owner_id===owner_id&&observed.run.lease_until>now(),'Read and claim the original host run first');return observed;
  };
- return {permit_id,get publication_request_id(){return publicationRequestId;},
+ // A verified part share may advance the run after upload_status and before
+ // reserve/settle. A rejected CAS dispatched nothing. Keep the same operation
+ // and signed ticket in memory while the original owner's lease is valid.
+ const mutate=async(action,args,run)=>{
+  const deadline=run.lease_until;
+  for(;;){
+   const result=await control(controlCommand(request_id,action,args,owner_id,run));
+   if(!artifact||result.status!=='rejected'||result.code!=='revision_conflict')return result;
+   const latest=result.run;
+   requireThat(!result.dispatch_granted&&latest?.owner_id===owner_id&&latest.epoch===run.epoch
+    &&latest.revision>run.revision&&Math.min(deadline,latest.lease_until)>now(),'Reconcile original upload authority');
+   run=latest;
+  }
+ };
+ return {permit_id,
+  async multipartRequired(){
+   const {operations}=await current(),ticket=operations.find(op=>op.input.step==='ticket');
+   return !ticket||ticket.input.part===0;
+  },
+  forPart(index,bundleHash){
+   return nativeResearchAuthority({request_id,owner_id,permit_id,archive_sha256},control,now,{index,bundleHash});
+  },
+  get publication_request_id(){return publicationRequestId;},
   async validateArchive(archive){
    const observed=await control(controlCommand(request_id,'status',{offset:0}));
    requireThat(observed.status==='observed'&&observed.run?.owner_id===owner_id&&observed.run.lease_until>now(),'Read and claim the original host run first');
@@ -47,8 +70,8 @@ export function nativeResearchAuthority({request_id,owner_id,permit_id=null,arch
    assertResearchOutputFiles(plan.value,archive.files);
   },
   async recover(bytes){
-   const observed=await current(),ops=observed.operations,hash=digest(bytes);
-   requireThat(ops.every(op=>op.input.sha256===hash&&op.input.bytes===bytes.length),'Original upload bytes differ');
+   const observed=await current(),ops=observed.operations.filter(op=>!artifact||op.input.step!=='submit'),hash=digest(bytes);
+   requireThat(ops.every(op=>op.input.part===artifact?.index&&op.input.sha256===hash&&op.input.bytes===bytes.length),'Original upload bytes differ');
    const get=step=>ops.find(op=>op.input.step===step),ticket=get('ticket'),post=get('post'),complete=get('complete');
    if(!ticket||ticket.phase==='intent'&&!post)return null;
    requireThat(ticket.phase==='acknowledged'&&post?.phase==='acknowledged'&&ticket.native_result.file_id===post.native_result.file_id,'Original ticket or POST requires reconciliation');
@@ -56,18 +79,18 @@ export function nativeResearchAuthority({request_id,owner_id,permit_id=null,arch
    requireThat(!complete||complete.phase==='intent','Original completion requires reconciliation');return {file_id:post.native_result.file_id,complete:false};
   },
   async before(step,file_id,bytes,source_ts=null){
-   const observed=await current(),run=observed.run,hash=digest(bytes),input={archive_sha256,permit_id,step,file_id,source_ts,bytes:bytes.length,sha256:hash};
-   if(permit_id){const permit=observed.permit??run.permit;requireThat(permit?.permit_id===permit_id&&permit.bundle_sha256===hash&&permit.archive_sha256===archive_sha256,'Original publication permit required');publicationRequestId=permit.request_id;}
+   const observed=await current(),run=observed.run,hash=digest(bytes),input={archive_sha256,permit_id,step,file_id,source_ts,bytes:bytes.length,sha256:hash,...(artifact?{part:artifact.index}:{})};
+   if(permit_id){const permit=observed.permit??run.permit;requireThat(permit?.permit_id===permit_id&&permit.bundle_sha256===(artifact?.bundleHash??hash)&&permit.archive_sha256===archive_sha256,'Original publication permit required');publicationRequestId=permit.request_id;}
    else requireThat(hash===archive_sha256,'Original checkpoint bytes required');
-   const op={operation_id:randomUUID(),kind:'native',key:(permit_id?'permit:'+permit_id:'archive:'+archive_sha256)+':'+step,input_sha256:digest(Buffer.from(JSON.stringify(input))),input,max_seconds:0};
+   const op={operation_id:randomUUID(),kind:'native',key:(permit_id?partScope('permit:'+permit_id,artifact?.index):'archive:'+archive_sha256)+':'+step,input_sha256:digest(Buffer.from(JSON.stringify(input))),input,max_seconds:0};
    const original=observed.operations.find(old=>old.operation_key===op.key);
    if(original){requireThat(original.phase==='intent'&&original.input_hash===op.input_sha256,'Original upload intent requires reconciliation');op.operation_id=original.operation_id;}
-   const result=await control(controlCommand(request_id,original?'resume':'reserve',original?{operation_id:op.operation_id}:{operations:[op]},owner_id,run));
+   const result=await mutate(original?'resume':'reserve',original?{operation_id:op.operation_id}:{operations:[op]},run);
    requireThat(result.dispatch_granted===true&&result.operations?.length===1&&result.operations[0].operation_id===op.operation_id&&result.operations[0].input_sha256===op.input_sha256,'Original host upload grant required');currentOperation=op;return op.operation_id;
   },
   async after(step,file_id,bytes){
    requireThat(currentOperation?.input.step===step,'Original upload step required');const {run}=await current();
-   const result=await control(controlCommand(request_id,'settle',{operation_id:currentOperation.operation_id,outcome:'acknowledged',elapsed_seconds:null,archive_sha256:null,file_sha256:null,native_result:{file_id,source_ts:null,sha256:digest(bytes),bytes:bytes.length}},owner_id,run));
+   const result=await mutate('settle',{operation_id:currentOperation.operation_id,outcome:'acknowledged',elapsed_seconds:null,archive_sha256:null,file_sha256:null,native_result:{file_id,source_ts:null,sha256:digest(bytes),bytes:bytes.length}},run);
    requireThat(result.status==='committed','Host upload result remains unresolved');currentOperation=null;
   }
  };
