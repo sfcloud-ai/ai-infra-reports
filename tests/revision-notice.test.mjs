@@ -25,7 +25,9 @@ test('the publication path accepts six topics and blocks a one-page first report
  report.entries=report.entries.map((entry,i)=>({...entry,id:'cutover-'+i,event_key:'cutover-'+i,
   title:'Fixture '+entry.title,update_of:null}));
  incoming.set(out+'report.json',Buffer.from(JSON.stringify(report)));
- assert.doesNotThrow(()=>replaceCurrentReport(archive,incoming));
+ const complete=replaceCurrentReport(archive,incoming);
+ const makeBundle=()=>encodeBundle(incoming,'morning-20261119-r'+report.revision,'a'.repeat(40),'b'.repeat(40));
+ await decodeBundle(await makeBundle(),{forPublication:true});
  const first=report.articles[0].id;
  report.articles=report.articles.filter(a=>a.id===first);
  report.entries=report.entries.filter(e=>e.article_id===first);
@@ -36,7 +38,15 @@ test('the publication path accepts six topics and blocks a one-page first report
  }
  Object.assign(report,{schema_version:'1.2',page_delivery:{previous:null,added:[first],pending:TOPIC_IDS.slice(1).map(id=>({id,reason:'Awaiting verified sources'}))}});
  incoming.set(out+'report.json',Buffer.from(JSON.stringify(report)));
- assert.throws(()=>replaceCurrentReport(archive,incoming),/First publication requires six complete topic pages/);
+ assert.throws(()=>replaceCurrentReport(archive,incoming),/Publication requires six complete topic pages/);
+ const partial=await makeBundle();
+ assert.equal((await decodeBundle(partial)).report.articles.length,1);
+ await assert.rejects(decodeBundle(partial,{forPublication:true}),{researchPublicationRejection:'publication_requires_six_complete_topics'});
+ Object.assign(report,{schema_version:'1.1',revision:2,revision_notice:{kind:'material_update',summary:'Coverage update'}});
+ delete report.page_delivery;
+ incoming.set(out+'report.json',Buffer.from(JSON.stringify(report)));
+ await assert.rejects(decodeBundle(await makeBundle(),{forPublication:true}),{researchPublicationRejection:'publication_requires_six_complete_topics'});
+ assert.throws(()=>replaceCurrentReport(complete,incoming),/Publication requires six complete topic pages/);
 });
 function files(kind='correction'){
  const result=new Map([...FILES].map(([p,b])=>[p.replace('/r1/','/'),b]));
@@ -153,6 +163,28 @@ test('wrong revision, forged completion and incomplete initial cannot pass',asyn
  for(const patch of [{report_revision:3},{parts_total:2},{images:[{file_id:'scheduled-poster',status:'sent'}]},{delivery_kind:'initial'},{delivery_kind:'web_only'}]){
   const s=state();try{assert.equal((await advanceScheduledDelivery(s,config,async()=>({...base,...patch}))).phase,'reconcile_pending');}finally{s.close();}
  }
+});
+
+test('later complete first notice accounts for earlier bound refusals',async()=>{
+ const s=state();
+ try{
+  const refusal={request_id:id,report_commit:MERGE,bundle_sha256:bundle.hash,status:'rejected',error:'first_notice_requires_all_six_articles'};
+  const queryRefusal=async(c,request)=>request.action==='status'?{status:'not_found'}:refusal;
+  assert.equal((await advanceScheduledDelivery(s,config,queryRefusal)).phase,'awaiting_first_delivery');
+  const third={request_id:'morning-20261101-r3',report_date:DAY,report_commit:MERGE,bundle_sha256:'3'.repeat(64)};
+  const receipt={...third,report_revision:3,delivery_kind:'initial',status:'sent',phase:'complete',parts_sent:2,parts_total:2,images:[{file_id:'scheduled-poster',status:'sent',error:null}]};
+  s.db.prepare('INSERT INTO scheduled_handoffs VALUES (?,?,?,?,0)').run(third.request_id,JSON.stringify(third),'complete',JSON.stringify(receipt));
+  const settled=await advanceScheduledDelivery(s,config,()=>assert.fail('prior refused revision has no send to retry'));
+  assert.deepEqual(settled,{request_id:id,phase:'policy_rejected',wecom_status:'not_verified',covered_by:third.request_id});
+  const first={...third,request_id:'morning-20261101-r1',bundle_sha256:'1'.repeat(64),published:true,first_notice_refused:true};
+  const second={...first,request_id:id,bundle_sha256:bundle.hash,report_revision:2,revision_kind:'correction'};
+  const latest={...third,published:true,report_revision:3,revision_kind:'correction'};
+  const query=async request=>request===third.request_id?receipt:{status:'not_found'};
+  assert.deepEqual((await checkDailyDelivery([first,second,latest],query)).issues,[]);
+  assert.deepEqual((await checkDailyDelivery([first,{...second,first_notice_refused:false},latest],query)).issues,['daily_delivery_not_admitted']);
+  receipt.images[0].status='failed';
+  assert.ok((await checkDailyDelivery([first,second,latest],query)).issues.includes('revision_delivery_incomplete'));
+ }finally{s.close();}
 });
 
 test('watchdog follows revision receipts without hiding unknowns or treating a pending edit as a missing day',async()=>{

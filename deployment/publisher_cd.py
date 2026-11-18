@@ -785,6 +785,12 @@ def model_continuation_runtime_required(database):
     return database.execute("SELECT 1 FROM research_control_ops WHERE kind='model' AND json_type(input,'$.continuation_archive_sha256') IS NOT NULL LIMIT 1").fetchone() is not None
 
 
+def first_notice_rejection_runtime_required(database):
+    if database.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='scheduled_handoffs'").fetchone() is None:
+        return False
+    return database.execute("SELECT 1 FROM scheduled_handoffs WHERE phase IN ('policy_rejected','awaiting_first_delivery') LIMIT 1").fetchone() is not None
+
+
 def cancellation_page_runtime_required(database):
     # New committed permit receipts explicitly record their semantic version.
     # Historical permits have no marker and must not block the first upgrade.
@@ -830,6 +836,7 @@ def compatibility(config, release, operation, expected):
         needs_report_parts = isolated.execute("SELECT 1 FROM sqlite_master WHERE name='research_control_report_parts'").fetchone() is not None
         needs_archive_recovery = archive_recovery_runtime_required(isolated)
         needs_model_continuation = model_continuation_runtime_required(isolated)
+        needs_first_notice_rejection = first_notice_rejection_runtime_required(isolated)
         needs_cancellation_pages = cancellation_page_runtime_required(isolated)
         needs_cancellation_settlements = cancellation_settlement_runtime_required(isolated)
         needs_pages = page_runtime_required(isolated)
@@ -855,6 +862,8 @@ def compatibility(config, release, operation, expected):
         script += "const inputs=await import('./scripts/research-control.mjs');if(inputs.REPOSITORY_RESEARCH_INPUTS_VERSION!==1)throw Error('repository_inputs_require_compatible_release');"
     if needs_model_continuation:
         script += "const continuation=await import('./scripts/research-control.mjs');if(continuation.MODEL_CONTINUATION_VERSION!==1)throw Error('model_continuation_requires_compatible_release');"
+    if needs_first_notice_rejection:
+        script += "const scheduled=await import('./scripts/scheduled-delivery-state.mjs');if(scheduled.FIRST_NOTICE_REJECTION_VERSION!==1)throw Error('first_notice_rejection_requires_compatible_release');"
     if needs_cancellation_settlements:
         script += "const settlements=await import('./scripts/research-control.mjs');if(settlements.CANCELLATION_SETTLEMENT_VERSION!==1)throw Error('cancellation_settlements_require_compatible_release');"
     if needs_cancellation_pages:

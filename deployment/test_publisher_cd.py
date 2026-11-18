@@ -126,11 +126,13 @@ class RevisionSettlementTests(unittest.TestCase):
                 database.execute('INSERT INTO scheduled_handoffs VALUES (?,?,?,?,0)', (identity['request_id'], json.dumps(identity), phase, json.dumps(result)))
             for revision, phase in ((4, 'policy_rejected'), (5, 'awaiting_first_delivery')):
                 insert(revision, phase, 'rejected', error='first_notice_requires_all_six_articles')
+            self.assertTrue(cd.first_notice_rejection_runtime_required(database))
             cd.require_settled_scheduled(database)
             database.execute("UPDATE scheduled_handoffs SET result=json_set(result,'$.error','unverified') WHERE phase='policy_rejected'")
             with self.assertRaises(cd.Deferred):
                 cd.require_settled_scheduled(database)
             database.execute("DELETE FROM scheduled_handoffs")
+            self.assertFalse(cd.first_notice_rejection_runtime_required(database))
             insert(2, 'skipped', 'skipped', delivery_kind='web_only', report_revision=2, parts_total=0, parts_sent=0, images=[])
             cd.require_settled_scheduled(database)
             insert(1, 'superseded', 'queued', superseded_by='morning-20261101-r3', parts_total=2, parts_sent=0)

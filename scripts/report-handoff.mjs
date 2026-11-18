@@ -4,6 +4,7 @@ import {readReports,digest,REPOSITORY} from "./archive.mjs";
 import {validateRasters} from "./rasters.mjs";
 import {verifyPublication,verifyPublicationUnchanged} from "./verify-publication.mjs";
 import {validateReportFields} from './revision-notice.mjs';
+import {requireCompleteEdition} from './page-delivery.mjs';
 export const MAX_BUNDLE=8*1024*1024;
 export const SHA=/^[a-f0-9]{40}$/;
 const HASH=/^[a-f0-9]{64}$/;
@@ -23,7 +24,7 @@ export function canonicalRequestDate(id){
  if(!match)return null;
  const date=match.slice(1,4).join('-');requireThat(reportDate(date),'Canonical request date invalid');return date;
 }
-export async function decodeBundle(bytes){
+export async function decodeBundle(bytes,{forPublication=false}={}){
  requireThat(Buffer.isBuffer(bytes)&&bytes.length>0&&bytes.length<=MAX_BUNDLE,"Bundle byte limit");
  const data=JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(bytes));
  exact(data,["schema_version","request_id","repository","expected_base_sha","prompt_commit_sha","files"]);
@@ -64,6 +65,7 @@ export async function decodeBundle(bytes){
  requireThat(files.size===used.size&&report.images.some(i=>i.path===report.poster),"Declared files and notification poster required");
  requireThat(files.get(dir+report.poster).length<=2000000,"Notification poster byte limit");
  await validateRasters(files);
+ if(forPublication)requireCompleteEdition(report);
  return {data,files,report:{...report,path:dir},hash:digest(bytes)};
 }
 export async function encodeBundle(files,requestId,base,promptCommit){

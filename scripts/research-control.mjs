@@ -16,6 +16,7 @@ import {handoffScope,scopeDigest} from './handoff-state.mjs';
 import {repositoryResearchInputs,repositoryResearchInputsHash,REPOSITORY_RESEARCH_INPUTS_VERSION} from './repository-research-inputs.mjs';
 import {requiredCoverageValid} from './research-coverage.mjs';
 import {resumablePageMetadataValid} from './research-page-coverage.mjs';
+import {completeEditionSnapshot} from './page-delivery.mjs';
 export {REPOSITORY_RESEARCH_INPUTS_VERSION};
 export const LAYERED_RESEARCH_BUDGET_VERSION=1;
 export const MODEL_CONTINUATION_VERSION=1;
@@ -39,8 +40,8 @@ export async function preparePublicationCheck(db,bytes){
   const row=db.prepare('SELECT bytes FROM research_archives WHERE request_id=? AND hash=?').get(c.request_id,c.args.archive_sha256);
   need(row,'archive_not_stored');const archive=decodeResearchArchive(Buffer.from(row.bytes));
   const file=archive.files.find(f=>f.sha256===c.args.bundle_sha256);need(file,'publication_bytes_missing');
-  await decodeBundle(file.data);
- }catch(error){code=error.researchControlCode??'publication_bundle_invalid';}
+  await decodeBundle(file.data,{forPublication:true});
+ }catch(error){code=error.researchControlCode??error.researchPublicationRejection??'publication_bundle_invalid';}
  publicationChecks.set(witness,{command_hash:digest(bytes),code});return witness;
 }
 export const RESEARCH_CONTROL_SCHEMA={
@@ -184,6 +185,7 @@ function publicationEvidence(db,run,plan,args,now,cache,page=false){
  // optional audit declaration: omitting page_scope must not bypass this gate.
  const reportFiles=bundle.files.filter(f=>f.path.endsWith('/report.json'));
  let publicationReport;try{publicationReport=JSON.parse(Buffer.from(reportFiles[0].base64,'base64'));}catch{refuse('publication_json');}
+ need(completeEditionSnapshot(publicationReport,run.report_date),'publication_requires_six_complete_topics');
  if(publicationReport.schema_version==='1.2'){
   need(pageAuthorityInstalled(db),'publication_page_authority_required');
   const prefix=`reports/${run.report_date}/`;

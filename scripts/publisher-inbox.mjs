@@ -126,7 +126,7 @@ export class PublisherInbox{
     const message=await slack.exactPublish(row.source_ts);
     const reread=acceptQueuedPublish(message,this.config,{from:this.config.durable_intake.not_before,to:row.source_ts},now);
     requireThat(reread&&Object.keys(event).every(key=>reread[key]===event[key]),'Original publish message changed');
-    const bytes=await slack.download(event),bundle=await decodeBundle(bytes);
+    const bytes=await slack.download(event),bundle=await decodeBundle(bytes,{forPublication:true});
     requireThat(bundle.data.request_id===row.request_id&&bundle.hash===row.hash,'Original publish bundle mismatch');
     consumeFencedEnvelope(this.state,this.config.producer_fence,event,bundle.report.date);
     this.state.admit(event,bytes);

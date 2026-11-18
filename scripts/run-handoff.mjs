@@ -111,7 +111,7 @@ export async function handoffTick(state,config,slack,io){
    const event=acceptMessage(message,config);if(!event)continue;
    const prior=state.get(event.request_id);
    if(prior){requireThat(prior.hash===event.hash&&prior.source_ts===event.source_ts,"Duplicate request conflict");continue;}
-   const bytes=await slack.download(event),bundle=await decodeBundle(bytes);
+   const bytes=await slack.download(event),bundle=await decodeBundle(bytes,{forPublication:true});
    requireThat(bundle.data.request_id===event.request_id&&bundle.hash===event.hash,"Message and bundle mismatch");state.admit(event,bytes);
    }catch(error){capture('intake_message',error,{source_ts:/^\d{10}\.\d{6}$/.test(message?.ts??'')?message.ts:null});}
   }

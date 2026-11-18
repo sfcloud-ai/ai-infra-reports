@@ -1,5 +1,16 @@
 // Immutable ready/pending page partition. No IO or authority to send.
 export const TOPIC_IDS=['model-serving-gpu','hardware-status','model-architecture-status','embodied-training','small-model-status','inference-engines'];
+export function completeEditionSnapshot(report,date=report?.date){
+ if(typeof date!=='string')return false;
+ if(date<'2026-11-19')return true;
+ return report?.date===date&&Number.isSafeInteger(report.revision)&&report.revision>=1&&report.schema_version===(report.revision===1?'1.0':'1.1')
+  &&Array.isArray(report.articles)&&report.articles.length===TOPIC_IDS.length&&report.articles.every((a,i)=>a?.id===TOPIC_IDS[i])
+  &&Array.isArray(report.entries)&&report.entries.every(e=>TOPIC_IDS.includes(e?.article_id))
+  &&TOPIC_IDS.every(id=>report.entries.some(e=>e.article_id===id));
+}
+export function requireCompleteEdition(report){
+ if(!completeEditionSnapshot(report))throw Object.assign(Error('Publication requires six complete topic pages'),{researchPublicationRejection:'publication_requires_six_complete_topics'});
+}
 const LABELS=['模型服务与 GPU 超配','硬件与算力平台','模型与架构','制造业具身智能训练','前沿小模型','推理引擎每日变动'];
 const requireThat=(ok,m)=>{if(!ok)throw Error(m);};
 const exact=(o,k)=>o&&typeof o==='object'&&!Array.isArray(o)&&Object.keys(o).sort().join()===[...k].sort().join();

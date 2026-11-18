@@ -1,4 +1,5 @@
 import {requireThat} from './report-handoff.mjs';
+export const FIRST_NOTICE_REJECTION_VERSION=1;
 
 export const SCHEDULED_SCHEMA=Object.freeze({
  scheduled_handoffs:'CREATE TABLE scheduled_handoffs (request_id TEXT PRIMARY KEY, binding TEXT NOT NULL, phase TEXT NOT NULL, result TEXT, poll_order INTEGER NOT NULL DEFAULT 0)',

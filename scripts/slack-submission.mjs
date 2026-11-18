@@ -1,6 +1,7 @@
 import {assembleReportParts,REPORT_PART_BYTES,reportPartName,pendingSubmissionClause,pendingSubmissionPhase} from './report-bundle-parts.mjs';
 import {permittedReportBytes} from './research-control.mjs';
 import {digest} from './archive.mjs';
+import {requireCompleteEdition} from './page-delivery.mjs';
 import {stagingTable,originalRunId,assertPageAdmission,pageRound,assertPageCorrectionDelivery} from './research-page-authority.mjs';
 // Opt-in, host-persistent staging. Slack is the data transport, not an executor.
 // Installation is offline under the original Publisher lock; normal ticks never
@@ -97,6 +98,7 @@ export async function advanceSubmission(state,config,slack,query=queryScheduled,
    requireThat(original&&['kind','request_id','hash','file_id','target_ts'].every(k=>(original[k]??null)===row[k]),'Original revision command changed');
    const bytes=await slack.download(row),bundle=await decodeBundle(bytes);
    requireThat(['1.1','1.2'].includes(bundle.report.schema_version)&&bundle.report.revision>1&&['correction','material_update','maintenance'].includes(bundle.report.revision_notice?.kind)&&bundle.data.request_id===row.request_id&&bundle.hash===row.hash&&bundle.report.date===date,'Explicit revision bundle binding required');
+   requireCompleteEdition(bundle.report);
    db.exec('BEGIN IMMEDIATE');try{
     assertSubmission(db,config);
     if(pageRound(db,row.request_id))throw Object.assign(Error('Revision reserved by original page continuation'),{researchPublicationRejection:'page_revision_reserved'});
@@ -168,6 +170,7 @@ export async function advanceSubmission(state,config,slack,query=queryScheduled,
    });
    const bundle=await decodeBundle(bytes);
    requireThat(bundle.data.request_id===row.request_id&&bundle.hash===row.hash&&bundle.report.date===date,'Staged bundle binding differs');
+   requireCompleteEdition(bundle.report);
    if(stored){requireThat(stored.hash===row.hash&&stored.report_date===date&&Buffer.from(stored.bytes).equals(bytes),'Original staged bytes cannot change');}
    else{
     if(page)checkPage(bundle);
@@ -187,6 +190,7 @@ export async function advanceSubmission(state,config,slack,query=queryScheduled,
    requireThat(stored&&stored.hash===row.hash&&stored.source_ts===row.target_ts&&stored.report_date===date,'Submission requires original staged bytes');
    const bytes=Buffer.from(stored.bytes),bundle=await decodeBundle(bytes);
    requireThat(bundle.hash===stored.hash&&bundle.report.date===date&&bundle.data.request_id===row.request_id,'Original staged bytes changed');
+   requireCompleteEdition(bundle.report);
    const prior=state.metadata(row.request_id);
    if(prior)requireThat(stored.phase==='admitted'&&prior.hash===stored.hash&&prior.source_ts===stored.source_ts&&prior.detail.intake_file_id===stored.file_id,'Original publication conflicts with staging');
    else{requireThat(stored.phase==='staged','Original staged admission missing');if(page)checkPage(bundle);else await emptyDay(state,config,row,date,query,clock);}

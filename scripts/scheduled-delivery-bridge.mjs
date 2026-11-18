@@ -26,15 +26,31 @@ export function scheduledQueryBudget(request){
  requireThat(request&&['admit','status','inspect'].includes(request.action),'Known scheduled action required');
  return request.action==='admit'?180000:10000;
 }
+function boundReceipt(result,binding){
+ return result&&binding&&REQUEST.test(binding.request_id??'')&&/^\d{4}-\d\d-\d\d$/.test(binding.report_date)
+  &&/^[0-9a-f]{40}$/.test(binding.report_commit)&&/^[0-9a-f]{64}$/.test(binding.bundle_sha256)
+  &&['request_id','report_date','report_commit','bundle_sha256'].every(key=>result[key]===binding[key]);
+}
 function deliveryStarted(result,binding){
- return result&&Object.entries(binding).every(([k,v])=>result[k]===v)&&
-  (['sending','sent','unknown'].includes(result.status)||result.parts_sent>0);
+ return boundReceipt(result,binding)&&(['sending','sent','unknown'].includes(result.status)||result.parts_sent>0);
 }
 function earlierStartedRequest(db,day,revision){
  const rows=db.prepare("SELECT request_id,binding,result FROM scheduled_handoffs WHERE json_valid(binding) AND json_extract(binding,'$.report_date')=? AND phase IN ('observed','complete','superseded') ORDER BY (json_extract(result,'$.parts_sent')>0) DESC,poll_order DESC").all(day);
  for(const row of rows){
   const binding=JSON.parse(row.binding),result=JSON.parse(row.result);
   if(row.request_id===binding.request_id&&deliveryStarted(result,binding)&&(result.report_revision??1)<revision)return binding;
+ }
+ return null;
+}
+function laterCompleteInitial(db,day,revision){
+ const rows=db.prepare("SELECT request_id,binding,result FROM scheduled_handoffs WHERE phase='complete' AND json_extract(binding,'$.report_date')=? AND json_extract(result,'$.delivery_kind')='initial' AND json_extract(result,'$.report_revision')>?").all(day,revision);
+ for(const row of rows){
+  const binding=JSON.parse(row.binding),receipt=JSON.parse(row.result),images=receipt.images;
+  if(row.request_id===binding.request_id&&boundReceipt(receipt,binding)
+   &&Number.isSafeInteger(receipt.report_revision)&&row.request_id==='morning-'+day.replaceAll('-','')+'-r'+receipt.report_revision
+   &&receipt.status==='sent'&&receipt.phase==='complete'&&Number.isSafeInteger(receipt.parts_total)&&receipt.parts_total>=2
+   &&receipt.parts_sent===receipt.parts_total&&Array.isArray(images)&&images.length===1
+   &&images[0]?.file_id==='scheduled-poster'&&images[0].status==='sent'&&images[0].error==null)return row.request_id;
  }
  return null;
 }
@@ -72,6 +88,11 @@ export async function advanceScheduledDelivery(state,config,query=queryScheduled
   db.prepare('UPDATE scheduled_handoffs SET poll_order=(SELECT COALESCE(MAX(poll_order),0)+1 FROM scheduled_handoffs) WHERE request_id=?').run(id);
   try{
    if(local.phase==='awaiting_first_delivery'){
+    const coveredBy=laterCompleteInitial(db,bundle.report.date,bundle.report.revision);
+    if(coveredBy&&firstNoticeRejected(JSON.parse(local.result),JSON.parse(binding))){
+     db.prepare("UPDATE scheduled_handoffs SET phase='policy_rejected',result=json_set(result,'$.covered_by',?) WHERE request_id=?").run(coveredBy,id);
+     return {request_id:id,phase:'policy_rejected',wecom_status:'not_verified',covered_by:coveredBy};
+    }
     const prior=earlierStartedRequest(db,bundle.report.date,bundle.report.revision);
     if(!prior)continue;
     const receipt=await query(c,{action:'status',request_id:prior.request_id});

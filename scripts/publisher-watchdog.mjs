@@ -103,7 +103,7 @@ async function queryDayBindings(filename,config,date){
   requireThat(rows.length<=101,'Ambiguous daily report count');
   const bindings=[],read=db.prepare('SELECT id,hash,bytes,detail FROM jobs WHERE id=?');
   const handoffs=db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='scheduled_handoffs'").get();
-  const refusal=handoffs&&db.prepare("SELECT binding,result FROM scheduled_handoffs WHERE request_id=? AND phase='policy_rejected'");
+  const refusal=handoffs&&db.prepare("SELECT binding,result FROM scheduled_handoffs WHERE request_id=? AND phase IN ('policy_rejected','awaiting_first_delivery')");
   for(const {id} of rows){
    const row=read.get(id);
    const bundle=await decodeBundle(Buffer.from(row.bytes)),detail=JSON.parse(row.detail);
@@ -180,8 +180,9 @@ async function checkRevisionDeliveries(bindings,query){
   if(record.error){issues.add(record.error);return false;}
   const {binding:b,result:r}=record,revision=b.report_revision!==undefined;
   if(r?.status==='not_found'){
-   if(b.first_notice_refused&&!revision&&b.request_id==='morning-'+day.replaceAll('-','')+'-r1'){
-    const replacement=[...records.values()].find(({binding,result})=>binding.report_revision>1&&result?.delivery_kind==='initial'&&result.status==='sent'&&result.phase==='complete');
+   const refusedRevision=b.report_revision??1;
+   if(b.first_notice_refused&&b.request_id==='morning-'+day.replaceAll('-','')+'-r'+refusedRevision){
+    const replacement=[...records.values()].find(({binding,result})=>binding.report_revision>refusedRevision&&result?.delivery_kind==='initial'&&result.status==='sent'&&result.phase==='complete');
     if(replacement&&settled(replacement.binding.request_id))return true;
    }
    issues.add('daily_delivery_not_admitted');return false;
