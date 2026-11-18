@@ -176,6 +176,8 @@ function publicationEvidence(db,run,plan,args,now,cache,page=false){
    need(summary.successful_attempts?.[kind]===count(actual.successful_attempts)&&summary.failed_attempts?.[kind]===count(actual.failed_attempts)&&summary.unknown_attempts?.[kind]===count(actual.unknown_attempts),'publication_budget_attempts');
   }
  }
+ // Legacy non-layered schema 1.3 does not carry audit metadata; preserve its existing contract.
+ if(!budget&&metadata===null)return {...pageBinding};
  const cancelled=new Map(db.prepare("SELECT * FROM research_control_ops WHERE request_id=? AND kind='source'").all(run.request_id).filter(op=>classifiedResult(db,run,op,cache)?.outcome==='not_dispatched').map(op=>[op.operation_id,op]));
  const retained=new Set();
  if(metadata!==null){

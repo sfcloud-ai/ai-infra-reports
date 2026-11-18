@@ -1413,6 +1413,16 @@ test('expired undispatched source remains charged but admits a fresh bounded ret
   const retried=execute(s,command('reserve',{operations:[source('https://example.org/changes?a=1&b=2')]},settled.run),now+70000);
   assert.equal(retried.status,'committed');assert.equal(retried.run.charged_seconds,360);
   assert.equal(execute(s,command('reserve',{operations:[source('https://example.org/changes?a=1&b=2')]},retried.run),now+70000).code,inputPlan===plan?'attempt_budget':'research_original_result_unknown');
+  if(inputPlan===plan){
+   const retry=retried.operations[0],bytes=Buffer.from(JSON.stringify({request_id:id,operation_id:retry.operation_id,url:'https://example.org/changes?a=1&b=2',status:'ok',elapsed_seconds:10}));
+   const retryArchive=archive(s,{'result.json':bytes});
+   const complete=execute(s,command('settle',{operation_id:retry.operation_id,outcome:'acknowledged',elapsed_seconds:10,archive_sha256:retryArchive,file_sha256:digest(bytes),native_result:null},retried.run),now+70000);
+   assert.equal(complete.status,'committed');assert.equal(complete.run.charged_seconds,190);
+   const bundle=await encodeBundle(FILES,id,'b'.repeat(40),'a'.repeat(40)),audit=Buffer.from(JSON.stringify(auditSummary()));
+   const h=archive(s,{'bundle.json':bundle,'audit.json':audit});
+   const answer=await issuePermit(s,command('permit',{archive_sha256:h,bundle_sha256:digest(bundle),audit_sha256:digest(audit)},complete.run));
+   assert.equal(answer.status,'committed');assert.equal(answer.cancellation_page_version,undefined);assert.equal(answer.run.charged_seconds,190);
+  }
  }finally{s.close();}}
 });
 
@@ -1775,7 +1785,7 @@ test('actual permit rejects omitted batch cancellations and records a compatible
    const settled=execute(s,command('settle',{operation_id:op.operation_id,outcome:'acknowledged',elapsed_seconds:null,archive_sha256:h,file_sha256:digest(data),native_result:null},run),now+70000);assert.equal(settled.status,'committed');run=settled.run;
   }
   const bundle=await encodeBundle(FILES,id,'b'.repeat(40),'a'.repeat(40));
-  for(const scenario of ['omitted','substituted','wrong_hash','wrong_url','duplicate','missing_records','bad_sources','null_source','null_attempt','valid']){
+  for(const scenario of ['omitted','substituted','wrong_hash','wrong_url','duplicate','missing_records','missing_metadata','bad_sources','null_source','null_attempt','valid']){
    const count=scenario==='omitted'?1:8;
    const sources=ops.slice(0,count).map(op=>({id:op.operation_id,url:op.input.url,attempt_records:[{status:'not_dispatched',operation_id:op.operation_id,not_dispatched_evidence_sha256:s.db.prepare('SELECT result_file FROM research_control_ops WHERE operation_id=?').get(op.operation_id).result_file}]}));
    if(scenario==='substituted')sources[0].attempt_records[0].operation_id=randomUUID();
@@ -1786,7 +1796,7 @@ test('actual permit rejects omitted batch cancellations and records a compatible
    if(scenario==='null_source')sources[0]=null;
    if(scenario==='null_attempt')sources[0].attempt_records[0]=null;
    const metadata=Buffer.from(JSON.stringify({sources:scenario==='bad_sources'?{}:sources}));
-   const summary=Buffer.from(JSON.stringify(auditSummary({schema_version:'1.4',budget_policy:LAYERED_BUDGET_POLICY,evidence_metadata_sha256:digest(metadata),limits:{source_attempts:2,model_attempts:2,source_attempt_seconds:180,model_stage_seconds:1200,run_seconds:3600},budget_accounting:{successful_attempts:{source:0,model:0},failed_attempts:{source:0,model:0},unknown_attempts:{source:count,model:0},successful_seconds:0,failed_seconds:0,reserved_unknown_seconds:count*30,charged_seconds:count*30}})));
+   const summary=Buffer.from(JSON.stringify(auditSummary({schema_version:'1.4',budget_policy:LAYERED_BUDGET_POLICY,evidence_metadata_sha256:scenario==='missing_metadata'?undefined:digest(metadata),limits:{source_attempts:2,model_attempts:2,source_attempt_seconds:180,model_stage_seconds:1200,run_seconds:3600},budget_accounting:{successful_attempts:{source:0,model:0},failed_attempts:{source:0,model:0},unknown_attempts:{source:count,model:0},successful_seconds:0,failed_seconds:0,reserved_unknown_seconds:count*30,charged_seconds:count*30}})));
    const h=archive(s,{'bundle.json':bundle,'metadata.json':metadata,'summary.json':summary}),c=command('permit',{archive_sha256:h,bundle_sha256:digest(bundle),audit_sha256:digest(summary)},run);
    const answer=await issuePermit(s,c);
    if(scenario!=='valid'){assert.equal(answer.code,scenario==='omitted'?'publication_budget_accounting':['bad_sources','null_source','null_attempt'].includes(scenario)?'publication_cancellation_metadata':'publication_cancellation_binding',scenario);assert.equal(answer.cancellation_page_version,undefined);assert.equal(answer.run.permit,null);}
