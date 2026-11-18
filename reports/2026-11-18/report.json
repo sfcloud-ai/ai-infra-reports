@@ -1,0 +1,162 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-11-18",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-11-18",
+  "subtitle": "归档稿，正式生产审计尚未完成。部分晨报｜覆盖缺口：架构、引擎。官方模型文章、权重记录和引擎 PR 未覆盖完整窗口。",
+  "articles": [
+    {
+      "id": "model-serving-gpu",
+      "title": "模型服务与 GPU 超配：vLLM 缩短滑窗草稿的 KV 预留",
+      "summary": "保留 DFlash/DSpark 滑窗草稿管理器时，只给尾段分配物理 KV 块。最终提交尚缺同条件容量复测。",
+      "sha256": "9b8075b67722d9b5f4fb58a944b56c80e018ecd43ddd86fc8b4303bc23b38680"
+    },
+    {
+      "id": "hardware-status",
+      "title": "硬件与算力平台：SGLang-Neuron 预览版如何选择 Trainium",
+      "summary": "SGLang-Neuron 预览版分别列明 Trn3 的语言模型路径和 Trn2 的扩散模型路径。",
+      "sha256": "90b225b8c3e3615437e909a78d3481479e2ec7d622a3c073c80c7f05af27def8"
+    },
+    {
+      "id": "model-architecture-status",
+      "title": "模型与架构：稀疏注意力把哪些工作留给了索引器",
+      "summary": "索引器先评估历史状态，再由 Top-k 决定核心注意力读取哪些位置。",
+      "sha256": "f1144e27232f06e5e2462c668143dff13a57120a73449222324a368c405c2971"
+    },
+    {
+      "id": "embodied-training",
+      "title": "制造业具身智能训练：YAM 采集控制先校验反馈时效",
+      "summary": "LeRobot #5380 将同帧反馈时效、每臂停止和双臂共享故障分开处理，修复启动与断连清理。适用 YAM 单臂/双臂及 motorbridge 0.6；尚无训练质量或工厂收益数据。",
+      "sha256": "9b9aebdd184e8c59a3f473daa0cd0a30240655aef9ac151a75489cc9e22d3bb5"
+    },
+    {
+      "id": "small-model-status",
+      "title": "前沿小模型：Qwen3-0.6B 的 GRPO 一步要等多久",
+      "summary": "Qwen3-0.6B 在 64 芯片 TPU v7 上运行 GRPO，参考配方的中位训练步耗时为 56.94 秒。",
+      "sha256": "30e29dfa3fe63ea6bb2777fec44a551c1d4a6385238187feabd3d6817fba2327"
+    },
+    {
+      "id": "inference-engines",
+      "title": "推理引擎每日变动：解码队列、推测验证与异构缓存布局",
+      "summary": "vLLM 的草稿 KV、SGLang 的传输队列与自适应验证、DeepInfer 的在审 Ascend 布局分别影响分配、调度与异构适配。",
+      "sha256": "89843ea5b934c7a549e938efd8cc4d8c7154d990f60db9ef117a55f6620a08f3"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-11-18-vllm-pr-64109",
+      "event_key": "vllm-pr-64109",
+      "title": "vLLM：DFlash/DSpark 滑窗草稿 KV 只为尾段提供 backing",
+      "summary": "11月17日合并 #64109（8c9e6f919ec6b921d61be9771187bf901bb3d19a）。DFlash/DSpark 的上下文 KV 来自目标隐藏状态投影，草稿计算只使用目标末端附近的窗口；缓存规划保留滑窗草稿管理器时，按 sliding_window + num_speculative_tokens × max_in_flight_steps 计算本次分配的尾段长度，只为尾段新增物理块。跳过且原本没有物理块的前缀位置以空块表示；先前尾段已有的物理块可保留至回收。若规划器将该组提升为全注意力缓存，仍按全序列分配。准入与前缀命中按真实请求末端计量。外部 KV 加载时由缓存管理器分配尾段，连接器沿用已有的跳空块逻辑。",
+      "source_urls": [
+        "https://api.github.com/repos/vllm-project/vllm/pulls/64109",
+        "https://api.github.com/repos/vllm-project/vllm/commits/8c9e6f919ec6b921d61be9771187bf901bb3d19a"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-11-18-sglang-neuron-v010-20261112",
+      "event_key": "sglang-neuron-v010-20261112",
+      "title": "SGLang-Neuron v0.1.0 公共预览明确 Trainium 的服务分工",
+      "summary": "首个插件 release 于 11 月12日 21:38:32 UTC 发布。产品说明标为 Public Preview。Trn3 承载 LLM 异步运行时，Trn2 支持列明的扩散模型。设备侧以 TorchNeuron/NKI 和已编译形状执行，上层复用 SGLang 服务栈；宿主驱动对应 Neuron SDK 2.33.0。",
+      "source_urls": [
+        "https://api.github.com/repos/sgl-project/sglang-neuron/releases/tags/v0.1.0",
+        "https://www.lmsys.org/blog/2026-11-12-sglang-neuron-v0.1.0/"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status"
+    },
+    {
+      "id": "2026-11-18-nvidia-sparse-attention-20261117",
+      "event_key": "nvidia-sparse-attention-20261117",
+      "title": "NVIDIA：稀疏注意力把长上下文成本转移到 indexer 与 Top-k",
+      "summary": "11月17日官方技术文解释 indexer→Top-k→稀疏 core attention 的三段流程。减少 core attention 访问的 key 数不消除 indexer 对全上下文评分的成本；indexer KV 压缩与 core KV 压缩是不同轴。prefill 更受计算/epilogue约束，decode更依赖key复用和带宽；融合Top-k可避免完整logits写回/再读，块级选择则改善数据连续性。",
+      "source_urls": [
+        "https://developer.nvidia.com/blog/co-designing-sparse-attention-for-efficient-long-context-inference/"
+      ],
+      "update_of": null,
+      "article_id": "model-architecture-status"
+    },
+    {
+      "id": "2026-11-18-lerobot-yam-control-5380",
+      "event_key": "lerobot-pr-5380",
+      "title": "LeRobot：YAM 控制器清理和反馈新鲜度修复",
+      "summary": "11月17日合并 #5380（d7705563b2a184573d6f87f94090d3bea8f971cd）。YAM单臂/双臂启动、停机和断连增加扭矩异常处理；控制线程未退出时保留CAN以便重试。每臂停止事件与共享故障事件分离，避免单臂重校准意外停掉另一臂。重力计算移出控制锁，反馈读取改为motorbridge 0.6的同帧state/status/monotonic-age快照。",
+      "source_urls": [
+        "https://api.github.com/repos/huggingface/lerobot/pulls/5380",
+        "https://api.github.com/repos/huggingface/lerobot/commits/d7705563b2a184573d6f87f94090d3bea8f971cd"
+      ],
+      "update_of": null,
+      "article_id": "embodied-training"
+    },
+    {
+      "id": "2026-11-18-qwen3-06b-tpu-v7-grpo-20261112",
+      "event_key": "qwen3-06b-tpu-v7-grpo-20261112",
+      "title": "Qwen3-0.6B 在 64 芯片 TPU v7 上的 GRPO 训练：一步时间包含哪些工作",
+      "summary": "Qwen3-0.6B 在 64 芯片 TPU v7 上运行 GRPO，参考配方的中位训练步耗时为 56.94 秒。",
+      "source_urls": [
+        "https://raw.githubusercontent.com/vllm-project/vllm-project.github.io/main/_posts/2026-11-12-rl-small-dense-tpu-v7.md",
+        "https://vllm.ai/blog/2026-11-12-rl-small-dense-tpu-v7",
+        "https://raw.githubusercontent.com/AI-Hypercomputer/tpu-recipes/main/rl/ironwood/qwen3-0.6b-grpo/math-bf16-tpu7x-4x4x4/k8s/README.md"
+      ],
+      "update_of": null,
+      "article_id": "small-model-status"
+    },
+    {
+      "id": "2026-11-18-sglang-pr-50712",
+      "event_key": "sglang-pr-50712",
+      "title": "SGLang：retracted 请求等待时继续轮询 decode 传输队列",
+      "summary": "11月17日合并 #50712（372b35034dbf3855044eb9a52a7fa7477c39cc1b）。旧逻辑在 retracted queue 非空时提前返回，完成但尚未接收的传输仍占页和 decode reservation，使待恢复请求一直无法容纳。改动保留 transfer queue 轮询，同时禁止新 preallocation，既让传输完成后的释放取得进展，也维持 retracted 请求优先级。",
+      "source_urls": [
+        "https://api.github.com/repos/sgl-project/sglang/pulls/50712",
+        "https://api.github.com/repos/sgl-project/sglang/commits/372b35034dbf3855044eb9a52a7fa7477c39cc1b"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    },
+    {
+      "id": "2026-11-18-sglang-pr-46190",
+      "event_key": "sglang-pr-46190",
+      "title": "SGLang 将 DFlash2 选择器置信度接入自适应验证预算",
+      "summary": "合并提交 4b9f9043faee0eb8824c47aaaaeee8f29c5af35e。用选择器行的最大概率估计各位置的接受率，复用 DSpark 规划器按请求分配验证长度。cap-accept 验全块但截断接受；compact 打包后按 token 档位回放 CUDA 图。小批次若最短方案仍占同档图，可跳过预算计算。",
+      "source_urls": [
+        "https://api.github.com/repos/sgl-project/sglang/pulls/46190",
+        "https://api.github.com/repos/sgl-project/sglang/commits/4b9f9043faee0eb8824c47aaaaeee8f29c5af35e"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    },
+    {
+      "id": "2026-11-18-deepinfer-pr-288",
+      "event_key": "deepinfer-pr-288",
+      "title": "DeepInfer：Ascend A2/W4A8 提案显式区分主 KV 与 indexer 布局",
+      "summary": "11月17日创建的 #288 仍为open、merged_at=null。已读PR说明及关键diff：提案增加Ascend A2运行路径、W4A8/W8A8加载与布局选择；V4.1主/SWA int8记录为512字节量化值+128字节BF16 RoPE+16字节scale，共656B/token；indexer为128字节int8+4字节scale，共132B。BF16主缓存兜底为1152B/token，int8页要求block_size为16的倍数。",
+      "source_urls": [
+        "https://github.com/deepseek-ai/DeepInfer/pull/288.diff",
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/pulls?direction=desc&page=1&per_page=20&sort=updated&state=all",
+        "https://github.com/deepseek-ai/DeepInfer"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    }
+  ],
+  "images": [
+    {
+      "path": "assets/overview.png",
+      "sha256": "eebea0ec31a75e9237b9b8a3094fb4e33d9ea59cdd74160543d74aa4904c7799",
+      "alt": "六主题晨报横版总览，概述各主题的核心机制与适用条件"
+    },
+    {
+      "path": "assets/sparse-attention.png",
+      "sha256": "ba304d00988795f3cc682ca63681801311ed6c20bd69e29d8695196fd62cce11",
+      "alt": "稀疏注意力从历史状态评分、Top-k 选择到核心注意力读取的流程"
+    },
+    {
+      "path": "assets/yam-control-flow.png",
+      "sha256": "01f838f0da047c1ad74da9cc567cfd922580aa0213dfc06b80ee0f8a6cd11f41",
+      "alt": "YAM 控制循环的反馈时效、每臂停止和共享故障处理"
+    }
+  ],
+  "poster": "assets/overview.png"
+}
