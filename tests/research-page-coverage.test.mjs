@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {initialPageCoverageValid,PAGE_CHECKS} from '../scripts/research-page-coverage.mjs';
+import {initialPageCoverageValid,pageCoverageValid,PAGE_CHECKS} from '../scripts/research-page-coverage.mjs';
 function fixture(){
  const pending=Object.keys(PAGE_CHECKS).slice(1).map(id=>({id,reason:'尚未完成来源核验'}));
  const page_delivery={previous:null,added:['model-serving-gpu'],pending};
@@ -11,6 +11,21 @@ function fixture(){
 }
 function bundle(report){const b=Buffer.from(JSON.stringify(report));return {files:[{path:'reports/2026-11-13/report.json',base64:b.toString('base64'),sha256:createHash('sha256').update(b).digest('hex')}]};}
 test('explicit first page contract preserves honest unchecked pending directions',()=>{const {audit,report}=fixture();assert.equal(initialPageCoverageValid(audit,bundle(report)),true);});
+test('a complete first edition can disclose a settled source gap on a verified page',()=>{
+ const {audit,report}=fixture(),pages=Object.keys(PAGE_CHECKS),gap='vllm_blog';
+ report.articles=pages.map(id=>({id}));report.entries=pages.map(article_id=>({article_id}));
+ report.page_delivery={previous:null,added:pages,pending:[]};report.subtitle='已核实六个主题；vLLM 博客读取失败。';
+ audit.page_scope={...audit.page_scope,page_delivery:report.page_delivery,checked_pages:pages};
+ Object.assign(audit,{readiness:'partial',coverage_checked:Object.values(PAGE_CHECKS).flat().filter(c=>c!==gap),
+  coverage_incomplete:[gap],coverage_unchecked:[]});
+ const metadata={page_scope:audit.page_scope,coverage_policy:'publish_verified_with_gaps',
+  coverage_notice:{checks:[gap],text:report.subtitle},checks:{[gap]:{status:'failed'}}};
+ const valid=()=>pageCoverageValid(audit,bundle(report),null,metadata);
+ assert.equal(valid(),true);
+ metadata.checks[gap].status='not_checked';assert.equal(valid(),false);metadata.checks[gap].status='failed';
+ metadata.coverage_notice.checks=[];assert.equal(valid(),false);metadata.coverage_notice.checks=[gap];
+ report.subtitle='';assert.equal(valid(),false);
+});
 for(const [name,change] of Object.entries({
  'unchecked ready topic':a=>a.coverage_checked=[],
  'unbound reason':a=>a.page_scope.page_delivery.pending[0].reason='different',
@@ -29,7 +44,6 @@ test('permit coverage binds original inputs, draft bytes, and opt-in without wea
  const old=structuredClone(audit);delete old.page_scope;assert.equal(requiredCoverageValid(old,plan,b),false);
  audit.inputs.draft_sha256='d'.repeat(64);assert.equal(requiredCoverageValid(audit,plan,b),false);
 });
-import {pageCoverageValid} from '../scripts/research-page-coverage.mjs';
 import {DISCOVERY_CONTRACT,DISCOVERY_CHECKS} from '../scripts/research-discovery.mjs';
 function successor(){
  const first=fixture();const evidence={request_id:'morning-20261113-r1',bundle_sha256:'a'.repeat(64),audit_sha256:'b'.repeat(64),archive_sha256:'c'.repeat(64),report_commit:'d'.repeat(40)};

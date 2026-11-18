@@ -33,7 +33,17 @@ export function pageCoverageValid(audit,bundle,previous=null,metadata=null){
   if(!pages.pending.every(p=>exact(p,['id','reason'])&&line(p.reason)))return false;
   if(!Array.isArray(report.entries)||!report.entries.every(e=>ready.includes(e.article_id)))return false;
   if(!ready.every(id=>report.entries.some(e=>e.article_id===id)))return false;
-  if(!ready.every(id=>pageChecks(audit,id).every(c=>audit.coverage_checked.includes(c))))return false;
+  const gaps=audit.coverage_incomplete;
+  const notice=metadata?.coverage_notice;
+  const disclosedFirstEdition=!successor&&ready.length===ids.length&&audit.readiness==='partial'
+   &&Array.isArray(audit.coverage_unchecked)&&audit.coverage_unchecked.length===0
+   &&metadata?.coverage_policy==='publish_verified_with_gaps'&&equal(metadata.page_scope,scope)
+   &&Array.isArray(gaps)&&gaps.length>0&&Array.isArray(notice?.checks)
+   &&equal([...notice.checks].sort(),[...gaps].sort())&&typeof notice.text==='string'
+   &&notice.text.trim().length>0&&report.subtitle===notice.text
+   &&gaps.every(c=>metadata.checks?.[c]?.status==='failed');
+  if(!ready.every(id=>pageChecks(audit,id).every(c=>audit.coverage_checked.includes(c)
+   ||(disclosedFirstEdition&&gaps.includes(c)))))return false;
   if(!Array.isArray(audit.coverage_unchecked)||new Set(audit.coverage_unchecked).size!==audit.coverage_unchecked.length)return false;
   if(!audit.coverage_unchecked.every(c=>audit.coverage_incomplete.includes(c)&&pending.some(id=>pageChecks(audit,id).includes(c))))return false;
   return true;
