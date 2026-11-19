@@ -1,6 +1,7 @@
 // Optional Publisher -> fixed relay socket client. Admission is idempotent and
 // never itself sends; an uncertain response is followed only by original-ID status.
 import {spawn} from 'node:child_process';
+import {digest} from './archive.mjs';
 import {scopeDigest} from './handoff-state.mjs';
 import {firstNoticeRejected,installScheduledTables} from './scheduled-delivery-state.mjs';
 import {decodeBundle,requireThat,REQUEST} from './report-handoff.mjs';
@@ -66,7 +67,17 @@ export function queryScheduled(config,request){
   const timer=setTimeout(()=>finish(Error('Scheduled endpoint timeout')),budget);
   child.on('error',()=>finish(Error('Scheduled endpoint unavailable')));child.stdin.on('error',()=>finish(Error('Scheduled endpoint input unresolved')));
   child.stdout.on('data',part=>{size+=part.length;if(size>16384)finish(Error('Scheduled endpoint result too large'));else parts.push(part);});
-  child.on('close',code=>{try{requireThat(code===0,'Scheduled endpoint rejected');const result=JSON.parse(new TextDecoder('utf8',{fatal:true}).decode(Buffer.concat(parts)));finish(null,result);}catch{finish(Error('Scheduled endpoint outcome unresolved'));}});
+  child.on('close',code=>{
+   try{
+    const result=JSON.parse(new TextDecoder('utf8',{fatal:true}).decode(Buffer.concat(parts)));
+    if(code!==0){
+     requireThat(code===1&&request.action==='admit'&&result?.status==='not_verified'&&
+      firstNoticeRejected(result,{request_id:request.request_id,report_commit:request.report_commit,
+       bundle_sha256:digest(Buffer.from(request.bundle_base64,'base64'))}),'Scheduled endpoint rejected');
+    }
+    finish(null,result);
+   }catch{finish(Error('Scheduled endpoint outcome unresolved'));}
+  });
   child.stdin.end(bytes);
  });
 }

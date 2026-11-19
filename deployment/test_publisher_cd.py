@@ -62,6 +62,14 @@ class ReportPartActivationTests(unittest.TestCase):
                 check()
             db.execute("UPDATE jobs SET hash=?,detail=?", ('a'*64,detail('a'*64)))
             check()
+            db.execute("UPDATE research_control_runs SET report_date='2026-11-19'")
+            db.execute("INSERT INTO research_page_rounds VALUES ('revision','original',NULL)")
+            db.execute("CREATE TABLE research_control_ops(request_id TEXT,kind TEXT,phase TEXT)")
+            db.execute("INSERT INTO research_control_ops VALUES ('original','model','intent')")
+            with self.assertRaisesRegex(ValueError,'settle_original_page_dispatch'):
+                check()
+            db.execute("UPDATE research_control_ops SET phase='acknowledged'")
+            check()
             db.execute('CREATE TABLE research_control_events(phase TEXT,bytes BLOB)')
             db.execute('INSERT INTO research_control_events VALUES (?,?)', ('pending',b'{"action":"page_permit"}'))
             with self.assertRaisesRegex(ValueError,'settle_original_permit_command'):
