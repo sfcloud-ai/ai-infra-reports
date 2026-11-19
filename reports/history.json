@@ -2096,6 +2096,62 @@
       "revision": 1,
       "fingerprint": "498318e8925e99d49f8acae7f132a5e341c1bae8ecc19033a428e36fe22e31ac",
       "content_sha256": "e39f949c9996fde9ca9f35347c7b985a8ee5e60bfa9e0fbd117857cb91d057c1"
+    },
+    {
+      "id": "2026-11-19-deepinfer-pr-289",
+      "event_key": "deepinfer-pr-289",
+      "date": "2026-11-19",
+      "revision": 1,
+      "fingerprint": "0019c19a01d1a14aabd0d32142895a7a234460e563bac6025fea4b30301b5344",
+      "content_sha256": "1223092251eb3b350ce884d9e6b5d13e82705404f22e03c177bfdbbb5cb3e6f8"
+    },
+    {
+      "id": "2026-11-19-lerobot-pr-5405",
+      "event_key": "lerobot-pr-5405",
+      "date": "2026-11-19",
+      "revision": 1,
+      "fingerprint": "c2af4940bf14e79d178bc84783434738aaf83d48c1ddddb291c5422d6e71aa51",
+      "content_sha256": "f16e716f3d36993e47573e540de1911aa408db956cf49712059123ddc54167f2"
+    },
+    {
+      "id": "2026-11-19-nvidia-cosmos-datasets-20261118",
+      "event_key": "nvidia-cosmos-datasets-20261118",
+      "date": "2026-11-19",
+      "revision": 1,
+      "fingerprint": "fc09beb12a8ee56a08aee1c32c81ff5df696bc2d8a897677d4d3ffe7e90586bf",
+      "content_sha256": "a4aa0742fb35869d52a71fd58a07586c03c9e275247cc3957a55305d1a2fe712"
+    },
+    {
+      "id": "2026-11-19-reson8-rumble-2-flash-open-weights",
+      "event_key": "reson8-rumble-2-flash-open-weights",
+      "date": "2026-11-19",
+      "revision": 1,
+      "fingerprint": "46f3e2de38f4b1d396dd73c53312b64b12218e4280ce51dc09d19dd2bf4f4215",
+      "content_sha256": "7e7acf9772b1f21942816b9869df44411bc828a2c8b4778f54d218a20e7b966e"
+    },
+    {
+      "id": "2026-11-19-sglang-pr-51147",
+      "event_key": "sglang-pr-51147",
+      "date": "2026-11-19",
+      "revision": 1,
+      "fingerprint": "033644dbc408f040c9efafa54d257ec0edc830db3fe49f57a1cfb7b2598f3859",
+      "content_sha256": "0cde70750fdf90807c40b826c0ba08b37cc16758cba510a7e7439db9da09184b"
+    },
+    {
+      "id": "2026-11-19-vllm-pr-67053",
+      "event_key": "vllm-pr-67053",
+      "date": "2026-11-19",
+      "revision": 1,
+      "fingerprint": "249b7d7fdcf2d20140375936d0adf10e24821a2ddbf41ba7dd4fa7c708461480",
+      "content_sha256": "52954dccd757ef9a092609b58a7415053ea64de7aaf42eee8872c032e34fd2bf"
+    },
+    {
+      "id": "2026-11-19-vllm-pr-68359",
+      "event_key": "vllm-pr-68359",
+      "date": "2026-11-19",
+      "revision": 1,
+      "fingerprint": "ebe00525a534f5170f635f0a8aeb14de4b91718185713ad2cfc26864450bbc0c",
+      "content_sha256": "8b1028fdece23485cf2a4176885f167683a26bea2b272bd1a8a280cf16cb6817"
     }
   ]
 }

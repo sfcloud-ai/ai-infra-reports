@@ -26,7 +26,21 @@
 
 作者环境为 8×910B3、CANN 9.2.0、Python 3.12、torch_npu 2.13.0.rc1。对这份涉及 111 个文件的提案，本期只采用与上述布局直接相关的 diff。主线说明列的是 SM100/Ascend 950 的离线路径，当前开源实现缺完整 KV 系统、分离部署和负载均衡。讨论上线前，先验证固定 PR head 的数值对齐、图回退和页边界，再核对 MTP 与视觉语言任务。A5、GPU 以及 H100/H200 均没有这组真机结果。
 
-**代码与文章的检索范围。** 在截至 11 月 17 日 22:20 UTC 的 24 小时内，默认分支按 committer.date 可见的提交数为 vLLM 91、SGLang 100。两仓的 PR 列表分别只读取按更新时间排列的前 20 项，不能由提交数推出所有 PR、后续回退或博客均已核完。DeepInfer 官方技术文章的全窗目录仍缺。四类跨仓发现也只记录了本期 24 小时范围，不能替代扩窗文章的检索记录。
+## 同期合入的五项补查
+
+这些提交都出现在原日期窗口保存的默认分支清单中。11 月 19 日补读了各自的 PR、文件差异和合并提交。
+
+| 变更 | 适用范围与工程含义 |
+| --- | --- |
+| [vLLM #61051](https://github.com/vllm-project/vllm/pull/61051) | GPU 上的写时复制改为用 Triton 直接搬运连续字节段，避免批量收集源块时额外占用一份块级临时显存。CPU 缓存和有源、目标依赖的链式拷贝仍走原路径。作者的验证环境为 GB200、CUDA 13.0。 |
+| [vLLM #67966](https://github.com/vllm-project/vllm/pull/67966) | ROCm 启动时在 KV 缓存缩容后清零前向计算的块表，针对 MI355X 上 EAGLE 最大长度测试的显存访问故障。这里修的是启动阶段的陈旧索引。 |
+| [SGLang #44447](https://github.com/sgl-project/sglang/pull/44447) | 为 Qwen3.8-Flash-Next 的分离部署在共享 CP/TP 的 prefill 组内分片全注意力 KV 页。decode 从多个 prefill rank 收齐 KV，辅助状态由匹配 rank 发送，涉及 Mooncake 和 NIXL。PR 未列出可据以量化收益的同条件测速。 |
+| [SGLang #50771](https://github.com/sgl-project/sglang/pull/50771) | NVIDIA Mega-MoE 使用本地化辅助进程时，在模型权重放置完成、估算 KV 容量前停止 DeepGEMM 的 MLOPart 辅助进程并等待相关 MPS 进程退出，避免把启动期占用带入容量估算。 |
+| [SGLang #50895](https://github.com/sgl-project/sglang/pull/50895) | 分离部署的 decode 侧把仍在运行请求的首个 token 和第一次 decode 输出一起发出。GB300 上 DeepSeek-V4.1/MTP 的多轮负载中，作者报告 p90 TPOT 降低约 3%–6%；首 token 会等待一次 decode，吞吐在运行噪声范围内。 |
+
+**检索口径。** 原研究截止于 11 月 17 日 22:20 UTC。此前 24 小时的原始默认分支清单含 vLLM 91 条、SGLang 100 条提交。11 月 19 日按明确起止时间补查 GitHub 的公开 PR：vLLM 有 191 项在窗内创建、91 项合并，SGLang 分别为 199 项和 105 项；同一 PR 可以同时出现于两个集合。过去 24 小时的更新排序另受截止后编辑影响，不能把回查时看到的排序还原成当日快照。SGLang 当时的官方目录和随后保存的 Inkling 正文均署 11 月 12 日。[SGLang 官方博客](https://www.sglang.io/blog)
+
+逐项回查公开时间线后，可证实 vLLM 至少 865 个、SGLang 至少 765 个 PR 在该窗口有活动。另有 349 个和 310 个候选只能定位到窗口之后的活动，或缺少提交进入 PR 的时间戳，无法计入上述数字。DeepInfer 官方技术文章仍缺完整窗口目录。
 
 ## 原始来源
 
