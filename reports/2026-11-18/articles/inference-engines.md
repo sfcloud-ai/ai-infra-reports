@@ -32,10 +32,10 @@
 
 | 变更 | 适用范围与工程含义 |
 | --- | --- |
-| [vLLM #61051](https://github.com/vllm-project/vllm/pull/61051) | CUDA 路径使用 Triton 直接搬运连续字节段，省去批量收集源块的临时显存。这条路径要求源块和目标块的编号没有交集，遇到链式拷贝会触发断言。CPU 和 XPU 等其他设备沿用索引拷贝。作者在 GB200、CUDA 13.0 上验证。 |
+| [vLLM #61051](https://github.com/vllm-project/vllm/pull/61051) | PyTorch 将 CUDA 和 ROCm 张量都标为 `device.type == "cuda"`。这两种设备使用 Triton 直接搬运连续字节段，省去批量收集源块的临时显存。这条路径要求源块和目标块的编号没有交集，遇到链式拷贝会触发断言。CPU 和 XPU 等其他设备沿用索引拷贝。作者在 GB200、CUDA 13.0 上验证。 |
 | [vLLM #67966](https://github.com/vllm-project/vllm/pull/67966) | 在可扩展 KV 缓存的启动路径，缩容会解除部分块的映射。此次修复在容量预热前清零块表里的陈旧索引。故障最初出现在使用 ROCm AITER 的 MI355X 上，触发测试为 EAGLE 最大长度测试。 |
 | [SGLang #44447](https://github.com/sgl-project/sglang/pull/44447) | Qwen3.8-Flash-Next 在共享 CP/TP 的 prefill 组内分片全注意力 KV 页时，需要启用 `--enable-kv-cache-sharding`，并使 decode 侧的 attention TP 宽度与共享组匹配。decode 从多个 prefill rank 接收 KV，辅助状态由匹配的 rank 发送，涉及 Mooncake 和 NIXL。PR 未提供同条件测速。 |
-| [SGLang #50771](https://github.com/sgl-project/sglang/pull/50771) | NVIDIA Mega-MoE 在模型权重就位后停止 DeepGEMM 的 MLOPart 辅助进程，再估算 KV 容量。程序最多等 5 秒让相关 MPS 进程退出；超时会记录告警并继续启动，此时残余显存占用仍可能影响估算。 |
+| [SGLang #50771](https://github.com/sgl-project/sglang/pull/50771) | 启用 NVIDIA Mega-MoE 本地化时，程序在模型权重就位后停止 DeepGEMM 的 MLOPart 辅助进程，再估算 KV 容量。程序最多等 5 秒让相关 MPS 进程退出；超时会记录告警并继续启动，此时残余显存占用仍可能影响估算。 |
 | [SGLang #50895](https://github.com/sgl-project/sglang/pull/50895) | 分离部署的 decode 侧把仍在运行请求的首个 token 和第一次 decode 输出一起发出。GB300 上 DeepSeek-V4.1/MTP 的多轮负载中，作者报告 p90 TPOT 降低约 3%–6%；首 token 会等待一次 decode，吞吐在运行噪声范围内。 |
 
 **检索口径。** 原研究截止于 11 月 17 日 22:20 UTC。此前 24 小时的原始默认分支清单含 vLLM 91 条、SGLang 100 条提交。11 月 19 日按明确起止时间补查 GitHub 的公开 PR：vLLM 有 191 项在窗内创建、91 项合并，SGLang 分别为 199 项和 105 项；同一 PR 可以同时出现于两个集合。过去 24 小时的更新排序另受截止后编辑影响，不能把回查时看到的排序还原成当日快照。SGLang 当时的官方目录和随后保存的 Inkling 正文均署 11 月 12 日。[SGLang 官方博客](https://www.sglang.io/blog)

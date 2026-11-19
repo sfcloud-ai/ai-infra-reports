@@ -1584,7 +1584,7 @@
           "id": "inference-engines",
           "title": "推理引擎每日变动：解码队列、推测验证与异构缓存布局",
           "summary": "vLLM 的草稿 KV、SGLang 的传输队列与自适应验证、DeepInfer 的在审 Ascend 布局分别影响分配、调度与异构适配。",
-          "sha256": "12eb05677b5b4efe35b6f26eb7ec34f6d870d86ac3cd91eca834b42512d9c9bd",
+          "sha256": "6ed4cf171ef3cd06eddec36a4894c2ccde9bf6e75f803f65b7702a17e6323ec7",
           "path": "reports/2026-11-18/articles/inference-engines.md"
         }
       ],
@@ -5276,7 +5276,7 @@
       ],
       "update_of": "2026-11-18-sglang-pr-50712",
       "article_id": "inference-engines",
-      "fingerprint": "3ae3e997ff03e6aae11b21c512bc7611a69c9e24c11275733e1c95eadf875621",
+      "fingerprint": "026029f7b3073c63db12e20a438b650f3dd169b152f17fa8da83ebba3ba2c2e0",
       "date": "2026-11-18",
       "revision": 2
     },
@@ -5291,7 +5291,7 @@
       ],
       "update_of": "2026-11-18-sglang-pr-46190",
       "article_id": "inference-engines",
-      "fingerprint": "04c8740b47dcac222be101364d4d20c1b8e6341358a14790fd145a08a7e0b992",
+      "fingerprint": "2af5ab36d1f51f5fce70048d6ea036d671d9cbb42ea0ac433213c2061b9e643e",
       "date": "2026-11-18",
       "revision": 2
     },
@@ -5307,7 +5307,7 @@
       ],
       "update_of": "2026-11-18-deepinfer-pr-288",
       "article_id": "inference-engines",
-      "fingerprint": "be6d7424c0e5177f1ed074442e3f60a9ac3381cc2c36530e51502b30431b9e4c",
+      "fingerprint": "9f2a1a7b6a5a796e403c4ecbd062ac0156d5c984dc2b4e6b0fc7da340d80fb43",
       "date": "2026-11-18",
       "revision": 2
     },
@@ -5315,14 +5315,14 @@
       "id": "2026-11-18-vllm-pr-61051",
       "event_key": "vllm-pr-61051",
       "title": "vLLM 用 Triton 搬运写时复制所需的 KV 字节段",
-      "summary": "CUDA 路径使用 Triton 直接搬运连续字节段，省去批量收集源块的临时显存。这条路径要求源块和目标块的编号没有交集，遇到链式拷贝会触发断言。CPU 和 XPU 等其他设备沿用索引拷贝。作者在 GB200、CUDA 13.0 上验证。",
+      "summary": "PyTorch 将 CUDA 和 ROCm 张量都标为 `device.type == \"cuda\"`。这两种设备使用 Triton 直接搬运连续字节段，省去批量收集源块的临时显存。这条路径要求源块和目标块的编号没有交集，遇到链式拷贝会触发断言。CPU 和 XPU 等其他设备沿用索引拷贝。作者在 GB200、CUDA 13.0 上验证。",
       "source_urls": [
         "https://github.com/vllm-project/vllm/commit/4d7f225e4e8209879ef14175be6ba263da7c900c",
         "https://github.com/vllm-project/vllm/pull/61051"
       ],
       "update_of": null,
       "article_id": "inference-engines",
-      "fingerprint": "df8856bdae48488a0cc8d7b9869de2ff602ea5c6aa2901370132c409e3c70f9b",
+      "fingerprint": "63e5654ae68d4b5b3dc3dc62a189db07f78292975a22f178728a3381b5807f93",
       "date": "2026-11-18",
       "revision": 2
     },
@@ -5337,7 +5337,7 @@
       ],
       "update_of": null,
       "article_id": "inference-engines",
-      "fingerprint": "765c224dc26ec307aa9941837eb4773e1bc0fb9a1aa10808849e6cab8b5e2b76",
+      "fingerprint": "da52165febe7d977280cbb509261f8f903a48b2886ffebde87841d755530c83b",
       "date": "2026-11-18",
       "revision": 2
     },
@@ -5352,7 +5352,7 @@
       ],
       "update_of": null,
       "article_id": "inference-engines",
-      "fingerprint": "8121580457d01d117aff2b36e5c20497b09a1c4b3e6166bba443ae3c16601b43",
+      "fingerprint": "9db5affa8564597d140eb93b4e2ad11251e79157856e4213ee574740c6056cfb",
       "date": "2026-11-18",
       "revision": 2
     },
@@ -5360,14 +5360,14 @@
       "id": "2026-11-18-sglang-pr-50771",
       "event_key": "sglang-pr-50771",
       "title": "SGLang 在估算 KV 容量前清理 DeepGEMM 辅助进程",
-      "summary": "NVIDIA Mega-MoE 在模型权重就位后停止 DeepGEMM 的 MLOPart 辅助进程，再估算 KV 容量。程序最多等 5 秒让相关 MPS 进程退出；超时会记录告警并继续启动，此时残余显存占用仍可能影响估算。",
+      "summary": "启用 NVIDIA Mega-MoE 本地化时，程序在模型权重就位后停止 DeepGEMM 的 MLOPart 辅助进程，再估算 KV 容量。程序最多等 5 秒让相关 MPS 进程退出；超时会记录告警并继续启动，此时残余显存占用仍可能影响估算。",
       "source_urls": [
         "https://github.com/sgl-project/sglang/commit/d8a6e5a9deddfc92d1b0d21aeb7bed743f0a3e4e",
         "https://github.com/sgl-project/sglang/pull/50771"
       ],
       "update_of": null,
       "article_id": "inference-engines",
-      "fingerprint": "8d380daa6dce14cf0ca4be1539fd8e82b80ee495fc3390e743d63ca5db855fdd",
+      "fingerprint": "6f9dcb835904b6a52e2132ae580d4e4a700302309af7e028835690d38127f715",
       "date": "2026-11-18",
       "revision": 2
     },
@@ -5382,7 +5382,7 @@
       ],
       "update_of": null,
       "article_id": "inference-engines",
-      "fingerprint": "1a50f6aa9b5563b56c62c2058414775b43aff2c56007fef368947868777b9741",
+      "fingerprint": "134c01d4ffd4bf9d0fda82a12070701be16eec2dff3adac0ab74646eccf536a0",
       "date": "2026-11-18",
       "revision": 2
     },
