@@ -102,13 +102,22 @@ def check(database, pause_start=None, scheduler_from=None):
     publisher_cd.require_settled_operations(database, tables, publisher_cd.producer_fence_snapshot(database))
 
 
-if __name__ == "__main__":
-    ledger = Path(sys.argv[1]).resolve(strict=True)
-    config = json.loads((Path(sys.argv[3]) if len(sys.argv) == 4 else ledger.parent.parent / "config/publisher.json").read_bytes())
+def scheduler_activation(ledger, requested_config=None):
+    active_config = Path(publisher_cd.load_config()["publisher_config"]).resolve(strict=True)
+    if requested_config is not None and Path(requested_config).resolve(strict=True) != active_config:
+        raise ValueError("publisher_configuration_is_not_active")
+    config = json.loads(active_config.read_bytes())
     if Path(config["state_dir"]).resolve() != ledger.parent:
         raise ValueError("publisher_config_state_directory_differs")
+    scheduler = config.get("scheduled_delivery")
+    return scheduler["activation_date"] if scheduler is not None else None
+
+
+if __name__ == "__main__":
+    ledger = Path(sys.argv[1]).resolve(strict=True)
+    activation = scheduler_activation(ledger, *sys.argv[3:])
     with closing(sqlite3.connect(ledger.as_uri()+"?mode=ro", uri=True)) as database:
         database.execute("PRAGMA query_only=ON")
         database.execute("BEGIN")
-        check(database, sys.argv[2], config["scheduled_delivery"]["activation_date"])
+        check(database, sys.argv[2], activation)
     print("edition_cutover_ready")

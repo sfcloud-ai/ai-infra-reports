@@ -30,6 +30,21 @@ def connection(path):
 
 
 class ReportPartActivationTests(unittest.TestCase):
+    def test_cutover_uses_config_selected_by_active_cd(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            active, stale = root / "active.json", root / "stale.json"
+            stale.write_text(json.dumps({"state_dir": str(root), "scheduled_delivery": {"activation_date": "2026-11-21"}}))
+            config = {"state_dir": str(root)}
+            with patch.object(cd, "load_config", return_value={"publisher_config": str(active)}):
+                active.write_text(json.dumps(config))
+                self.assertIsNone(edition_cutover_preflight.scheduler_activation(root / "handoff.sqlite"))
+                config["scheduled_delivery"] = {"activation_date": "2026-11-18"}
+                active.write_text(json.dumps(config))
+                self.assertEqual(edition_cutover_preflight.scheduler_activation(root / "handoff.sqlite"), "2026-11-18")
+                with self.assertRaisesRegex(ValueError, "configuration_is_not_active"):
+                    edition_cutover_preflight.scheduler_activation(root / "handoff.sqlite", stale)
+
     def test_cutover_before_main_advances_requires_exact_original_receipt(self):
         with closing(sqlite3.connect(':memory:')) as db:
             db.execute('CREATE TABLE jobs(id TEXT,hash TEXT,phase TEXT,detail TEXT)')

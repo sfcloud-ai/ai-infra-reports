@@ -72,7 +72,7 @@ export function assertPageCorrectionDelivery(db,bundle,schedulerActivation){
    const expected={request_id:predecessorId,report_date:report.date,report_commit:detail.commit,bundle_sha256:predecessor.hash};
    const installed=db.prepare("SELECT 1 FROM sqlite_master WHERE name='scheduled_handoffs'").get();
    const handoff=installed&&db.prepare('SELECT binding,phase,result FROM scheduled_handoffs WHERE request_id=?').get(predecessorId);
-   if(!handoff&&schedulerActivation&&report.date<schedulerActivation&&report.schema_version!=='1.2')return;
+   if(!handoff&&(!schedulerActivation||report.date<schedulerActivation)&&report.schema_version!=='1.2')return;
    need(handoff&&equal(JSON.parse(handoff.binding),expected),'page_correction_delivery_incomplete');
    const receipt=JSON.parse(handoff.result);
    const refused=['policy_rejected','awaiting_first_delivery'].includes(handoff.phase)&&firstNoticeRejected(receipt,expected);

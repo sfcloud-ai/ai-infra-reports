@@ -51,9 +51,8 @@ function laterCompleteDelivery(db,day,revision){
    &&Number.isSafeInteger(receipt.report_revision)&&row.request_id==='morning-'+day.replaceAll('-','')+'-r'+receipt.report_revision
    &&receipt.status==='sent'&&receipt.phase==='complete'&&Number.isSafeInteger(receipt.parts_total)
    &&receipt.parts_sent===receipt.parts_total&&Array.isArray(images)
-   &&(receipt.delivery_kind==='initial'&&receipt.parts_total>=2&&images.length===1
-      &&images[0]?.file_id==='scheduled-poster'&&images[0].status==='sent'&&images[0].error==null
-      ||revision>1&&receipt.delivery_kind==='revision_update'&&receipt.parts_total===1&&images.length===0))return receipt;
+   &&receipt.delivery_kind==='initial'&&receipt.parts_total>=2&&images.length===1
+   &&images[0]?.file_id==='scheduled-poster'&&images[0].status==='sent'&&images[0].error==null)return receipt;
  }
  return null;
 }
@@ -104,9 +103,8 @@ export async function advanceScheduledDelivery(state,config,query=queryScheduled
    if(local.phase==='awaiting_first_delivery'){
     const later=laterCompleteDelivery(db,bundle.report.date,bundle.report.revision);
     if(later&&firstNoticeRejected(JSON.parse(local.result),JSON.parse(binding))){
-     const field=later.delivery_kind==='initial'?'covered_by':'later_update';
-     db.prepare("UPDATE scheduled_handoffs SET phase='policy_rejected',result=json_set(result,?,?) WHERE request_id=?").run('$.'+field,later.request_id,id);
-     return {request_id:id,phase:'policy_rejected',wecom_status:'not_verified',[field]:later.request_id};
+     db.prepare("UPDATE scheduled_handoffs SET phase='policy_rejected',result=json_set(result,'$.covered_by',?) WHERE request_id=?").run(later.request_id,id);
+     return {request_id:id,phase:'policy_rejected',wecom_status:'not_verified',covered_by:later.request_id};
     }
     const prior=earlierStartedRequest(db,bundle.report.date,bundle.report.revision);
     if(!prior)continue;

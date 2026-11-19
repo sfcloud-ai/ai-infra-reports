@@ -75,6 +75,7 @@ test('the publication path accepts six topics and blocks a one-page first report
   const binding={request_id:previous,report_date:day,report_commit:MERGE,bundle_sha256:hash};
   installScheduledTables(s.db,['scheduled_handoffs']);
   assert.doesNotThrow(()=>assertPageCorrectionDelivery(s.db,bundle,'2026-11-20'));
+  assert.doesNotThrow(()=>assertPageCorrectionDelivery(s.db,bundle));
   assert.throws(()=>assertPageCorrectionDelivery(s.db,bundle,day),/page_correction_delivery_incomplete/);
   s.db.prepare("INSERT INTO scheduled_handoffs VALUES (?,?,'admission_pending',NULL,0)").run(previous,JSON.stringify(binding));
   assert.throws(()=>assertPageCorrectionDelivery(s.db,bundle),/page_correction_delivery_incomplete/);
@@ -224,6 +225,11 @@ test('later complete first notice accounts for earlier bound refusals',async()=>
   assert.equal((await advanceScheduledDelivery(s,config,queryRefusal)).phase,'awaiting_first_delivery');
   const third={request_id:'morning-20261101-r3',report_date:DAY,report_commit:MERGE,bundle_sha256:'3'.repeat(64)};
   const receipt={...third,report_revision:3,delivery_kind:'initial',status:'sent',phase:'complete',parts_sent:2,parts_total:2,images:[{file_id:'scheduled-poster',status:'sent',error:null}]};
+  const fourth={...third,request_id:'morning-20261101-r4',bundle_sha256:'4'.repeat(64)};
+  const update={...fourth,report_revision:4,delivery_kind:'revision_update',status:'sent',phase:'complete',parts_sent:1,parts_total:1,images:[]};
+  s.db.prepare('INSERT INTO scheduled_handoffs VALUES (?,?,?,?,0)').run(fourth.request_id,JSON.stringify(fourth),'complete',JSON.stringify(update));
+  await advanceScheduledDelivery(s,config,queryRefusal);
+  assert.equal(s.db.prepare('SELECT phase FROM scheduled_handoffs WHERE request_id=?').get(id).phase,'awaiting_first_delivery');
   s.db.prepare('INSERT INTO scheduled_handoffs VALUES (?,?,?,?,0)').run(third.request_id,JSON.stringify(third),'complete',JSON.stringify(receipt));
   const settled=await advanceScheduledDelivery(s,config,()=>assert.fail('prior refused revision has no send to retry'));
   assert.deepEqual(settled,{request_id:id,phase:'policy_rejected',wecom_status:'not_verified',covered_by:third.request_id});
