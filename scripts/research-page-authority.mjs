@@ -2,8 +2,10 @@
 // mutation transaction. A successor never replaces the original run or permit.
 import {isDeepStrictEqual as equal} from 'node:util';
 import {decodeResearchArchive} from './research-archive.mjs';
+import {storedRecoveryForOperation} from './research-archive-recovery.mjs';
+import {firstNoticeRejected,olderCorrectionAwaitsFirstNotice} from './scheduled-delivery-state.mjs';
 import {digest} from './archive.mjs';
-import {validatePageDelivery,validatePageProgressReport,validatePageCorrectionReport,TOPIC_IDS} from './page-delivery.mjs';
+import {validatePageDelivery,validatePageProgressReport,validatePageCorrectionReport,replacesPageEdition,completeEditionSnapshot,requireMaterialCompletion,TOPIC_IDS,WHOLE_EDITION_FROM} from './page-delivery.mjs';
 const fail=code=>{throw Object.assign(Error(code),{researchControlCode:code});};
 const need=(ok,code)=>{if(!ok)fail(code);};
 export const PAGE_AUTHORITY_VERSION=1;
@@ -20,6 +22,14 @@ export function installPageAuthority(db){
 }
 export const originalRunId=id=>id.replace(/-r[1-9]\d*$/,'-r1');
 export function pageRound(db,requestId){return pageAuthorityInstalled(db)?db.prepare('SELECT * FROM research_page_rounds WHERE request_id=?').get(requestId):null;}
+export function pageRevisionReserved(db,requestId,date){
+ const round=pageRound(db,requestId);
+ if(!round)return false;
+ if(date<WHOLE_EDITION_FROM||round.permit!==null)return true;
+ const unsettled=db.prepare("SELECT operation_id FROM research_control_ops WHERE request_id=? AND phase!='acknowledged'").iterate(round.run_id);
+ for(const op of unsettled)need(storedRecoveryForOperation(db,round.run_id,op.operation_id),'original_page_operation_unsettled');
+ return false;
+}
 export function currentPageRound(db,runId){return pageAuthorityInstalled(db)?db.prepare('SELECT * FROM research_page_rounds WHERE run_id=? ORDER BY revision DESC LIMIT 1').get(runId):null;}
 export function publicationPermit(db,run,permitId=null){
  if(!run)return null;
@@ -41,9 +51,10 @@ function reportFromBundle(bytes,hash){
 }
 // Ordinary edits must not replace a live page before its original delivery settles.
 // This gate is also called immediately before proposal for already-admitted jobs.
-export function assertPageCorrectionDelivery(db,bundle){
+export function assertPageCorrectionDelivery(db,bundle,schedulerActivation){
  const report=bundle.report;
  if(!['correction','material_update','maintenance'].includes(report.revision_notice?.kind))return;
+ need(!olderCorrectionAwaitsFirstNotice(db,report.date,report.revision),'page_correction_delivery_incomplete');
  // A successor cannot discard its predecessor's page contract, even when all
  // six pages were ready. Check the bound original job before schema dispatch.
  const predecessorId=`morning-${report.date.replaceAll('-','')}-r${report.revision-1}`;
@@ -52,7 +63,23 @@ export function assertPageCorrectionDelivery(db,bundle){
   const raw=Buffer.from(predecessor.bytes);need(digest(raw)===predecessor.hash,'page_correction_previous');
   const data=JSON.parse(raw),file=data.files.find(f=>f.path.endsWith('/report.json'));
   const priorReport=JSON.parse(Buffer.from(file.base64,'base64'));
-  if(priorReport.schema_version==='1.2')need(report.schema_version==='1.2','page_correction_schema_downgrade');
+  requireMaterialCompletion(priorReport,report);
+  const replacement=replacesPageEdition(priorReport,report);
+  if(priorReport.schema_version==='1.2'&&!replacement)need(report.schema_version==='1.2','page_correction_schema_downgrade');
+  if(replacement||!completeEditionSnapshot(priorReport)){
+   const detail=JSON.parse(predecessor.detail);
+   need(detail.proof?.publication_status==='verified'&&detail.proof.commit===detail.commit&&detail.proof.bundle_sha256===predecessor.hash,'page_correction_previous');
+   const expected={request_id:predecessorId,report_date:report.date,report_commit:detail.commit,bundle_sha256:predecessor.hash};
+   const installed=db.prepare("SELECT 1 FROM sqlite_master WHERE name='scheduled_handoffs'").get();
+   const handoff=installed&&db.prepare('SELECT binding,phase,result FROM scheduled_handoffs WHERE request_id=?').get(predecessorId);
+   if(!handoff&&(!schedulerActivation||report.date<schedulerActivation)&&report.schema_version!=='1.2')return;
+   need(handoff&&equal(JSON.parse(handoff.binding),expected),'page_correction_delivery_incomplete');
+   const receipt=JSON.parse(handoff.result);
+   const refused=['policy_rejected','awaiting_first_delivery'].includes(handoff.phase)&&firstNoticeRejected(receipt,expected);
+   const settled=['complete','skipped','superseded'].includes(handoff.phase)&&receipt?.phase===handoff.phase&&
+    Object.entries(expected).every(([key,value])=>receipt[key]===value);
+   need(refused||settled,'page_correction_delivery_incomplete');
+  }
  }
  if(report.schema_version!=='1.2')return;
  const previous=report.page_delivery?.previous;
@@ -116,6 +143,7 @@ export function authenticatedPrevious(db,run,previousId,depth=0){
  return {report,bundle,audit,metadata,evidence:{request_id:previousId,bundle_sha256:job.hash,audit_sha256:permit.audit_sha256,archive_sha256:permit.archive_sha256,report_commit:detail.commit}};
 }
 export function beginPageRound(db,run,args,now){
+ need(run.report_date<WHOLE_EDITION_FROM,'whole_edition_revision_required');
  need(pageAuthorityInstalled(db),'page_authority_not_installed');
  need(args&&Object.keys(args).sort().join()==='added,previous_request_id','page_begin_fields');
  const previous=authenticatedPrevious(db,run,args.previous_request_id),revision=previous.report.revision+1;

@@ -18,6 +18,7 @@ import unittest
 from unittest.mock import patch
 
 from deployment import publisher_cd as cd
+from deployment import edition_cutover_preflight
 
 
 @contextmanager
@@ -29,6 +30,112 @@ def connection(path):
 
 
 class ReportPartActivationTests(unittest.TestCase):
+    def test_cutover_uses_config_selected_by_active_cd(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            active, stale = root / "active.json", root / "stale.json"
+            stale.write_text(json.dumps({"state_dir": str(root), "scheduled_delivery": {"activation_date": "2026-11-21"}}))
+            config = {"state_dir": str(root)}
+            with patch.object(cd, "load_config", return_value={"publisher_config": str(active)}):
+                active.write_text(json.dumps(config))
+                self.assertIsNone(edition_cutover_preflight.scheduler_activation(root / "handoff.sqlite"))
+                config["scheduled_delivery"] = {"activation_date": "2026-11-18"}
+                active.write_text(json.dumps(config))
+                self.assertEqual(edition_cutover_preflight.scheduler_activation(root / "handoff.sqlite"), "2026-11-18")
+                with self.assertRaisesRegex(ValueError, "configuration_is_not_active"):
+                    edition_cutover_preflight.scheduler_activation(root / "handoff.sqlite", stale)
+
+    def test_cutover_before_main_advances_requires_exact_original_receipt(self):
+        with closing(sqlite3.connect(':memory:')) as db:
+            db.execute('CREATE TABLE jobs(id TEXT,hash TEXT,phase TEXT,detail TEXT)')
+            db.execute('CREATE TABLE research_control_runs(request_id TEXT,report_date TEXT,permit TEXT)')
+            db.execute('CREATE TABLE research_page_rounds(request_id TEXT,run_id TEXT,permit TEXT)')
+            pause = '1795000100.000000'
+            def check():
+                edition_cutover_preflight.check(db, pause)
+            with self.assertRaisesRegex(ValueError,'slack_intake_watermark_required'):
+                check()
+            db.execute('CREATE TABLE publisher_intake_scan(id INTEGER,watermark TEXT,upper_bound TEXT,page_cursor TEXT)')
+            with self.assertRaisesRegex(ValueError,'drain_slack_intake'):
+                check()
+            db.execute("INSERT INTO publisher_intake_scan VALUES(1,?,NULL,NULL)", (pause,))
+            check()
+            db.execute('INSERT INTO research_control_runs VALUES (?,?,?)', ('original','2026-11-18',json.dumps({'bundle_sha256':'a'*64})))
+            with self.assertRaisesRegex(ValueError,'settle_original_permit'):
+                check()
+            def detail(digest):
+                return json.dumps({'commit':'c'*40,'proof':{'publication_status':'verified','commit':'c'*40,'bundle_sha256':digest}})
+            db.execute('INSERT INTO jobs VALUES (?,?,?,?)', ('original','b'*64,'receipt_sent',detail('b'*64)))
+            with self.assertRaisesRegex(ValueError,'settle_original_permit'):
+                check()
+            db.execute(cd.JOB_REPLACEMENT_SCHEMA)
+            db.execute("INSERT INTO job_replacement_audit VALUES(?,?,?,?,?,?,?,?,?,?)",
+                       ('original','a'*64,'1795000000.000000',b'original','received','{}','b'*64,'c'*40,'2026-11-18','authorized correction'))
+            check()
+            db.execute("UPDATE jobs SET detail=?", (detail('d'*64),))
+            with self.assertRaisesRegex(ValueError,'settle_original_permit'):
+                check()
+            db.execute("UPDATE jobs SET hash=?,detail=?", ('a'*64,detail('a'*64)))
+            check()
+            db.execute("UPDATE research_control_runs SET report_date='2026-11-19'")
+            db.execute("INSERT INTO research_page_rounds VALUES ('revision','original',NULL)")
+            db.execute("CREATE TABLE research_control_ops(request_id TEXT,operation_id TEXT,kind TEXT,phase TEXT)")
+            db.execute("INSERT INTO research_control_ops VALUES ('original','op','model','intent')")
+            with self.assertRaisesRegex(ValueError,'settle_original_page_dispatch'):
+                check()
+            db.execute("UPDATE research_control_ops SET phase='unknown'")
+            with self.assertRaisesRegex(ValueError,'settle_original_page_dispatch'):
+                check()
+            db.execute("UPDATE research_control_ops SET kind='native'")
+            with self.assertRaisesRegex(ValueError,'settle_original_page_dispatch'):
+                check()
+            db.execute("CREATE TABLE research_control_commands(request_id TEXT,command_id TEXT,bytes BLOB,result TEXT)")
+            db.execute("CREATE TABLE research_archives(request_id TEXT,hash TEXT,file_id TEXT,source_ts TEXT,bytes BLOB)")
+            archive = b"original"
+            digest = hashlib.sha256(archive).hexdigest()
+            for key, action, args, result in [
+                ("begin", "archive_recovery_begin", dict(operation_id="op", archive_sha256=digest, file_id="F1", total_bytes=len(archive)), {}),
+                ("commit", "archive_recovery_commit", dict(recovery_id="begin"), {"recovery": {"source_ts": pause}}),
+            ]:
+                db.execute("INSERT INTO research_control_commands VALUES('original',?,?,?)",
+                           (key, json.dumps(dict(action=action,args=args)), json.dumps(dict(status="committed",**result))))
+            db.execute("INSERT INTO research_archives VALUES('original',?,'F1',?,?)", (digest,pause,archive))
+            check()
+            db.execute("UPDATE research_archives SET bytes=?", (b"modified",))
+            with self.assertRaisesRegex(ValueError,'settle_original_page_dispatch'):
+                check()
+            db.execute("UPDATE research_control_ops SET phase='acknowledged'")
+            check()
+            db.execute('CREATE TABLE research_control_events(phase TEXT,bytes BLOB)')
+            db.execute('INSERT INTO research_control_events VALUES (?,?)', ('pending',b'{"action":"page_permit"}'))
+            with self.assertRaisesRegex(ValueError,'settle_original_permit_command'):
+                check()
+            db.execute("UPDATE research_control_events SET phase='sent'")
+            db.execute('CREATE TABLE slack_submission_events(phase TEXT)')
+            db.execute("INSERT INTO slack_submission_events VALUES ('pending')")
+            with self.assertRaisesRegex(ValueError,'settle_original_intake'):
+                check()
+            db.execute("UPDATE slack_submission_events SET phase='done'")
+            db.execute("UPDATE publisher_intake_scan SET watermark='1795000000.000000',upper_bound='1795000300.000000',page_cursor='more'")
+            with self.assertRaisesRegex(ValueError,'drain_slack_intake'):
+                edition_cutover_preflight.check(db,'1795000100.000000')
+            db.execute("UPDATE publisher_intake_scan SET upper_bound=NULL,page_cursor=NULL")
+            with self.assertRaisesRegex(ValueError,'drain_slack_intake'):
+                edition_cutover_preflight.check(db,'1795000100.000000')
+            db.execute("UPDATE publisher_intake_scan SET watermark='1795000300.000000'")
+            edition_cutover_preflight.check(db,'1795000100.000000')
+            db.execute('CREATE TABLE scheduled_handoffs(request_id TEXT,binding TEXT,phase TEXT,result TEXT)')
+            db.execute("UPDATE jobs SET detail=json_set(detail,'$.proof.edition','2026-11-18/r1')")
+            edition_cutover_preflight.check(db,pause,"2026-11-19")
+            with self.assertRaisesRegex(ValueError,'settle_original_scheduler_admission'):
+                edition_cutover_preflight.check(db,pause,"2026-11-18")
+            db.execute("INSERT INTO scheduled_handoffs VALUES ('original','{}','complete',NULL)")
+            edition_cutover_preflight.check(db,pause,"2026-11-18")
+            db.execute("DELETE FROM scheduled_handoffs")
+            db.execute("INSERT INTO scheduled_handoffs VALUES ('original','{}','admission_pending',NULL)")
+            with self.assertRaises(cd.Deferred):
+                edition_cutover_preflight.check(db,'1795000100.000000')
+
     @unittest.skipUnless(os.name == 'posix', 'Linux deployment lock')
     def test_competing_deployment_and_activation_defer_without_mutating(self):
         import fcntl
@@ -124,6 +231,15 @@ class RevisionSettlementTests(unittest.TestCase):
                 identity = {'request_id': f'morning-20261101-r{revision}', 'report_date': '2026-11-01', 'report_commit': 'a'*40, 'bundle_sha256': str(revision)*64}
                 result = {**identity, 'phase': phase, 'status': status, **extra}
                 database.execute('INSERT INTO scheduled_handoffs VALUES (?,?,?,?,0)', (identity['request_id'], json.dumps(identity), phase, json.dumps(result)))
+            for revision, phase in ((4, 'policy_rejected'), (5, 'awaiting_first_delivery')):
+                insert(revision, phase, 'rejected', error='first_notice_requires_all_six_articles')
+            self.assertTrue(cd.first_notice_rejection_runtime_required(database))
+            cd.require_settled_scheduled(database)
+            database.execute("UPDATE scheduled_handoffs SET result=json_set(result,'$.error','unverified') WHERE phase='policy_rejected'")
+            with self.assertRaises(cd.Deferred):
+                cd.require_settled_scheduled(database)
+            database.execute("DELETE FROM scheduled_handoffs")
+            self.assertFalse(cd.first_notice_rejection_runtime_required(database))
             insert(2, 'skipped', 'skipped', delivery_kind='web_only', report_revision=2, parts_total=0, parts_sent=0, images=[])
             cd.require_settled_scheduled(database)
             insert(1, 'superseded', 'queued', superseded_by='morning-20261101-r3', parts_total=2, parts_sent=0)

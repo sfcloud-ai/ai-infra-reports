@@ -8,6 +8,12 @@ export const INTAKE_SCHEMA=Object.freeze({
 export function installIntakeTables(db){
  for(const sql of Object.values(INTAKE_SCHEMA))db.exec(sql.replace('CREATE TABLE ','CREATE TABLE IF NOT EXISTS ').replace('CREATE INDEX ','CREATE INDEX IF NOT EXISTS '));
 }
+export function editionIntakeRejected(row){
+ if(row.phase!=='fenced')return false;
+ const evidence=JSON.parse(row.diagnostic);
+ return evidence?.stage==='intake_file'&&evidence.code==='publication_requires_six_complete_topics'
+  &&evidence.outcome==='not_admitted'&&['request_id','hash','file_id','source_ts'].every(key=>evidence[key]===row[key]);
+}
 export function intakeSchemaObjects(db){
  const objects=db.prepare("SELECT type,name,sql FROM sqlite_master WHERE tbl_name IN ('publisher_intake_scan','publisher_inbox') OR name IN ('publisher_intake_scan','publisher_inbox','publisher_inbox_request') ORDER BY name").all();
  if(!objects.length)return objects;

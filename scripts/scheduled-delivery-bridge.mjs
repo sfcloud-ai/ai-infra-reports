@@ -1,8 +1,9 @@
 // Optional Publisher -> fixed relay socket client. Admission is idempotent and
 // never itself sends; an uncertain response is followed only by original-ID status.
 import {spawn} from 'node:child_process';
+import {digest} from './archive.mjs';
 import {scopeDigest} from './handoff-state.mjs';
-import {installScheduledTables} from './scheduled-delivery-state.mjs';
+import {firstNoticeRejected,installScheduledTables,olderCorrectionAwaitsFirstNotice} from './scheduled-delivery-state.mjs';
 import {decodeBundle,requireThat,REQUEST} from './report-handoff.mjs';
 import {validateCheckerConfig} from './notice-checker.mjs';
 import {safeDiagnostic,isSlackWriteUnexecuted} from './handoff-recovery.mjs';
@@ -26,6 +27,35 @@ export function scheduledQueryBudget(request){
  requireThat(request&&['admit','status','inspect'].includes(request.action),'Known scheduled action required');
  return request.action==='admit'?180000:10000;
 }
+function boundReceipt(result,binding){
+ return result&&binding&&REQUEST.test(binding.request_id??'')&&/^\d{4}-\d\d-\d\d$/.test(binding.report_date)
+  &&/^[0-9a-f]{40}$/.test(binding.report_commit)&&/^[0-9a-f]{64}$/.test(binding.bundle_sha256)
+  &&['request_id','report_date','report_commit','bundle_sha256'].every(key=>result[key]===binding[key]);
+}
+function deliveryStarted(result,binding){
+ return boundReceipt(result,binding)&&(['sending','sent','unknown'].includes(result.status)||result.parts_sent>0);
+}
+function earlierStartedRequest(db,day,revision){
+ const rows=db.prepare("SELECT request_id,binding,result FROM scheduled_handoffs WHERE json_valid(binding) AND json_extract(binding,'$.report_date')=? AND phase IN ('observed','complete','superseded') ORDER BY (json_extract(result,'$.parts_sent')>0) DESC,poll_order DESC").all(day);
+ for(const row of rows){
+  const binding=JSON.parse(row.binding),result=JSON.parse(row.result);
+  if(row.request_id===binding.request_id&&deliveryStarted(result,binding)&&(result.report_revision??1)<revision)return binding;
+ }
+ return null;
+}
+function laterCompleteDelivery(db,day,revision){
+ const rows=db.prepare("SELECT request_id,binding,result FROM scheduled_handoffs WHERE phase='complete' AND json_extract(binding,'$.report_date')=? AND json_extract(result,'$.report_revision')>? ORDER BY json_extract(result,'$.report_revision')").all(day,revision);
+ for(const row of rows){
+  const binding=JSON.parse(row.binding),receipt=JSON.parse(row.result),images=receipt.images;
+  if(row.request_id===binding.request_id&&boundReceipt(receipt,binding)
+   &&Number.isSafeInteger(receipt.report_revision)&&row.request_id==='morning-'+day.replaceAll('-','')+'-r'+receipt.report_revision
+   &&receipt.status==='sent'&&receipt.phase==='complete'&&Number.isSafeInteger(receipt.parts_total)
+   &&receipt.parts_sent===receipt.parts_total&&Array.isArray(images)
+   &&receipt.delivery_kind==='initial'&&receipt.parts_total>=2&&images.length===1
+   &&images[0]?.file_id==='scheduled-poster'&&images[0].status==='sent'&&images[0].error==null)return receipt;
+ }
+ return null;
+}
 export function queryScheduled(config,request){
  validateScheduledConfig(config);const budget=scheduledQueryBudget(request),bytes=Buffer.from(JSON.stringify(request));
  requireThat(bytes.length<=12*1024*1024,'Bounded scheduling request required');
@@ -36,7 +66,17 @@ export function queryScheduled(config,request){
   const timer=setTimeout(()=>finish(Error('Scheduled endpoint timeout')),budget);
   child.on('error',()=>finish(Error('Scheduled endpoint unavailable')));child.stdin.on('error',()=>finish(Error('Scheduled endpoint input unresolved')));
   child.stdout.on('data',part=>{size+=part.length;if(size>16384)finish(Error('Scheduled endpoint result too large'));else parts.push(part);});
-  child.on('close',code=>{try{requireThat(code===0,'Scheduled endpoint rejected');const result=JSON.parse(new TextDecoder('utf8',{fatal:true}).decode(Buffer.concat(parts)));finish(null,result);}catch{finish(Error('Scheduled endpoint outcome unresolved'));}});
+  child.on('close',code=>{
+   try{
+    const result=JSON.parse(new TextDecoder('utf8',{fatal:true}).decode(Buffer.concat(parts)));
+    if(code!==0){
+     requireThat(code===1&&request.action==='admit'&&result?.status==='not_verified'&&
+      firstNoticeRejected(result,{request_id:request.request_id,report_commit:request.report_commit,
+       bundle_sha256:digest(Buffer.from(request.bundle_base64,'base64'))}),'Scheduled endpoint rejected');
+    }
+    finish(null,result);
+   }catch{finish(Error('Scheduled endpoint outcome unresolved'));}
+  });
   child.stdin.end(bytes);
  });
 }
@@ -51,22 +91,45 @@ export async function advanceScheduledDelivery(state,config,query=queryScheduled
   if(bundle.report.date<c.activation_date)continue;
   requireThat(job.detail.proof?.publication_status==='verified'&&job.detail.proof.bundle_sha256===job.hash&&job.detail.proof.commit===job.detail.commit,'Actual published source required before scheduling');
   const binding=JSON.stringify({request_id:id,report_date:bundle.report.date,report_commit:job.detail.commit,bundle_sha256:job.hash});
+  const revised=!!bundle.report.revision_notice;
   let local=db.prepare('SELECT * FROM scheduled_handoffs WHERE request_id=?').get(id);
-  if(local){requireThat(local.binding===binding,'Scheduled original binding differs');if(['complete','skipped','superseded'].includes(local.phase))continue;}
+  if(revised&&(!local||local.phase==='new')&&olderCorrectionAwaitsFirstNotice(db,bundle.report.date,bundle.report.revision))continue;
+  if(local){requireThat(local.binding===binding,'Scheduled original binding differs');if(['complete','skipped','superseded','policy_rejected'].includes(local.phase))continue;}
   else{db.prepare("INSERT INTO scheduled_handoffs VALUES (?,?,'new',NULL,0)").run(id,binding);local={phase:'new'};}
   // New reports first, then persistent round-robin. An old unknown job may
   // remain unresolved forever without starving later dates or disappearing.
   db.prepare('UPDATE scheduled_handoffs SET poll_order=(SELECT COALESCE(MAX(poll_order),0)+1 FROM scheduled_handoffs) WHERE request_id=?').run(id);
   try{
+   if(local.phase==='awaiting_first_delivery'){
+    const later=laterCompleteDelivery(db,bundle.report.date,bundle.report.revision);
+    if(later&&firstNoticeRejected(JSON.parse(local.result),JSON.parse(binding))){
+     db.prepare("UPDATE scheduled_handoffs SET phase='policy_rejected',result=json_set(result,'$.covered_by',?) WHERE request_id=?").run(later.request_id,id);
+     return {request_id:id,phase:'policy_rejected',wecom_status:'not_verified',covered_by:later.request_id};
+    }
+    const prior=earlierStartedRequest(db,bundle.report.date,bundle.report.revision);
+    if(!prior)continue;
+    const receipt=await query(c,{action:'status',request_id:prior.request_id});
+    if(!deliveryStarted(receipt,prior))return {request_id:id,phase:local.phase,wecom_status:'not_verified'};
+   }
    let result=await query(c,{action:'status',request_id:id});
    if(result?.status==='not_found'){
+    if(local.phase==='admission_pending'&&firstNoticeRejected(JSON.parse(local.result),JSON.parse(binding))){
+     db.prepare("UPDATE scheduled_handoffs SET phase='awaiting_first_delivery' WHERE request_id=?").run(id);
+     return {request_id:id,phase:'awaiting_first_delivery',wecom_status:'not_verified'};
+    }
     // Same original bytes and ID only. The receiver transaction makes admission
     // idempotent; it cannot duplicate sends or replace an earlier binding.
     db.prepare("UPDATE scheduled_handoffs SET phase='admission_pending' WHERE request_id=?").run(id);
     result=await query(c,{action:'admit',request_id:id,report_commit:job.detail.commit,bundle_base64:job.bytes.toString('base64')});
+    const expected=JSON.parse(binding);
+    if(firstNoticeRejected(result,expected)){
+     const phase=revised?'awaiting_first_delivery':'policy_rejected';
+     const refusal={...expected,status:'rejected',error:'first_notice_requires_all_six_articles'};
+     db.prepare('UPDATE scheduled_handoffs SET phase=?,result=? WHERE request_id=?').run(phase,JSON.stringify(refusal),id);
+     return {request_id:id,phase,wecom_status:'not_verified',error:refusal.error};
+    }
    }
    const expected=JSON.parse(binding);
-   const revised=!!bundle.report.revision_notice;
    requireThat(result&&Object.entries(expected).every(([k,v])=>result[k]===v)&&['queued','sending','sent','failed','unknown','partial',...(revised?['skipped']:[])].includes(result.status)&&Number.isSafeInteger(result.parts_total)&&result.parts_total>=(revised?0:1)&&Number.isSafeInteger(result.parts_sent)&&result.parts_sent>=0&&result.parts_sent<=result.parts_total,'Relay status binding/counts differ');
    if(revised)requireThat(result.report_revision===bundle.report.revision&&['initial','revision_update','web_only','page_completion'].includes(result.delivery_kind),'Revision delivery policy binding differs');
    if(result.delivery_kind==='page_completion'||bundle.report.revision_notice?.kind==='page_completion')requireThat(result.delivery_kind==='page_completion'&&bundle.report.revision_notice?.kind==='page_completion','Page completion policy differs');
@@ -83,7 +146,8 @@ export async function advanceScheduledDelivery(state,config,query=queryScheduled
   }catch(error){
    // Do not stop publication or reissue a send. Next tick queries original ID.
    const diagnostic=safeDiagnostic(error,'scheduled_delivery');
-   db.prepare('UPDATE scheduled_handoffs SET result=? WHERE request_id=?').run(JSON.stringify({request_id:id,diagnostic}),id);
+   db.prepare("UPDATE scheduled_handoffs SET result=CASE WHEN phase IN ('awaiting_first_delivery','admission_pending') AND json_extract(result,'$.error')='first_notice_requires_all_six_articles' THEN json_set(result,'$.diagnostic',json(?)) ELSE ? END WHERE request_id=?")
+    .run(JSON.stringify(diagnostic),JSON.stringify({request_id:id,diagnostic}),id);
    return {request_id:id,phase:'reconcile_pending',wecom_status:'not_verified',diagnostic};
   }
  }
@@ -159,9 +223,15 @@ export async function replyScheduledStatus(state,config,event,slack,query=queryS
     const submission=submissionStatus(db,requestId);
     result.publisher_submission=submission;
     if(!job&&(submission?.bundle||submission?.pending.length))result.publisher_phase=submission.bundle?'staged':'staging_pending';
+    else if(!job&&!intake&&submission?.rejected)result.publisher_phase='submission_rejected';
    }
  if(job){
   result.publisher_bundle_sha256=job.hash;
+  const handoffs=db.prepare("SELECT 1 FROM sqlite_master WHERE name='scheduled_handoffs' AND type='table'").get();
+  const rejection=handoffs&&db.prepare("SELECT result FROM scheduled_handoffs WHERE request_id=? AND phase IN ('policy_rejected','awaiting_first_delivery')").get(requestId);
+  if(rejection&&firstNoticeRejected(JSON.parse(rejection.result),{request_id:requestId,report_commit:job.detail.commit,bundle_sha256:job.hash})){
+   result.scheduled_policy_error='first_notice_requires_all_six_articles';
+  }
   result.publisher_source_ts=job.source_ts;
   if(job.detail.recovery?.last_error)result.publisher_diagnostic=safeDiagnostic({diagnostic:job.detail.recovery.last_error},'publisher');
   if(job.detail.recovery?.next_at)result.publisher_next_attempt_at=job.detail.recovery.next_at;

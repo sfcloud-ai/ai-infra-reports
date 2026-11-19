@@ -9,6 +9,7 @@ import {isRepositoryResearchPlan,isLayeredResearchPlan,operationBudget,continuat
 // Host authority for a disposable research client. Replies are observations;
 // only a newly committed operation intent can grant one external dispatch.
 import {randomUUID} from 'node:crypto';
+import {isDeepStrictEqual} from 'node:util';
 import {digest,REPOSITORY} from './archive.mjs';
 import {canonicalRequestDate,reportDate,requireThat,decodeBundle} from './report-handoff.mjs';
 import {assertResearchArchive,decodeResearchArchive} from './research-archive.mjs';
@@ -16,6 +17,7 @@ import {handoffScope,scopeDigest} from './handoff-state.mjs';
 import {repositoryResearchInputs,repositoryResearchInputsHash,REPOSITORY_RESEARCH_INPUTS_VERSION} from './repository-research-inputs.mjs';
 import {requiredCoverageValid} from './research-coverage.mjs';
 import {resumablePageMetadataValid} from './research-page-coverage.mjs';
+import {completeEditionSnapshot,WHOLE_EDITION_FROM} from './page-delivery.mjs';
 export {REPOSITORY_RESEARCH_INPUTS_VERSION};
 export const LAYERED_RESEARCH_BUDGET_VERSION=1;
 export const MODEL_CONTINUATION_VERSION=1;
@@ -30,6 +32,21 @@ const integer=(v,min,max)=>Number.isSafeInteger(v)&&v>=min&&v<=max;
 function refuse(code){throw Object.assign(Error(code),{researchControlCode:code});}
 const need=(ok,code)=>{if(!ok)refuse(code);};
 const publicationChecks=new WeakMap();
+const checkedPermitDatabases=new WeakSet();
+function checkOutstandingEditionPermits(db,pages){
+ if(checkedPermitDatabases.has(db))return;
+ const available=pages?` UNION ALL SELECT r.request_id,r.report_date,p.permit,p.request_id FROM research_page_rounds p
+  JOIN research_control_runs r ON r.request_id=p.run_id WHERE r.report_date>=? AND p.permit IS NOT NULL`:'';
+ const rows=db.prepare(`SELECT * FROM (SELECT request_id,report_date,permit,request_id AS publication_id
+  FROM research_control_runs WHERE report_date>=? AND permit IS NOT NULL${available}) pending
+  WHERE NOT EXISTS (SELECT 1 FROM jobs WHERE id=pending.publication_id)`).all(...(pages?[WHOLE_EDITION_FROM,WHOLE_EDITION_FROM]:[WHOLE_EDITION_FROM]));
+ for(const row of rows){
+  const {bundle}=readPublicationBytes(db,row,JSON.parse(row.permit),{});
+  const file=bundle.files.find(f=>f.path.endsWith('/report.json'));
+  need(file&&bundle.request_id===row.publication_id&&completeEditionSnapshot(JSON.parse(Buffer.from(file.base64,'base64')),row.report_date),'outstanding_permit_requires_complete_edition');
+ }
+ checkedPermitDatabases.add(db);
+}
 // Validate the complete original transport, including decoded rasters, before
 // committing an immutable permit. The witness stays inside this host process.
 export async function preparePublicationCheck(db,bytes){
@@ -39,8 +56,8 @@ export async function preparePublicationCheck(db,bytes){
   const row=db.prepare('SELECT bytes FROM research_archives WHERE request_id=? AND hash=?').get(c.request_id,c.args.archive_sha256);
   need(row,'archive_not_stored');const archive=decodeResearchArchive(Buffer.from(row.bytes));
   const file=archive.files.find(f=>f.sha256===c.args.bundle_sha256);need(file,'publication_bytes_missing');
-  await decodeBundle(file.data);
- }catch(error){code=error.researchControlCode??'publication_bundle_invalid';}
+  await decodeBundle(file.data,{forPublication:true});
+ }catch(error){code=error.researchControlCode??error.researchPublicationRejection??'publication_bundle_invalid';}
  publicationChecks.set(witness,{command_hash:digest(bytes),code});return witness;
 }
 export const RESEARCH_CONTROL_SCHEMA={
@@ -64,11 +81,12 @@ function policy(c){
 export function assertResearchControl(db,c){
  const rows=db.prepare("SELECT name,sql FROM sqlite_master WHERE type='table' AND name LIKE 'research_control_%'").all();
  if(!c.research_control){requireThat(!rows.length,'Installed research authority cannot be removed');return false;}
- assertResearchArchive(db,c);assertResearchRecovery(db);pageAuthorityInstalled(db);const binding=policy(c);
+ assertResearchArchive(db,c);assertResearchRecovery(db);const pages=pageAuthorityInstalled(db),binding=policy(c);
  const parts=rows.some(r=>r.name==='research_control_report_parts');
  const fenced=assertArchiveRecoveryFence(db),schema={...RESEARCH_CONTROL_SCHEMA,...(parts?{research_control_report_parts:REPORT_PART_SCHEMA}:{}),...(fenced?{research_control_archive_recovery:ARCHIVE_RECOVERY_SCHEMA}:{})};
  requireThat(rows.length===Object.keys(schema).length&&rows.every(r=>r.sql===schema[r.name]),'Original research authority schema required');
- const installed=db.prepare('SELECT * FROM research_control_policy').all();requireThat(installed.length===1&&installed[0].id===1&&installed[0].binding===binding,'Original research authority binding required');return true;
+ const installed=db.prepare('SELECT * FROM research_control_policy').all();requireThat(installed.length===1&&installed[0].id===1&&installed[0].binding===binding,'Original research authority binding required');
+ checkOutstandingEditionPermits(db,pages);return true;
 }
 // Activate only from the locked, post-deployment administration entry point.
 export function installReportParts(db,c){
@@ -184,6 +202,7 @@ function publicationEvidence(db,run,plan,args,now,cache,page=false){
  // optional audit declaration: omitting page_scope must not bypass this gate.
  const reportFiles=bundle.files.filter(f=>f.path.endsWith('/report.json'));
  let publicationReport;try{publicationReport=JSON.parse(Buffer.from(reportFiles[0].base64,'base64'));}catch{refuse('publication_json');}
+ need(completeEditionSnapshot(publicationReport,run.report_date),'publication_requires_six_complete_topics');
  if(publicationReport.schema_version==='1.2'){
   need(pageAuthorityInstalled(db),'publication_page_authority_required');
   const prefix=`reports/${run.report_date}/`;
@@ -378,6 +397,38 @@ function stageInputContents(value,run,key){
  need(Array.isArray(outputs)&&outputs.every(output=>output&&typeof output==='object'&&!Array.isArray(output)&&Object.keys(output).every(field=>outputFields.has(field))&&string(output.sha256,HASH)),'model_continuation_stage_input');
  return new Set([...value.sources.map(source=>source.body_sha256),...outputs.map(output=>output.sha256)].filter(hash=>string(hash,HASH)));
 }
+function referencedEditorInput(document,run,previousId,stored){
+ const check=value=>need(value,'model_continuation_original_source_reference');
+ const read=hash=>{
+  check(string(hash,HASH));
+  const bytes=stored.byHash.get(hash)?.data;
+  check(bytes&&digest(bytes)===hash);
+  try{return JSON.parse(bytes);}catch{refuse('model_continuation_original_source_reference');}
+ };
+ check(document?.stage==='editor'&&document.request_id===run.request_id&&document.operation_id===previousId&&document.source_records_location==='findings.json#/source_records');
+ const research=document.research;
+ check(research&&string(research.operation_id,UUID)&&string(research.input_sha256,HASH));
+ const result=read(research.result_sha256);
+ check(result?.stage==='research'&&result.request_id===run.request_id&&result.operation_id===research.operation_id&&result.input_sha256===research.input_sha256&&research.status===(result.stage_status??result.status)&&typeof research.elapsed_seconds==='number'&&research.elapsed_seconds===result.elapsed_seconds);
+ const findingsHash=outputs=>{
+  check(Array.isArray(outputs));
+  const matches=outputs.filter(item=>item?.name==='findings.json');
+  check(matches.length===1&&string(matches[0].sha256,HASH));
+  return matches[0].sha256;
+ };
+ const hash=findingsHash(research.outputs);
+ check(hash===findingsHash(result.outputs));
+ const findings=read(hash), records=findings?.source_records;
+ check(['request_id','operation_id','input_sha256','stage'].every(k=>findings?.[k]===result[k])&&records&&typeof records==='object'&&!Array.isArray(records));
+ const sources=Object.values(records).map(record=>{
+  check(record&&string(record.operation_id,UUID)&&['input_sha256','result_sha256','body_sha256'].every(k=>string(record[k],HASH)));
+  const {operation_id,input_sha256,result_sha256,body_sha256}=record;
+  return {operation_id,input_sha256,result_sha256,body_sha256};
+ });
+ check(sources.length>0&&sources.length===document.source_attempt_count&&new Set(sources.map(source=>source.operation_id)).size===sources.length);
+ const {started_at,finished_at,stage_start,input_read_ledger,...originalResearch}=research;
+ return {...document,sources,research:originalResearch};
+}
 function prepublicationModelContinuation(db,run,op,prior,cache){
  need(isLayeredResearchPlan(JSON.parse(Buffer.from(run.plan))),'model_continuation_layered_plan');
  need(run.permit===null,'model_continuation_prepublication_only');
@@ -393,8 +444,13 @@ function prepublicationModelContinuation(db,run,op,prior,cache){
  need(Array.isArray(manifest.added_evidence)&&manifest.added_evidence.length>0&&manifest.added_evidence.length<=64,'model_continuation_evidence');
  let payload,originalInput;
  try{payload=JSON.parse(stored.byHash.get(manifest.payload_sha256).data);originalInput=JSON.parse(stored.byHash.get(prior.input_hash)?.data);}catch{refuse('model_continuation_input_bytes');}
+ const rawOriginal=originalInput;
+ if(op.key==='editor'&&originalInput?.source_records_location==='findings.json#/source_records'&&!Object.hasOwn(originalInput,'sources')){
+  originalInput=referencedEditorInput(rawOriginal,run,prior.operation_id,stored);
+  if(isDeepStrictEqual(payload?.research,rawOriginal.research))payload={...payload,research:originalInput.research};
+ }
  stageInputContents(originalInput,run,op.key);
- const oldContents=new Set(),pending=[originalInput];
+ const oldContents=new Set(),pending=originalInput===rawOriginal?[originalInput]:[rawOriginal,originalInput];
  while(pending.length){const value=pending.pop();if(string(value,HASH))oldContents.add(value);else if(value&&typeof value==='object')for(const item of Object.values(value))pending.push(item);}
  stageInputContents(payload,run,op.key);const binding=payload.continuation;
  need(exact(binding,'previous_operation_id,checkpoint_archive_sha256,checkpoint_file_sha256,added_evidence')&&binding.previous_operation_id===prior.operation_id&&binding.checkpoint_archive_sha256===prior.result_archive&&binding.checkpoint_file_sha256===prior.result_file&&Array.isArray(binding.added_evidence)&&binding.added_evidence.length===manifest.added_evidence.length,'model_continuation_payload_binding');

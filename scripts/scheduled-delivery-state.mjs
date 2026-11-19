@@ -1,4 +1,5 @@
 import {requireThat} from './report-handoff.mjs';
+export const FIRST_NOTICE_REJECTION_VERSION=1;
 
 export const SCHEDULED_SCHEMA=Object.freeze({
  scheduled_handoffs:'CREATE TABLE scheduled_handoffs (request_id TEXT PRIMARY KEY, binding TEXT NOT NULL, phase TEXT NOT NULL, result TEXT, poll_order INTEGER NOT NULL DEFAULT 0)',
@@ -7,6 +8,19 @@ export const SCHEDULED_SCHEMA=Object.freeze({
 });
 export function installScheduledTables(db,names){
  for(const name of names)db.exec(SCHEDULED_SCHEMA[name].replace('CREATE TABLE ','CREATE TABLE IF NOT EXISTS '));
+}
+export function firstNoticeRejected(result,binding){
+ return ['not_verified','rejected'].includes(result?.status)&&result.error==='first_notice_requires_all_six_articles'&&
+  result.request_id===binding.request_id&&result.report_commit===binding.report_commit&&result.bundle_sha256===binding.bundle_sha256;
+}
+export function olderCorrectionAwaitsFirstNotice(db,day,revision){
+ if(revision<3||!db.prepare("SELECT 1 FROM sqlite_master WHERE name='scheduled_handoffs'").get())return false;
+ const prefix=`morning-${day.replaceAll('-','')}-r`;
+ const waiting=db.prepare("SELECT request_id FROM scheduled_handoffs WHERE phase='awaiting_first_delivery' AND json_extract(binding,'$.report_date')=?").all(day);
+ if(!waiting.some(row=>row.request_id.startsWith(prefix)&&Number(row.request_id.slice(prefix.length))<revision))return false;
+ const first=db.prepare("SELECT h.phase,h.result,j.hash,j.detail FROM scheduled_handoffs h JOIN jobs j ON j.id=h.request_id WHERE h.request_id=?").get(prefix+'1');
+ return !first||first.phase!=='policy_rejected'||!firstNoticeRejected(JSON.parse(first.result),
+  {request_id:prefix+'1',report_commit:JSON.parse(first.detail).commit,bundle_sha256:first.hash});
 }
 export function scheduledSchemaObjects(db){
  const objects=db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name IN ('scheduled_handoffs','scheduled_bridge_scope','scheduled_status_replies') ORDER BY name").all();
@@ -26,6 +40,11 @@ export function requireSettledScheduled(db){
  };
  for(const original of rows.values()){
   if(original.phase==='complete')continue; // 已有 legacy complete 原样保留。
+  if(['policy_rejected','awaiting_first_delivery'].includes(original.phase)){
+   const {result,binding}=bound(original.request_id);
+   requireThat(firstNoticeRejected(result,binding),'Scheduled rejection binding differs');
+   continue;
+  }
   requireThat(['skipped','superseded'].includes(original.phase),'Unresolved scheduled delivery prevents migration');
   let id=original.request_id,current=bound(id);const seen=new Set();
   while(current.row.phase==='superseded'){

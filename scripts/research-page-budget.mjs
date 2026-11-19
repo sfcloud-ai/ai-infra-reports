@@ -1,8 +1,10 @@
 import {currentPageRound} from './research-page-authority.mjs';
+import {WHOLE_EDITION_FROM} from './page-delivery.mjs';
 // Page rounds do not create a second research run or reset global accounting.
 // Only a host-authenticated open round can extend the original plan's model keys.
 export function activePageResearch(db,run,plan){
  if(run.permit===null)return {active:true,modelKeys:plan.model_stages};
+ if(run.report_date>=WHOLE_EDITION_FROM)return {active:false,modelKeys:[]};
  const round=currentPageRound(db,run.request_id);
  if(!round||round.run_id!==run.request_id||round.permit!==null)return {active:false,modelKeys:[]};
  let added;try{added=JSON.parse(round.added);}catch{return {active:false,modelKeys:[]};}

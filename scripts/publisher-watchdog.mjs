@@ -12,6 +12,7 @@ import {privateFile,privateDirectory,validateConfig} from './run-handoff.mjs';
 import {handoffScope,scopeDigest} from './handoff-state.mjs';
 import {decodeBundle,requireThat,SHA,boundedBytes} from './report-handoff.mjs';
 import {validateScheduledConfig} from './scheduled-delivery-bridge.mjs';
+import {firstNoticeRejected} from './scheduled-delivery-state.mjs';
 import {SlackHandoff} from './slack-handoff.mjs';
 import {withHandoffReadLock,isHandoffLockBusy} from './handoff-lock.mjs';
 import {safeDiagnostic} from './handoff-recovery.mjs';
@@ -101,11 +102,20 @@ async function queryDayBindings(filename,config,date){
   const rows=db.prepare("SELECT id FROM jobs WHERE json_extract(CAST(bytes AS TEXT),'$.files[0].path') LIKE ? ORDER BY source_ts LIMIT 102").all('reports/'+date+'/%');
   requireThat(rows.length<=101,'Ambiguous daily report count');
   const bindings=[],read=db.prepare('SELECT id,hash,bytes,detail FROM jobs WHERE id=?');
+  const handoffs=db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='scheduled_handoffs'").get();
+  const refusal=handoffs&&db.prepare("SELECT binding,result FROM scheduled_handoffs WHERE request_id=? AND phase IN ('policy_rejected','awaiting_first_delivery')");
   for(const {id} of rows){
    const row=read.get(id);
    const bundle=await decodeBundle(Buffer.from(row.bytes)),detail=JSON.parse(row.detail);
    requireThat(bundle.hash===row.hash&&bundle.data.request_id===row.id&&bundle.report.date===date,'Publisher report binding differs');
-   bindings.push({request_id:row.id,report_date:date,bundle_sha256:row.hash,report_commit:detail.commit??null,published:detail.proof?.publication_status==='verified'&&detail.proof?.commit===detail.commit&&detail.proof?.bundle_sha256===row.hash,...(bundle.report.revision_notice?{report_revision:bundle.report.revision,revision_kind:bundle.report.revision_notice.kind}:{})});
+   const binding={request_id:row.id,report_date:date,bundle_sha256:row.hash,report_commit:detail.commit??null,published:detail.proof?.publication_status==='verified'&&detail.proof?.commit===detail.commit&&detail.proof?.bundle_sha256===row.hash,...(bundle.report.revision_notice?{report_revision:bundle.report.revision,revision_kind:bundle.report.revision_notice.kind}:{})};
+   const rejected=refusal?.get(row.id);
+   if(rejected){
+    const original=JSON.parse(rejected.binding),result=JSON.parse(rejected.result);
+    if(result?.report_date===date&&original?.report_date===date&&firstNoticeRejected(result,original)
+      &&firstNoticeRejected(result,binding))binding.first_notice_refused=true;
+   }
+   bindings.push(binding);
   }
   return bindings;
  }finally{db.close();}
@@ -169,7 +179,14 @@ async function checkRevisionDeliveries(bindings,query){
   const record=records.get(id);if(!record){issues.add('daily_delivery_binding_mismatch');return false;}
   if(record.error){issues.add(record.error);return false;}
   const {binding:b,result:r}=record,revision=b.report_revision!==undefined;
-  if(r?.status==='not_found'){issues.add('daily_delivery_not_admitted');return false;}
+  if(r?.status==='not_found'){
+   const refusedRevision=b.report_revision??1;
+   if(b.first_notice_refused&&b.request_id==='morning-'+day.replaceAll('-','')+'-r'+refusedRevision){
+    const replacement=[...records.values()].find(({binding,result})=>binding.report_revision>refusedRevision&&result?.delivery_kind==='initial'&&result.status==='sent'&&result.phase==='complete');
+    if(replacement&&settled(replacement.binding.request_id))return true;
+   }
+   issues.add('daily_delivery_not_admitted');return false;
+  }
   if(!r||['request_id','report_date','report_commit','bundle_sha256'].some(k=>r[k]!==b[k])||revision&&(r.report_revision!==b.report_revision||!['initial','revision_update','web_only','page_completion'].includes(r.delivery_kind))){issues.add('daily_delivery_binding_mismatch');return false;}
   const counts=Number.isSafeInteger(r.parts_total)&&r.parts_total>=0&&Number.isSafeInteger(r.parts_sent)&&r.parts_sent>=0&&r.parts_sent<=r.parts_total;
   if(r.phase==='superseded'){

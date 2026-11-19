@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {encodeBundle} from '../scripts/report-handoff.mjs';
 import {digest} from '../scripts/archive.mjs';
 import {HandoffState,handoffScope} from '../scripts/handoff-state.mjs';
-import {advanceScheduledDelivery,validateScheduledConfig} from '../scripts/scheduled-delivery-bridge.mjs';
+import {advanceScheduledDelivery,queryScheduled,validateScheduledConfig} from '../scripts/scheduled-delivery-bridge.mjs';
+import {requireSettledScheduled} from '../scripts/scheduled-delivery-state.mjs';
 import {handoffTick,validateConfig} from '../scripts/run-handoff.mjs';
 import {SlackHandoff} from '../scripts/slack-handoff.mjs';
 import {FILES,MERGE} from './helpers/cloud-sender-fixture.mjs';
@@ -12,6 +13,20 @@ const scheduled={activation_date:'2026-11-01',executable:'/usr/bin/python3',args
 const config={team_id:'T123',channel_id:'C123',sender_user_id:'U123',bot_user_id:'U456',bot_id:'B456',producer_app_id:10,merger_app_id:11,slack_token_file:'/private/token',producer_key_file:'/private/key',state_dir:'/private/state',ready_for_review:false,scheduled_delivery:scheduled};
 const state=()=>{const s=new HandoffState(':memory:',handoffScope(config));s.admit({request_id:id,hash,source_ts:'1793491200.000001'},bytes);s.move(id,'received','receipt_unknown',{commit:MERGE,proof:{publication_status:'verified',commit:MERGE,bundle_sha256:hash}});return s;};
 const queued={request_id:id,report_date:'2026-11-01',report_commit:MERGE,bundle_sha256:hash,status:'queued',phase:'pending',parts_total:2,parts_sent:0};
+
+test('scheduler process exit one preserves only an admission refusal bound to the original bytes',async()=>{
+ const request={action:'admit',request_id:id,report_commit:MERGE,bundle_base64:bytes.toString('base64')};
+ const result={status:'not_verified',error:'first_notice_requires_all_six_articles',request_id:id,report_commit:MERGE,bundle_sha256:hash};
+ function invoke(reply,code,command=request){
+  const script="process.stdin.resume();process.stdin.on('end',()=>{console.log(process.argv[1]);process.exitCode=Number(process.argv[2]);})";
+  return queryScheduled({...scheduled,executable:process.execPath,args:['-e',script,JSON.stringify(reply),String(code)]},command);
+ }
+ assert.deepEqual(await invoke(result,1),result);
+ await assert.rejects(invoke({...result,bundle_sha256:'f'.repeat(64)},1),/unresolved/);
+ await assert.rejects(invoke({...result,error:'scheduled_endpoint_unavailable'},1),/unresolved/);
+ await assert.rejects(invoke(result,2),/unresolved/);
+ await assert.rejects(invoke(result,1,{action:'status',request_id:id}),/unresolved/);
+});
 
 test('status receipt preserves the bound successor so reconciliation can follow it',async()=>{
  const s=state();let reply;
@@ -106,6 +121,27 @@ test('complete requires all real parts and rejects wrong binding',async()=>{
   assert.equal((await advanceScheduledDelivery(s,config,async()=>({...queued,status:'sent',phase:'complete',parts_sent:2}))).phase,'reconcile_pending');
   assert.equal((await advanceScheduledDelivery(s,config,async()=>({...queued,status:'sent',phase:'complete',parts_sent:2,images:[{file_id:'scheduled-poster',status:'sent',error:null}]}))).phase,'complete');
   assert.equal((await advanceScheduledDelivery(s,config,()=>assert.fail('completed report must not query or send again'))).phase,'idle');
+ }finally{s.close();}
+});
+test('a bound admission rejection survives retries and identifies the correction in status',async()=>{
+ const s=state(),calls=[];
+ let wrong=true,reply;
+ const query=async(config,request)=>{
+  calls.push(request.action);
+  return request.action==='status'?{status:'not_found'}:{status:'not_verified',error:'first_notice_requires_all_six_articles',
+   request_id:id,report_commit:MERGE,bundle_sha256:wrong?'e'.repeat(64):hash};
+ };
+ try{
+  assert.equal((await advanceScheduledDelivery(s,config,query)).phase,'reconcile_pending');
+  wrong=false;
+  assert.equal((await advanceScheduledDelivery(s,config,query)).phase,'policy_rejected');
+  assert.equal((await advanceScheduledDelivery(s,config,query)).phase,'idle');
+  assert.deepEqual(calls,['status','admit','status','admit']);
+  requireSettledScheduled(s.db);
+  await replyScheduledStatus(s,config,{request_id:id,source_ts:'1793491202.000001',hash:'query-hash'},
+   {controlReceipt:async(_ts,text)=>{reply=JSON.parse(text.slice('!ai-report status-receipt '.length));return '1793491203.000001';}},query);
+  assert.equal(reply.status,'not_found');
+  assert.equal(reply.scheduled_policy_error,'first_notice_requires_all_six_articles');
  }finally{s.close();}
 });
 test('status distinguishes admitted Publisher from absent scheduler and includes safe diagnostics',async()=>{
