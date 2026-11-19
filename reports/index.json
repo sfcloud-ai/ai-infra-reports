@@ -1584,7 +1584,7 @@
           "id": "inference-engines",
           "title": "推理引擎每日变动：解码队列、推测验证与异构缓存布局",
           "summary": "vLLM 的草稿 KV、SGLang 的传输队列与自适应验证、DeepInfer 的在审 Ascend 布局分别影响分配、调度与异构适配。",
-          "sha256": "c58c3ec7abd904f1d67bd4247a2a6c54a0c7bfbffc4a1184deb52c0ca27e6414",
+          "sha256": "12eb05677b5b4efe35b6f26eb7ec34f6d870d86ac3cd91eca834b42512d9c9bd",
           "path": "reports/2026-11-18/articles/inference-engines.md"
         }
       ],
@@ -5276,7 +5276,7 @@
       ],
       "update_of": "2026-11-18-sglang-pr-50712",
       "article_id": "inference-engines",
-      "fingerprint": "235379248957c0f85f42bbe33f0de70c01a8cc428771664a1b958695cbf2561e",
+      "fingerprint": "3ae3e997ff03e6aae11b21c512bc7611a69c9e24c11275733e1c95eadf875621",
       "date": "2026-11-18",
       "revision": 2
     },
@@ -5291,7 +5291,7 @@
       ],
       "update_of": "2026-11-18-sglang-pr-46190",
       "article_id": "inference-engines",
-      "fingerprint": "b099918548b3fc949bcdb8db0f642f9a3e6a184b471ae73138d2043902cb9b27",
+      "fingerprint": "04c8740b47dcac222be101364d4d20c1b8e6341358a14790fd145a08a7e0b992",
       "date": "2026-11-18",
       "revision": 2
     },
@@ -5307,67 +5307,67 @@
       ],
       "update_of": "2026-11-18-deepinfer-pr-288",
       "article_id": "inference-engines",
-      "fingerprint": "43473c2d655d249ff2ab35afbf6a85003ffb5354138ce6c67375d97a5b0abdeb",
+      "fingerprint": "be6d7424c0e5177f1ed074442e3f60a9ac3381cc2c36530e51502b30431b9e4c",
       "date": "2026-11-18",
       "revision": 2
     },
     {
       "id": "2026-11-18-vllm-pr-61051",
       "event_key": "vllm-pr-61051",
-      "title": "vLLM 用 Triton 搬运 GPU 写时复制所需的 KV 字节段",
-      "summary": "GPU 上的写时复制改为用 Triton 直接搬运连续字节段，避免批量收集源块时额外占用一份块级临时显存。CPU 缓存和有源、目标依赖的链式拷贝仍走原路径。作者的验证环境为 GB200、CUDA 13.0。",
+      "title": "vLLM 用 Triton 搬运写时复制所需的 KV 字节段",
+      "summary": "CUDA 路径使用 Triton 直接搬运连续字节段，省去批量收集源块的临时显存。这条路径要求源块和目标块的编号没有交集，遇到链式拷贝会触发断言。CPU 和 XPU 等其他设备沿用索引拷贝。作者在 GB200、CUDA 13.0 上验证。",
       "source_urls": [
         "https://github.com/vllm-project/vllm/commit/4d7f225e4e8209879ef14175be6ba263da7c900c",
         "https://github.com/vllm-project/vllm/pull/61051"
       ],
       "update_of": null,
       "article_id": "inference-engines",
-      "fingerprint": "53f4c302dc00214847e3737b851a27617a6d4a5191b9500fc38639f7203a9e88",
+      "fingerprint": "df8856bdae48488a0cc8d7b9869de2ff602ea5c6aa2901370132c409e3c70f9b",
       "date": "2026-11-18",
       "revision": 2
     },
     {
       "id": "2026-11-18-vllm-pr-67966",
       "event_key": "vllm-pr-67966",
-      "title": "vLLM ROCm 在 KV 缩容后重置启动期块表",
-      "summary": "ROCm 启动时在 KV 缓存缩容后清零前向计算的块表，针对 MI355X 上 EAGLE 最大长度测试的显存访问故障。这里修的是启动阶段的陈旧索引。",
+      "title": "vLLM 在可扩展 KV 缓存缩容后重置块表",
+      "summary": "在可扩展 KV 缓存的启动路径，缩容会解除部分块的映射。此次修复在容量预热前清零块表里的陈旧索引。故障最初出现在使用 ROCm AITER 的 MI355X 上，触发测试为 EAGLE 最大长度测试。",
       "source_urls": [
         "https://github.com/vllm-project/vllm/commit/01fb22eed6b5ae67f7b97bc19dc637bd413851c7",
         "https://github.com/vllm-project/vllm/pull/67966"
       ],
       "update_of": null,
       "article_id": "inference-engines",
-      "fingerprint": "39f12cf8f142d79bb43ac9e4126751adc71e36c8d00585ddb6d91aa3779eaef6",
+      "fingerprint": "765c224dc26ec307aa9941837eb4773e1bc0fb9a1aa10808849e6cab8b5e2b76",
       "date": "2026-11-18",
       "revision": 2
     },
     {
       "id": "2026-11-18-sglang-pr-44447",
       "event_key": "sglang-pr-44447",
-      "title": "SGLang 为 Qwen3.8-Flash-Next 分片分离部署中的全注意力 KV 页",
-      "summary": "为 Qwen3.8-Flash-Next 的分离部署在共享 CP/TP 的 prefill 组内分片全注意力 KV 页。decode 从多个 prefill rank 收齐 KV，辅助状态由匹配 rank 发送，涉及 Mooncake 和 NIXL。PR 未列出可据以量化收益的同条件测速。",
+      "title": "SGLang 为分离部署的全注意力 KV 页增加分片传输",
+      "summary": "Qwen3.8-Flash-Next 在共享 CP/TP 的 prefill 组内分片全注意力 KV 页时，需要启用 `--enable-kv-cache-sharding`，并使 decode 侧的 attention TP 宽度与共享组匹配。decode 从多个 prefill rank 接收 KV，辅助状态由匹配的 rank 发送，涉及 Mooncake 和 NIXL。PR 未提供同条件测速。",
       "source_urls": [
         "https://github.com/sgl-project/sglang/commit/09185be8f9d1368a0d628c681ca50c84d847d38f",
         "https://github.com/sgl-project/sglang/pull/44447"
       ],
       "update_of": null,
       "article_id": "inference-engines",
-      "fingerprint": "6f99ba10d48171be30a06c87667b3b4fbdae24b00c7895a141f8908649f6bc38",
+      "fingerprint": "8121580457d01d117aff2b36e5c20497b09a1c4b3e6166bba443ae3c16601b43",
       "date": "2026-11-18",
       "revision": 2
     },
     {
       "id": "2026-11-18-sglang-pr-50771",
       "event_key": "sglang-pr-50771",
-      "title": "SGLang 在估算 KV 容量前退出 DeepGEMM 辅助进程",
-      "summary": "NVIDIA Mega-MoE 使用本地化辅助进程时，在模型权重放置完成、估算 KV 容量前停止 DeepGEMM 的 MLOPart 辅助进程并等待相关 MPS 进程退出，避免把启动期占用带入容量估算。",
+      "title": "SGLang 在估算 KV 容量前清理 DeepGEMM 辅助进程",
+      "summary": "NVIDIA Mega-MoE 在模型权重就位后停止 DeepGEMM 的 MLOPart 辅助进程，再估算 KV 容量。程序最多等 5 秒让相关 MPS 进程退出；超时会记录告警并继续启动，此时残余显存占用仍可能影响估算。",
       "source_urls": [
         "https://github.com/sgl-project/sglang/commit/d8a6e5a9deddfc92d1b0d21aeb7bed743f0a3e4e",
         "https://github.com/sgl-project/sglang/pull/50771"
       ],
       "update_of": null,
       "article_id": "inference-engines",
-      "fingerprint": "a2ae7aa6c7c2659a5d09c314001afb3e5fca671c9dc6676ddee0b284bfead33f",
+      "fingerprint": "8d380daa6dce14cf0ca4be1539fd8e82b80ee495fc3390e743d63ca5db855fdd",
       "date": "2026-11-18",
       "revision": 2
     },
@@ -5382,7 +5382,7 @@
       ],
       "update_of": null,
       "article_id": "inference-engines",
-      "fingerprint": "a47a870a8d4e04b683af70aa345c44b6abb88a679e40ec57d8817a3470953e5c",
+      "fingerprint": "1a50f6aa9b5563b56c62c2058414775b43aff2c56007fef368947868777b9741",
       "date": "2026-11-18",
       "revision": 2
     },
