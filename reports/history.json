@@ -2032,6 +2032,70 @@
       "revision": 1,
       "fingerprint": "25f385097044883b25c12df48b4e5e1d4b1d5a444b5b9b4cb8a04d97b184c9db",
       "content_sha256": "24ce7fc84e953a6b16a939e33d6ffb66e03fd92a4d37319eb3dd2a8ed0b70448"
+    },
+    {
+      "id": "2026-11-18-deepinfer-pr-288",
+      "event_key": "deepinfer-pr-288",
+      "date": "2026-11-18",
+      "revision": 1,
+      "fingerprint": "a97e4659d212645eaf64a476c205bb73af28425c8c95b0c0288bbaa86be9ad85",
+      "content_sha256": "69b98144ee10b7c7bf5d3ec5fd93ed960be10301c3b8ef5ceca9fce1ca98913f"
+    },
+    {
+      "id": "2026-11-18-lerobot-yam-control-5380",
+      "event_key": "lerobot-pr-5380",
+      "date": "2026-11-18",
+      "revision": 1,
+      "fingerprint": "7856d60fb30913a6adcc28acbdead3b01f6f5f56c19af44a37fad1ae57e05d10",
+      "content_sha256": "1a908bdf974feb078a235814d924b73e3a80e06ed0788472b0e4ed35e13f25a8"
+    },
+    {
+      "id": "2026-11-18-nvidia-sparse-attention-20261117",
+      "event_key": "nvidia-sparse-attention-20261117",
+      "date": "2026-11-18",
+      "revision": 1,
+      "fingerprint": "3cb01d46a10924776a67f257aab564a72d4c70fbc60051c6b658b10a6ce860b2",
+      "content_sha256": "a0da1d591b49574e5c67376a4f8aaf1e4b31e2a86e996edc6970eb8a76dbf3b4"
+    },
+    {
+      "id": "2026-11-18-qwen3-06b-tpu-v7-grpo-20261112",
+      "event_key": "qwen3-06b-tpu-v7-grpo-20261112",
+      "date": "2026-11-18",
+      "revision": 1,
+      "fingerprint": "25294f39a8df4baa59f72633355af07aeb285d17643ca3e9b9ba0f2ba0107950",
+      "content_sha256": "e7fd264554661afc8c075def7ea273ec062c4db3e670b42cab07bfa642c35d73"
+    },
+    {
+      "id": "2026-11-18-sglang-neuron-v010-20261112",
+      "event_key": "sglang-neuron-v010-20261112",
+      "date": "2026-11-18",
+      "revision": 1,
+      "fingerprint": "879632a76bae92f786786141148b19ca12ccda4913f5870ba070eba7a26dea36",
+      "content_sha256": "f3bd1439623007b94f3f80f20b9d91071a9fb81ee85db57a042e6594c4d67221"
+    },
+    {
+      "id": "2026-11-18-sglang-pr-46190",
+      "event_key": "sglang-pr-46190",
+      "date": "2026-11-18",
+      "revision": 1,
+      "fingerprint": "4f6b65180999d1803dcde57f2976f8a5638242e1a6937ad39a5061e84be50a81",
+      "content_sha256": "5912eaccebceeda88ca1dfd0b40fae7c76e669029770faf8e53fe3896cd33e1a"
+    },
+    {
+      "id": "2026-11-18-sglang-pr-50712",
+      "event_key": "sglang-pr-50712",
+      "date": "2026-11-18",
+      "revision": 1,
+      "fingerprint": "5c9caef80ed0fe7bf2b6d408d954d7b168780ce01ccedfdf113e9f766d1edb2b",
+      "content_sha256": "de373b2d865d563b74e10339ee224158df973edbfd4270d8a17174715bc9c549"
+    },
+    {
+      "id": "2026-11-18-vllm-pr-64109",
+      "event_key": "vllm-pr-64109",
+      "date": "2026-11-18",
+      "revision": 1,
+      "fingerprint": "498318e8925e99d49f8acae7f132a5e341c1bae8ecc19033a428e36fe22e31ac",
+      "content_sha256": "e39f949c9996fde9ca9f35347c7b985a8ee5e60bfa9e0fbd117857cb91d057c1"
     }
   ]
 }
