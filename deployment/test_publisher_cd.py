@@ -36,7 +36,7 @@ class ReportPartActivationTests(unittest.TestCase):
             db.execute('CREATE TABLE research_control_runs(request_id TEXT,report_date TEXT,permit TEXT)')
             db.execute('CREATE TABLE research_page_rounds(request_id TEXT,run_id TEXT,permit TEXT)')
             edition_cutover_preflight.check(db)
-            db.execute('INSERT INTO research_control_runs VALUES (?,?,?)', ('original','2026-11-19',json.dumps({'bundle_sha256':'a'*64})))
+            db.execute('INSERT INTO research_control_runs VALUES (?,?,?)', ('original','2026-11-18',json.dumps({'bundle_sha256':'a'*64})))
             with self.assertRaisesRegex(ValueError,'settle_original_permit'):
                 edition_cutover_preflight.check(db)
             db.execute('INSERT INTO jobs VALUES (?,?,?,?)', ('original','b'*64,'receipt_sent',json.dumps({'proof':{'publication_status':'verified'}})))

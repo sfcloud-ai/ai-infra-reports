@@ -2,6 +2,8 @@
 // mutation transaction. A successor never replaces the original run or permit.
 import {isDeepStrictEqual as equal} from 'node:util';
 import {decodeResearchArchive} from './research-archive.mjs';
+import {storedRecoveryForOperation} from './research-archive-recovery.mjs';
+import {firstNoticeRejected} from './scheduled-delivery-state.mjs';
 import {digest} from './archive.mjs';
 import {validatePageDelivery,validatePageProgressReport,validatePageCorrectionReport,replacesPageEdition,TOPIC_IDS,WHOLE_EDITION_FROM} from './page-delivery.mjs';
 const fail=code=>{throw Object.assign(Error(code),{researchControlCode:code});};
@@ -24,7 +26,8 @@ export function pageRevisionReserved(db,requestId,date){
  const round=pageRound(db,requestId);
  if(!round)return false;
  if(date<WHOLE_EDITION_FROM||round.permit!==null)return true;
- need(!db.prepare("SELECT 1 FROM research_control_ops WHERE request_id=? AND phase!='acknowledged' LIMIT 1").get(round.run_id),'original_page_operation_unsettled');
+ const unsettled=db.prepare("SELECT operation_id FROM research_control_ops WHERE request_id=? AND phase!='acknowledged'").iterate(round.run_id);
+ for(const op of unsettled)need(storedRecoveryForOperation(db,round.run_id,op.operation_id),'original_page_operation_unsettled');
  return false;
 }
 export function currentPageRound(db,runId){return pageAuthorityInstalled(db)?db.prepare('SELECT * FROM research_page_rounds WHERE run_id=? ORDER BY revision DESC LIMIT 1').get(runId):null;}
@@ -62,6 +65,14 @@ export function assertPageCorrectionDelivery(db,bundle){
   if(replacesPageEdition(priorReport,report)){
    const detail=JSON.parse(predecessor.detail);
    need(detail.proof?.publication_status==='verified'&&detail.proof.commit===detail.commit&&detail.proof.bundle_sha256===predecessor.hash,'page_correction_previous');
+   const expected={request_id:predecessorId,report_date:report.date,report_commit:detail.commit,bundle_sha256:predecessor.hash};
+   const installed=db.prepare("SELECT 1 FROM sqlite_master WHERE name='scheduled_handoffs'").get();
+   const handoff=installed&&db.prepare('SELECT binding,phase,result FROM scheduled_handoffs WHERE request_id=?').get(predecessorId);
+   need(handoff&&equal(JSON.parse(handoff.binding),expected),'page_correction_delivery_incomplete');
+   const receipt=JSON.parse(handoff.result);
+   const refused=['policy_rejected','awaiting_first_delivery'].includes(handoff.phase)&&firstNoticeRejected(receipt,expected);
+   const admitted=['observed','complete','skipped','superseded'].includes(handoff.phase)&&Object.entries(expected).every(([key,value])=>receipt?.[key]===value);
+   need(refused||admitted,'page_correction_delivery_incomplete');
   }else if(priorReport.schema_version==='1.2')need(report.schema_version==='1.2','page_correction_schema_downgrade');
  }
  if(report.schema_version!=='1.2')return;

@@ -210,6 +210,7 @@ export async function replyScheduledStatus(state,config,event,slack,query=queryS
     const submission=submissionStatus(db,requestId);
     result.publisher_submission=submission;
     if(!job&&(submission?.bundle||submission?.pending.length))result.publisher_phase=submission.bundle?'staged':'staging_pending';
+    else if(!job&&!intake&&submission?.rejected)result.publisher_phase='submission_rejected';
    }
  if(job){
   result.publisher_bundle_sha256=job.hash;

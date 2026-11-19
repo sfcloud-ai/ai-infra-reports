@@ -11,6 +11,7 @@ import {encodeNoticeCommand} from '../scripts/notice-command.mjs';
 import {digest} from '../scripts/archive.mjs';
 import {checkDailyDelivery} from '../scripts/publisher-watchdog.mjs';
 import {TOPIC_IDS} from '../scripts/page-delivery.mjs';
+import {assertPageCorrectionDelivery} from '../scripts/research-page-authority.mjs';
 import {installScheduledTables,requireSettledScheduled} from '../scripts/scheduled-delivery-state.mjs';
 import {readReports,migrateArchive,replaceCurrentReport,validateArchive,reindexArchive} from '../scripts/archive.mjs';
 import {publicationSite} from './helpers/publication-site.mjs';
@@ -55,6 +56,20 @@ test('the publication path accepts six topics and blocks a one-page first report
  Object.assign(replacement,{schema_version:'1.1',revision:2,revision_notice:report.revision_notice});
  fullFiles.set(out+'report.json',Buffer.from(JSON.stringify(replacement)));
  assert.doesNotThrow(()=>replaceCurrentReport(existingPartial,fullFiles));
+ const previous='morning-20261119-r1',hash=digest(partial);
+ const s=new HandoffState(':memory:',handoffScope(config));
+ try{
+  s.admit({request_id:previous,hash,source_ts:'1793491200.000001'},partial);
+  s.move(previous,'received','receipt_sent',{commit:MERGE,proof:{publication_status:'verified',commit:MERGE,bundle_sha256:hash}});
+  const bundle=await decodeBundle(await encodeBundle(fullFiles,'morning-20261119-r2','a'.repeat(40),'b'.repeat(40)));
+  const binding={request_id:previous,report_date:day,report_commit:MERGE,bundle_sha256:hash};
+  installScheduledTables(s.db,['scheduled_handoffs']);
+  s.db.prepare("INSERT INTO scheduled_handoffs VALUES (?,?,'admission_pending',NULL,0)").run(previous,JSON.stringify(binding));
+  assert.throws(()=>assertPageCorrectionDelivery(s.db,bundle),/page_correction_delivery_incomplete/);
+  const refusal={...binding,status:'rejected',error:'first_notice_requires_all_six_articles'};
+  s.db.prepare("UPDATE scheduled_handoffs SET phase='policy_rejected', result=? WHERE request_id=?").run(JSON.stringify(refusal),previous);
+  assert.doesNotThrow(()=>assertPageCorrectionDelivery(s.db,bundle));
+ }finally{s.close();}
 });
 function files(kind='correction'){
  const result=new Map([...FILES].map(([p,b])=>[p.replace('/r1/','/'),b]));

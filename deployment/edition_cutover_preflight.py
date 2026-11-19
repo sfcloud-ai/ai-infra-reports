@@ -14,11 +14,8 @@ def check(database):
     for table in ("research_control_runs", "research_page_rounds"):
         if table not in tables:
             continue
-        table_with_date = ("research_control_runs p" if table == "research_control_runs"
-                           else "research_page_rounds p JOIN research_control_runs r ON r.request_id=p.run_id")
-        date = "p.report_date" if table == "research_control_runs" else "r.report_date"
         pending = database.execute(f"""
-            SELECT 1 FROM {table_with_date} WHERE {date}>='2026-11-19' AND p.permit IS NOT NULL
+            SELECT 1 FROM {table} p WHERE p.permit IS NOT NULL
             AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.id=p.request_id
                             AND j.hash=json_extract(p.permit,'$.bundle_sha256')
                             AND j.phase='receipt_sent'

@@ -77,7 +77,9 @@ export function submissionStatus(db,id){
  if(!db.prepare("SELECT 1 FROM sqlite_master WHERE name='slack_submission_policy'").get())return null;
  const bundle=db.prepare(`SELECT request_id,report_date,hash,source_ts,file_id,phase,submit_ts FROM ${stagingTable(db,id)} WHERE request_id=?`).get(id);
  const pending=db.prepare(`SELECT source_ts,kind,hash,file_id,target_ts,${pendingSubmissionPhase},next_at,diagnostic FROM slack_submission_events WHERE request_id=? AND ${pendingSubmissionClause(db)} ORDER BY CASE WHEN phase='pending' THEN 0 ELSE 1 END,source_ts LIMIT 4`).all(id);
- return {bundle:bundle??null,pending:pending.map(r=>({...r,diagnostic:r.diagnostic?JSON.parse(r.diagnostic):null}))};
+ const rejected=db.prepare("SELECT source_ts,kind,hash,file_id,diagnostic FROM slack_submission_events WHERE request_id=? AND kind='revision' AND phase='fenced' AND json_extract(diagnostic,'$.stage')='research_publication' AND json_extract(diagnostic,'$.code')='publication_requires_six_complete_topics' AND json_extract(diagnostic,'$.outcome')='rejected' ORDER BY source_ts DESC LIMIT 1").get(id);
+ return {bundle:bundle??null,pending:pending.map(r=>({...r,diagnostic:r.diagnostic?JSON.parse(r.diagnostic):null})),
+  ...(rejected?{rejected:{...rejected,request_id:id,diagnostic:JSON.parse(rejected.diagnostic)}}:{})};
 }
 export function pendingSubmissions(db){
  return db.prepare(`SELECT source_ts,request_id,kind,${pendingSubmissionPhase},next_at,diagnostic FROM slack_submission_events WHERE ${pendingSubmissionClause(db)} ORDER BY CASE WHEN phase='pending' THEN 0 ELSE 1 END,source_ts LIMIT 16`).all().map(r=>({...r,diagnostic:r.diagnostic?JSON.parse(r.diagnostic):null}));
