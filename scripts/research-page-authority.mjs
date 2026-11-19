@@ -75,8 +75,9 @@ export function assertPageCorrectionDelivery(db,bundle,schedulerActivation){
    need(handoff&&equal(JSON.parse(handoff.binding),expected),'page_correction_delivery_incomplete');
    const receipt=JSON.parse(handoff.result);
    const refused=['policy_rejected','awaiting_first_delivery'].includes(handoff.phase)&&firstNoticeRejected(receipt,expected);
-   const admitted=['observed','complete','skipped','superseded'].includes(handoff.phase)&&Object.entries(expected).every(([key,value])=>receipt?.[key]===value);
-   need(refused||admitted,'page_correction_delivery_incomplete');
+   const settled=['complete','skipped','superseded'].includes(handoff.phase)&&receipt?.phase===handoff.phase&&
+    Object.entries(expected).every(([key,value])=>receipt[key]===value);
+   need(refused||settled,'page_correction_delivery_incomplete');
   }
  }
  if(report.schema_version!=='1.2')return;

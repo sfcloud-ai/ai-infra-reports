@@ -68,6 +68,9 @@ class ReportPartActivationTests(unittest.TestCase):
             db.execute("INSERT INTO research_control_ops VALUES ('original','model','intent')")
             with self.assertRaisesRegex(ValueError,'settle_original_page_dispatch'):
                 check()
+            db.execute("UPDATE research_control_ops SET phase='unknown'")
+            with self.assertRaisesRegex(ValueError,'settle_original_page_dispatch'):
+                check()
             db.execute("UPDATE research_control_ops SET phase='acknowledged'")
             check()
             db.execute('CREATE TABLE research_control_events(phase TEXT,bytes BLOB)')

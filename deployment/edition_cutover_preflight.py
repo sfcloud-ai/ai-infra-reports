@@ -42,7 +42,7 @@ def check(database, pause_start=None):
             SELECT 1 FROM research_page_rounds p JOIN research_control_runs r ON r.request_id=p.run_id
             JOIN research_control_ops o ON o.request_id=r.request_id
             WHERE r.report_date>='2026-11-19' AND r.permit IS NOT NULL AND p.permit IS NULL
-            AND o.kind IN ('source','model') AND o.phase='intent' LIMIT 1""").fetchone():
+            AND o.kind IN ('source','model') AND o.phase!='acknowledged' LIMIT 1""").fetchone():
         raise ValueError("settle_original_page_dispatch_before_advancing_main")
     replacement_edges = ""
     if "job_replacement_audit" in tables:

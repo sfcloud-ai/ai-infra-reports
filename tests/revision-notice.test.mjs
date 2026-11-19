@@ -78,6 +78,9 @@ test('the publication path accepts six topics and blocks a one-page first report
   assert.throws(()=>assertPageCorrectionDelivery(s.db,bundle,day),/page_correction_delivery_incomplete/);
   s.db.prepare("INSERT INTO scheduled_handoffs VALUES (?,?,'admission_pending',NULL,0)").run(previous,JSON.stringify(binding));
   assert.throws(()=>assertPageCorrectionDelivery(s.db,bundle),/page_correction_delivery_incomplete/);
+  s.db.prepare("UPDATE scheduled_handoffs SET phase='observed',result=? WHERE request_id=?")
+   .run(JSON.stringify({...binding,status:'queued',phase:'pending',parts_sent:1,parts_total:2}),previous);
+  assert.throws(()=>assertPageCorrectionDelivery(s.db,bundle),/page_correction_delivery_incomplete/);
   const refusal={...binding,status:'rejected',error:'first_notice_requires_all_six_articles'};
   s.db.prepare("UPDATE scheduled_handoffs SET phase='policy_rejected', result=? WHERE request_id=?").run(JSON.stringify(refusal),previous);
   assert.doesNotThrow(()=>assertPageCorrectionDelivery(s.db,bundle));
