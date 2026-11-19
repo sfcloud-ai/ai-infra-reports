@@ -53,6 +53,16 @@ class ReportPartActivationTests(unittest.TestCase):
             db.execute("INSERT INTO slack_submission_events VALUES ('pending')")
             with self.assertRaisesRegex(ValueError,'settle_original_intake'):
                 edition_cutover_preflight.check(db)
+            db.execute("UPDATE slack_submission_events SET phase='done'")
+            db.execute('CREATE TABLE publisher_intake_scan(id INTEGER,watermark TEXT,upper_bound TEXT,page_cursor TEXT)')
+            db.execute("INSERT INTO publisher_intake_scan VALUES(1,'1795000000.000000','1795000300.000000','more')")
+            with self.assertRaisesRegex(ValueError,'drain_slack_intake'):
+                edition_cutover_preflight.check(db,'1795000100.000000')
+            db.execute("UPDATE publisher_intake_scan SET upper_bound=NULL,page_cursor=NULL")
+            with self.assertRaisesRegex(ValueError,'drain_slack_intake'):
+                edition_cutover_preflight.check(db,'1795000100.000000')
+            db.execute("UPDATE publisher_intake_scan SET watermark='1795000300.000000'")
+            edition_cutover_preflight.check(db,'1795000100.000000')
 
     @unittest.skipUnless(os.name == 'posix', 'Linux deployment lock')
     def test_competing_deployment_and_activation_defer_without_mutating(self):

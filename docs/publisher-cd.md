@@ -24,6 +24,6 @@ root 所有的 `/etc/ai-report-publisher-cd.json` 明确指定 `base`、`control
 
 切换前按原请求检查 `scheduled_handoffs`。已有 `admission_pending` 继续核对原请求、报告提交与包摘要；通用错误不能证明 relay 已拒绝。只有 relay 对同一份原始数据返回明确且绑定一致的拒绝回执，才能将这次首发记为拒绝。
 
-首次切换应在交付负责人确认的发布空档执行。合入前对现役账本运行 `python3 -B deployment/edition_cutover_preflight.py /path/to/handoff.sqlite`。它核对已签发的许可与原发布回执。检查发现待办时，先按原许可和仍有效的 Git 基线完成交付，再合入。从检查至部署完成，由原交付负责人维持同一空档，随后恢复生产。
+首次切换应在交付负责人确认的发布空档执行。合入前对现役账本运行 `python3 -B deployment/edition_cutover_preflight.py /path/to/handoff.sqlite "$pause_start_ts"`。传入空档开始时的 Unix 秒数，含六位小数。预检确认 Slack 已扫描至该时刻，并核对待处理命令、已签发许可与原发布回执。检查发现待办时，先按原许可和仍有效的 Git 基线完成交付，再合入。从检查至部署完成，由原交付负责人维持同一空档，随后恢复生产。
 
 CD 也在隔离账本副本上核对未接收的许可。已上线的残缺报告沿相同日期和六个固定网址发布完整的重要修订。尚未签发许可的旧分页预约在原操作全部结算后可沿整期修订入口补全。首次企微通知以实际出站回执为准。

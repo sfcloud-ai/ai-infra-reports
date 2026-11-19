@@ -3,12 +3,19 @@ from contextlib import closing
 from pathlib import Path
 import sqlite3
 import sys
+import re
 
 
-def check(database):
+def check(database, pause_start=None):
     tables = {row[0] for row in database.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     if "jobs" not in tables:
         raise ValueError("publisher_ledger_required")
+    if "publisher_intake_scan" in tables:
+        if not isinstance(pause_start, str) or not re.fullmatch(r"[0-9]{10}\.[0-9]{6}", pause_start):
+            raise ValueError("publication_pause_start_required")
+        scan = database.execute("SELECT watermark,upper_bound,page_cursor FROM publisher_intake_scan WHERE id=1").fetchone()
+        if not scan or not re.fullmatch(r"[0-9]{10}\.[0-9]{6}", scan[0] or "") or scan[0] < pause_start or any(v is not None for v in scan[1:]):
+            raise ValueError("drain_slack_intake_through_publication_pause")
     if database.execute("SELECT 1 FROM jobs WHERE phase!='receipt_sent' LIMIT 1").fetchone():
         raise ValueError("settle_original_publication_before_advancing_main")
     for table, terminal in (("slack_submission_events", "'done','fenced'"),
@@ -44,5 +51,5 @@ if __name__ == "__main__":
     with closing(sqlite3.connect(Path(sys.argv[1]).resolve(strict=True).as_uri()+"?mode=ro", uri=True)) as database:
         database.execute("PRAGMA query_only=ON")
         database.execute("BEGIN")
-        check(database)
+        check(database, sys.argv[2] if len(sys.argv) == 3 else None)
     print("edition_cutover_ready")

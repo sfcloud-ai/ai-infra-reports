@@ -52,7 +52,7 @@ function laterCompleteDelivery(db,day,revision){
    &&receipt.parts_sent===receipt.parts_total&&Array.isArray(images)
    &&(receipt.delivery_kind==='initial'&&receipt.parts_total>=2&&images.length===1
       &&images[0]?.file_id==='scheduled-poster'&&images[0].status==='sent'&&images[0].error==null
-      ||revision>1&&receipt.delivery_kind==='revision_update'&&receipt.parts_total===1&&images.length===0))return row.request_id;
+      ||revision>1&&receipt.delivery_kind==='revision_update'&&receipt.parts_total===1&&images.length===0))return receipt;
  }
  return null;
 }
@@ -90,10 +90,11 @@ export async function advanceScheduledDelivery(state,config,query=queryScheduled
   db.prepare('UPDATE scheduled_handoffs SET poll_order=(SELECT COALESCE(MAX(poll_order),0)+1 FROM scheduled_handoffs) WHERE request_id=?').run(id);
   try{
    if(local.phase==='awaiting_first_delivery'){
-    const coveredBy=laterCompleteDelivery(db,bundle.report.date,bundle.report.revision);
-    if(coveredBy&&firstNoticeRejected(JSON.parse(local.result),JSON.parse(binding))){
-     db.prepare("UPDATE scheduled_handoffs SET phase='policy_rejected',result=json_set(result,'$.covered_by',?) WHERE request_id=?").run(coveredBy,id);
-     return {request_id:id,phase:'policy_rejected',wecom_status:'not_verified',covered_by:coveredBy};
+    const later=laterCompleteDelivery(db,bundle.report.date,bundle.report.revision);
+    if(later&&firstNoticeRejected(JSON.parse(local.result),JSON.parse(binding))){
+     const field=later.delivery_kind==='initial'?'covered_by':'later_update';
+     db.prepare("UPDATE scheduled_handoffs SET phase='policy_rejected',result=json_set(result,?,?) WHERE request_id=?").run('$.'+field,later.request_id,id);
+     return {request_id:id,phase:'policy_rejected',wecom_status:'not_verified',[field]:later.request_id};
     }
     const prior=earlierStartedRequest(db,bundle.report.date,bundle.report.revision);
     if(!prior)continue;
