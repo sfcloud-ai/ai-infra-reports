@@ -1644,11 +1644,12 @@ test('no-dispatch expiry honors the original embedded lease after current owner 
  }finally{s.close();}
 });
 
-function continuationFixture(status='partial',earlySource=false,oldBody=false,originalOverride=null,priorResultChanges={}){
+function continuationFixture(status='partial',earlySource=false,oldBody=false,originalOverride=null,priorResultChanges={},extraArtifacts={}){
  const s=setup(),p=JSON.parse(layeredPlan());p.model_stages=['research','editor','review'];let run=start(s,Buffer.from(JSON.stringify(p)));
  const added=source();if(earlySource)run=execute(s,command('reserve',{operations:[added]},run)).run;
  const originalInput=Buffer.from(JSON.stringify(originalOverride??{request_id:id,stage:'editor',sources:oldBody?[{body_sha256:digest(Buffer.from('new original source body'))}]:[],research:{result_sha256:'a'.repeat(64),outputs:[{sha256:'b'.repeat(64)}]}}));
  const first={...source('editor','model'),max_seconds:600,input_sha256:digest(originalInput)};
+ if(originalOverride?.operation_id)first.operation_id=originalOverride.operation_id;
  run=execute(s,command('reserve',{operations:[first]},run)).run;
  const result=Buffer.from(JSON.stringify({request_id:id,operation_id:first.operation_id,stage:'editor',input_sha256:first.input_sha256,status,elapsed_seconds:400,...priorResultChanges}));
  const head=archive(s,{'stage_artifacts/prior.json':result});
@@ -1665,11 +1666,29 @@ function continuationFixture(status='partial',earlySource=false,oldBody=false,or
   const payload=Buffer.from(JSON.stringify({...payloadValue,continuation:{previous_operation_id:m.previous_operation_id,checkpoint_archive_sha256:m.checkpoint_archive_sha256,checkpoint_file_sha256:m.checkpoint_file_sha256,added_evidence:m.added_evidence},...payloadChanges}));
   if(!('payload_sha256' in changes))m.payload_sha256=digest(payload);
   const data=Buffer.from(JSON.stringify(m));
-  const nextHead=archive(s,{'stage_artifacts/continuation.json':data,'stage_artifacts/new-input.txt':payload,'stage_artifacts/original-input.json':originalInput});
+  const nextHead=archive(s,{'stage_artifacts/continuation.json':data,'stage_artifacts/new-input.txt':payload,'stage_artifacts/original-input.json':originalInput,...extraArtifacts});
   return {...source('editor','model'),max_seconds:800,input_sha256:digest(data),input:{previous_operation_id:first.operation_id,checkpoint_archive_sha256:head,checkpoint_file_sha256:digest(result),continuation_archive_sha256:nextHead}};
  }
  return {s,run,first,added,manifest,next,originalInput,content};
 }
+test('editor continuation reads a bound findings inventory before classifying new content',()=>{
+ for(const repeated of [false,true]){
+  const common={request_id:id,operation_id:randomUUID(),stage:'research',input_sha256:'a'.repeat(64)};
+  const record={operation_id:randomUUID(),input_sha256:'b'.repeat(64),result_sha256:'c'.repeat(64),body_sha256:digest(Buffer.from(repeated?'new original source body':'prior bytes'))};
+  const findings=Buffer.from(JSON.stringify({...common,source_records:{prior:record}}));
+  const outputs=[{name:'findings.json',sha256:digest(findings)}];
+  const research=Buffer.from(JSON.stringify({...common,outputs,status:'partial',elapsed_seconds:1}));
+  const original={request_id:id,stage:'editor',operation_id:randomUUID(),source_records_location:'findings.json#/source_records',source_attempt_count:1,
+   research:{operation_id:common.operation_id,input_sha256:common.input_sha256,result_sha256:digest(research),outputs,status:'partial',elapsed_seconds:1,started_at:'retained'}};
+  const f=continuationFixture('ok',false,false,original,{}, {'stage_artifacts/findings.json':findings,'stage_artifacts/research.json':research});
+  try{
+   const op=f.next({},{research:original.research});
+   const answer=execute(f.s,command('reserve',{operations:[op]},f.run));
+   if(repeated)assert.equal(answer.code,'model_continuation_no_new_content');
+   else assert.equal(answer.status,'committed',JSON.stringify(answer));
+  }finally{f.s.close();}
+ }
+});
 test('prepublication continuation preserves successful results and cumulative stage budget',()=>{
  for(const status of ['partial','ok']){
   const f=continuationFixture(status);try{

@@ -9,6 +9,7 @@ import {isRepositoryResearchPlan,isLayeredResearchPlan,operationBudget,continuat
 // Host authority for a disposable research client. Replies are observations;
 // only a newly committed operation intent can grant one external dispatch.
 import {randomUUID} from 'node:crypto';
+import {isDeepStrictEqual} from 'node:util';
 import {digest,REPOSITORY} from './archive.mjs';
 import {canonicalRequestDate,reportDate,requireThat,decodeBundle} from './report-handoff.mjs';
 import {assertResearchArchive,decodeResearchArchive} from './research-archive.mjs';
@@ -396,6 +397,38 @@ function stageInputContents(value,run,key){
  need(Array.isArray(outputs)&&outputs.every(output=>output&&typeof output==='object'&&!Array.isArray(output)&&Object.keys(output).every(field=>outputFields.has(field))&&string(output.sha256,HASH)),'model_continuation_stage_input');
  return new Set([...value.sources.map(source=>source.body_sha256),...outputs.map(output=>output.sha256)].filter(hash=>string(hash,HASH)));
 }
+function referencedEditorInput(document,run,previousId,stored){
+ const check=value=>need(value,'model_continuation_original_source_reference');
+ const read=hash=>{
+  check(string(hash,HASH));
+  const bytes=stored.byHash.get(hash)?.data;
+  check(bytes&&digest(bytes)===hash);
+  try{return JSON.parse(bytes);}catch{refuse('model_continuation_original_source_reference');}
+ };
+ check(document?.stage==='editor'&&document.request_id===run.request_id&&document.operation_id===previousId&&document.source_records_location==='findings.json#/source_records');
+ const research=document.research;
+ check(research&&string(research.operation_id,UUID)&&string(research.input_sha256,HASH));
+ const result=read(research.result_sha256);
+ check(result?.stage==='research'&&result.request_id===run.request_id&&result.operation_id===research.operation_id&&result.input_sha256===research.input_sha256&&research.status===(result.stage_status??result.status)&&typeof research.elapsed_seconds==='number'&&research.elapsed_seconds===result.elapsed_seconds);
+ const findingsHash=outputs=>{
+  check(Array.isArray(outputs));
+  const matches=outputs.filter(item=>item?.name==='findings.json');
+  check(matches.length===1&&string(matches[0].sha256,HASH));
+  return matches[0].sha256;
+ };
+ const hash=findingsHash(research.outputs);
+ check(hash===findingsHash(result.outputs));
+ const findings=read(hash), records=findings?.source_records;
+ check(['request_id','operation_id','input_sha256','stage'].every(k=>findings?.[k]===result[k])&&records&&typeof records==='object'&&!Array.isArray(records));
+ const sources=Object.values(records).map(record=>{
+  check(record&&string(record.operation_id,UUID)&&['input_sha256','result_sha256','body_sha256'].every(k=>string(record[k],HASH)));
+  const {operation_id,input_sha256,result_sha256,body_sha256}=record;
+  return {operation_id,input_sha256,result_sha256,body_sha256};
+ });
+ check(sources.length>0&&sources.length===document.source_attempt_count&&new Set(sources.map(source=>source.operation_id)).size===sources.length);
+ const {started_at,finished_at,stage_start,input_read_ledger,...originalResearch}=research;
+ return {...document,sources,research:originalResearch};
+}
 function prepublicationModelContinuation(db,run,op,prior,cache){
  need(isLayeredResearchPlan(JSON.parse(Buffer.from(run.plan))),'model_continuation_layered_plan');
  need(run.permit===null,'model_continuation_prepublication_only');
@@ -411,8 +444,13 @@ function prepublicationModelContinuation(db,run,op,prior,cache){
  need(Array.isArray(manifest.added_evidence)&&manifest.added_evidence.length>0&&manifest.added_evidence.length<=64,'model_continuation_evidence');
  let payload,originalInput;
  try{payload=JSON.parse(stored.byHash.get(manifest.payload_sha256).data);originalInput=JSON.parse(stored.byHash.get(prior.input_hash)?.data);}catch{refuse('model_continuation_input_bytes');}
+ const rawOriginal=originalInput;
+ if(op.key==='editor'&&originalInput?.source_records_location==='findings.json#/source_records'&&!Object.hasOwn(originalInput,'sources')){
+  originalInput=referencedEditorInput(rawOriginal,run,prior.operation_id,stored);
+  if(isDeepStrictEqual(payload?.research,rawOriginal.research))payload={...payload,research:originalInput.research};
+ }
  stageInputContents(originalInput,run,op.key);
- const oldContents=new Set(),pending=[originalInput];
+ const oldContents=new Set(),pending=originalInput===rawOriginal?[originalInput]:[rawOriginal,originalInput];
  while(pending.length){const value=pending.pop();if(string(value,HASH))oldContents.add(value);else if(value&&typeof value==='object')for(const item of Object.values(value))pending.push(item);}
  stageInputContents(payload,run,op.key);const binding=payload.continuation;
  need(exact(binding,'previous_operation_id,checkpoint_archive_sha256,checkpoint_file_sha256,added_evidence')&&binding.previous_operation_id===prior.operation_id&&binding.checkpoint_archive_sha256===prior.result_archive&&binding.checkpoint_file_sha256===prior.result_file&&Array.isArray(binding.added_evidence)&&binding.added_evidence.length===manifest.added_evidence.length,'model_continuation_payload_binding');
