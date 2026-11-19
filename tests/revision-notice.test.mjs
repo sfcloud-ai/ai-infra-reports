@@ -12,6 +12,7 @@ import {digest} from '../scripts/archive.mjs';
 import {checkDailyDelivery} from '../scripts/publisher-watchdog.mjs';
 import {TOPIC_IDS} from '../scripts/page-delivery.mjs';
 import {assertPageCorrectionDelivery} from '../scripts/research-page-authority.mjs';
+import {stageFile} from '../scripts/slack-stage-cli.mjs';
 import {installScheduledTables,requireSettledScheduled} from '../scripts/scheduled-delivery-state.mjs';
 import {readReports,migrateArchive,replaceCurrentReport,validateArchive,reindexArchive} from '../scripts/archive.mjs';
 import {publicationSite} from './helpers/publication-site.mjs';
@@ -51,6 +52,8 @@ test('the publication path accepts six topics and blocks a one-page first report
  delete report.page_delivery;
  incoming.set(out+'report.json',Buffer.from(JSON.stringify(report)));
  await assert.rejects(decodeBundle(await makeBundle(),{forPublication:true}),{researchPublicationRejection:'publication_requires_six_complete_topics'});
+ await assert.rejects(stageFile(await makeBundle(),'C123',()=>assert.fail('ticket requested for incomplete edition'),{revision:true,upload:()=>assert.fail('unexpected upload')}),
+  {researchPublicationRejection:'publication_requires_six_complete_topics'});
  assert.throws(()=>replaceCurrentReport(complete,incoming),/Publication requires six complete topic pages/);
  const replacement=JSON.parse(fullFiles.get(out+'report.json'));
  Object.assign(replacement,{schema_version:'1.1',revision:2,revision_notice:report.revision_notice});

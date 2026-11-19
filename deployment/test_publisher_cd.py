@@ -63,6 +63,10 @@ class ReportPartActivationTests(unittest.TestCase):
                 edition_cutover_preflight.check(db,'1795000100.000000')
             db.execute("UPDATE publisher_intake_scan SET watermark='1795000300.000000'")
             edition_cutover_preflight.check(db,'1795000100.000000')
+            db.execute('CREATE TABLE scheduled_handoffs(request_id TEXT,binding TEXT,phase TEXT,result TEXT)')
+            db.execute("INSERT INTO scheduled_handoffs VALUES ('original','{}','admission_pending',NULL)")
+            with self.assertRaises(cd.Deferred):
+                edition_cutover_preflight.check(db,'1795000100.000000')
 
     @unittest.skipUnless(os.name == 'posix', 'Linux deployment lock')
     def test_competing_deployment_and_activation_defer_without_mutating(self):

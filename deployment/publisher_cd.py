@@ -462,30 +462,34 @@ def snapshot(path, settled=True):
             result.append([name, sql, [[{"base64": base64.b64encode(value).decode()} if isinstance(value, bytes) else value
                                       for value in row] for row in rows]])
         if settled:
-            # A retained byte range waits for an external authenticated share.
-            # Compatible releases resume it in place, including unknown POSTs.
-            waiting = ""
-            if 'research_control_report_parts' in {row[0] for row in tables}:
-                waiting = (" AND NOT (phase='receiving' AND kind='part-0' AND EXISTS "
-                           "(SELECT 1 FROM research_control_report_parts p WHERE p.part=0 "
-                           "AND p.source_ts=slack_submission_events.source_ts AND p.file_id=slack_submission_events.file_id))")
-            if pages and database.execute("SELECT 1 FROM research_page_staged WHERE phase!='admitted'").fetchone():
-                raise Deferred('unfinished_page_submission')
-            if submissions and (database.execute("SELECT 1 FROM slack_submission_events WHERE phase!='done' AND NOT coalesce(phase='fenced' AND json_extract(diagnostic,'$.stage')='research_publication' AND json_extract(diagnostic,'$.outcome')='rejected',0)" + waiting).fetchone()
-                                or database.execute("SELECT 1 FROM slack_staged_bundles WHERE phase!='admitted'").fetchone()):
-                raise Deferred('unfinished_slack_submission')
-            if intake:
-                pending = database.execute("SELECT request_id,hash,file_id,source_ts,phase,diagnostic FROM publisher_inbox WHERE phase!='admitted'").fetchall()
-                if any(row[4] != 'fenced' or not (settled_edition_intake(row) or fence and fenced_intake_is_ineligible(database, fence, row[:4])) for row in pending):
-                    raise Deferred('in_flight_or_unknown_operation')
-            if 'scheduled_handoffs' in {row[0] for row in tables}:
-                require_settled_scheduled(database)
-            for name, phase in (("publisher_inbox", "admitted"), ("jobs", "receipt_sent"), ("notices", "sender_reported"), ("notice_commands", "response_sent"), ("notice_recovery_authorizations", "consumed"), ("remote_native_runs", "complete"), ("remote_native_ops", "acknowledged"), ("scheduled_status_replies", "sent")):
-                if name == 'publisher_inbox':
-                    continue
-                if name in {row[0] for row in tables} and database.execute("SELECT count(*) FROM " + name + " WHERE phase!=?", (phase,)).fetchone()[0]:
-                    raise Deferred("in_flight_or_unknown_operation")
+            require_settled_operations(database, {row[0] for row in tables}, fence)
         return hashlib.sha256(json.dumps(result, separators=(",", ":")).encode()).hexdigest()
+
+
+def require_settled_operations(database, table_names, fence):
+    # A retained byte range waits for an external authenticated share.
+    # Compatible releases resume it in place, including unknown POSTs.
+    waiting = ""
+    if 'research_control_report_parts' in table_names:
+        waiting = (" AND NOT (phase='receiving' AND kind='part-0' AND EXISTS "
+                   "(SELECT 1 FROM research_control_report_parts p WHERE p.part=0 "
+                   "AND p.source_ts=slack_submission_events.source_ts AND p.file_id=slack_submission_events.file_id))")
+    if 'research_page_staged' in table_names and database.execute("SELECT 1 FROM research_page_staged WHERE phase!='admitted'").fetchone():
+        raise Deferred('unfinished_page_submission')
+    if 'slack_submission_policy' in table_names and (database.execute("SELECT 1 FROM slack_submission_events WHERE phase!='done' AND NOT coalesce(phase='fenced' AND json_extract(diagnostic,'$.stage')='research_publication' AND json_extract(diagnostic,'$.outcome')='rejected',0)" + waiting).fetchone()
+                        or database.execute("SELECT 1 FROM slack_staged_bundles WHERE phase!='admitted'").fetchone()):
+        raise Deferred('unfinished_slack_submission')
+    if 'publisher_inbox' in table_names:
+        pending = database.execute("SELECT request_id,hash,file_id,source_ts,phase,diagnostic FROM publisher_inbox WHERE phase!='admitted'").fetchall()
+        if any(row[4] != 'fenced' or not (settled_edition_intake(row) or fence and fenced_intake_is_ineligible(database, fence, row[:4])) for row in pending):
+            raise Deferred('in_flight_or_unknown_operation')
+    if 'scheduled_handoffs' in table_names:
+        require_settled_scheduled(database)
+    for name, phase in (("publisher_inbox", "admitted"), ("jobs", "receipt_sent"), ("notices", "sender_reported"), ("notice_commands", "response_sent"), ("notice_recovery_authorizations", "consumed"), ("remote_native_runs", "complete"), ("remote_native_ops", "acknowledged"), ("scheduled_status_replies", "sent")):
+        if name == 'publisher_inbox':
+            continue
+        if name in table_names and database.execute("SELECT count(*) FROM " + name + " WHERE phase!=?", (phase,)).fetchone()[0]:
+            raise Deferred("in_flight_or_unknown_operation")
 
 
 def require_settled_scheduled(database):

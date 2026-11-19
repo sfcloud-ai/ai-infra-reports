@@ -4,6 +4,10 @@ from pathlib import Path
 import sqlite3
 import sys
 import re
+if __package__:
+    from . import publisher_cd
+else:
+    import publisher_cd
 
 
 def check(database, pause_start=None):
@@ -45,6 +49,7 @@ def check(database, pause_start=None):
             LIMIT 1""").fetchone()
         if pending:
             raise ValueError("settle_original_permit_before_advancing_main")
+    publisher_cd.require_settled_operations(database, tables, publisher_cd.producer_fence_snapshot(database))
 
 
 if __name__ == "__main__":
