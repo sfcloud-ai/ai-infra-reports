@@ -11,7 +11,7 @@ import {remoteJournalSchemaObjects} from "./remote-native-journal.mjs";
 import {successorSchemaObjects} from './recovery-control-successor.mjs';
 import {SCHEDULED_SCHEMA,scheduledSchemaObjects,requireSettledScheduled} from './scheduled-delivery-state.mjs';
 import {validateConfig,privateFile,privateDirectory} from "./run-handoff.mjs";
-import {intakeSchemaObjects} from './publisher-intake-state.mjs';
+import {intakeSchemaObjects,editionIntakeRejected} from './publisher-intake-state.mjs';
 const known=new Set(["publisher_intake_scan","publisher_inbox","scope","jobs","notice_scope","notices","notice_commands","ready_migrations","notice_recovery_authorizations","remote_native_runs","remote_native_ops","recovery_control_successors",...Object.keys(SCHEDULED_SCHEMA)]);
 function inspect(db){
  requireThat(db.prepare("PRAGMA integrity_check").get().integrity_check==="ok","State integrity failed");
@@ -22,7 +22,8 @@ function inspect(db){
  scheduledSchemaObjects(db);
  const intakeObjects=intakeSchemaObjects(db);
  if(intakeObjects.length){
-  requireThat(db.prepare("SELECT count(*) AS n FROM publisher_inbox WHERE phase!='admitted'").get().n===0,'Unresolved durable inbox prevents migration');
+  const unresolved=db.prepare("SELECT * FROM publisher_inbox WHERE phase!='admitted'").all();
+  requireThat(unresolved.every(editionIntakeRejected),'Unresolved durable inbox prevents migration');
   requireThat(db.prepare('SELECT count(*) AS n FROM publisher_intake_scan WHERE upper_bound IS NOT NULL OR page_cursor IS NOT NULL').get().n===0,'Unfinished durable scan prevents migration');
  }
  if(tables.some(t=>t.name==='scheduled_handoffs'))requireSettledScheduled(db);

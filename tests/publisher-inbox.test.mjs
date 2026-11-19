@@ -4,6 +4,7 @@ import {mkdtemp,rm} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {PublisherInbox,intakeStatus} from '../scripts/publisher-inbox.mjs';
+import {inspectPublisherDay} from '../scripts/producer-inspect.mjs';
 import {HandoffState,handoffScope} from '../scripts/handoff-state.mjs';
 import {SlackHandoff} from '../scripts/slack-handoff.mjs';
 import {handoffTick,prepareSlack,validateConfig} from '../scripts/run-handoff.mjs';
@@ -19,6 +20,25 @@ const message={type:'message',subtype:'file_share',user:'U123',ts,text:`!ai-repo
 const queued={request_id:id,report_date:'2026-11-01',report_commit:MERGE,bundle_sha256:hash,status:'queued',phase:'pending',parts_total:2,parts_sent:0};
 const make=(filename=':memory:')=>new HandoffState(filename,handoffScope(config));
 const slackFor=(messages=[message])=>({history:async()=>[],historyPage:async()=>({messages,next_cursor:null}),exactPublish:async()=>message,download:async()=>bytes});
+
+test('a bound incomplete edition settles its original inbox row before job admission',async()=>{
+ const day='2026-11-19',files=new Map([...FILES].map(([name,bytes])=>[name.replace('2026-11-01',day),bytes]));
+ const metadata=[...files.keys()].find(name=>name.endsWith('/report.json')),report=JSON.parse(files.get(metadata));
+ report.date=day;
+ report.entries=report.entries.filter(entry=>entry.article_id!==report.articles[0].id);
+ files.set(metadata,Buffer.from(JSON.stringify(report)));
+ const packet=await encodeBundle(files,id,BASE,'b'.repeat(40)),envelope={...message,text:'!ai-report publish '+id+' '+digest(packet)};
+ const s=make();try{
+  const inbox=new PublisherInbox(s,config),slack={...slackFor([envelope]),exactPublish:async()=>envelope,download:async()=>packet};
+  await inbox.scan(slack,now);await inbox.admitOne(slack,now);
+  const row=intakeStatus(s.db,id);assert.equal(row.phase,'fenced');assert.equal(row.diagnostic.hash,digest(packet));
+  assert.equal(row.diagnostic.code,'publication_requires_six_complete_topics');assert.deepEqual(inbox.pending(),[]);assert.equal(s.metadata(id),null);
+  const next={kind:'inspect',request_id:'morning-20261120-r1',report_date:'2026-11-20',query_id:'12345678-1234-4234-8234-123456789012',bundle_sha256:'a'.repeat(64)};
+  assert.equal((await inspectPublisherDay(s,config,next,ts)).publisher,null);
+  s.db.prepare("UPDATE publisher_inbox SET diagnostic=json_set(diagnostic,'$.hash',?)").run('0'.repeat(64));
+  await assert.rejects(inspectPublisherDay(s,config,next,ts),/Quarantined envelope is no longer fenced/);
+ }finally{s.close();}
+});
 
 test('explicit durable boundary preserves existing identity scope and rejects ambiguous configuration',()=>{
  assert.equal(validateConfig(config),config);

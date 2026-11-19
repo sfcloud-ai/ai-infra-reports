@@ -29,10 +29,10 @@ export async function stageFile(bytes,channel,callTool,{upload,probe=false,resea
   requireThat(typeof authority?.validateArchive==='function','Original repository plan check required before upload');
   await authority.validateArchive(archive);
  }else if(revision){
-  const bundle=await decodeBundle(bytes);requireThat(['1.1','1.2'].includes(bundle.report.schema_version)&&bundle.report.revision>1&&['correction','material_update','maintenance'].includes(bundle.report.revision_notice?.kind),'Explicit revision notice required');
+  const bundle=await decodeBundle(bytes,{forPublication:true});requireThat(['1.1','1.2'].includes(bundle.report.schema_version)&&bundle.report.revision>1&&['correction','material_update','maintenance'].includes(bundle.report.revision_notice?.kind),'Explicit revision notice required');
   id=bundle.data.request_id;name='ai-brief-bundle.json';comment=`!ai-report revise ${id} ${bundle.hash}`;
  }else{
-  const bundle=await decodeBundle(bytes);requireThat(bundle.data.request_id===`morning-${bundle.report.date.replaceAll('-','')}-r1`||(bundle.report.schema_version==='1.2'&&bundle.report.revision>1&&authority),'Daily revision-one staging required');
+  const bundle=await decodeBundle(bytes,{forPublication:true});requireThat(bundle.data.request_id===`morning-${bundle.report.date.replaceAll('-','')}-r1`||(bundle.report.schema_version==='1.2'&&bundle.report.revision>1&&authority),'Daily revision-one staging required');
   id=bundle.data.request_id;name='ai-brief-bundle.json';comment=`!ai-report stage-v2 ${id} ${bundle.hash} ${authority.permit_id}`;
  }
  if(authority?.permit_id&&!research&&bytes.length>REPORT_SPLIT_THRESHOLD&&await authority.multipartRequired()){
@@ -87,7 +87,12 @@ export async function stagingMain(args){
    requireThat(value.result&&!value.result.isError,'Native staging failed; reconcile original file');return value.result;
   };
   emit(await stageFile(bytes,channel,callTool,{probe:mode==='--probe-managed-proxy',revision:mode==='--revision-managed-proxy',observe:emit}));return 0;
- }catch{emit(revision?{type:'revision_submission_unconfirmed',publication_requested:true,outcome:'unknown',next_action:'reconcile_original_file_command_and_revision_status'}:{type:'staging_unconfirmed',publication_allowed:false,next_action:'read_original_file_and_stage; do not replay this attempt'});return 1;}
+ }catch(error){
+  if(revision&&error.researchPublicationRejection){
+   emit({type:'revision_submission_rejected',publication_requested:false,outcome:'not_submitted',reason:error.researchPublicationRejection});return 1;
+  }
+  emit(revision?{type:'revision_submission_unconfirmed',publication_requested:true,outcome:'unknown',next_action:'reconcile_original_file_command_and_revision_status'}:{type:'staging_unconfirmed',publication_allowed:false,next_action:'read_original_file_and_stage; do not replay this attempt'});return 1;
+ }
  finally{lines?.close();process.stdin.pause();}
 }
 if(import.meta.url===pathToFileURL(process.argv[1]??'').href)process.exitCode=await stagingMain(process.argv.slice(2));

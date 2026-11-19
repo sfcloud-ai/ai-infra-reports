@@ -80,6 +80,17 @@ for(const paged of [false,true])test(`native ${paged?'paged revision waits for a
  }finally{state.close();}
 });
 
+test('the original revision status identifies an incomplete bundle without leaving pending work',async()=>{
+ const state=await setup(),revision='morning-20261119-r2';
+ try{
+  const diagnostic={stage:'research_publication',code:'publication_requires_six_complete_topics',outcome:'rejected'};
+  state.db.prepare("INSERT INTO slack_submission_events (source_ts,kind,request_id,hash,file_id,phase,diagnostic) VALUES (?,'revision',?,?,?,'fenced',?)")
+   .run(ts,revision,hash,'FREVISION',JSON.stringify(diagnostic));
+  const status=submissionStatus(state.db,revision);
+  assert.deepEqual(status.pending,[]);
+  assert.deepEqual(status.rejected,{request_id:revision,source_ts:ts,kind:'revision',hash,file_id:'FREVISION',diagnostic});
+ }finally{state.close();}
+});
 test('staging is opt-in, bound to original scope/fence, and disables local completion without erasing it',async()=>{
  const state=await setup();try{
   const {notification_destination,...valid}=config;assert.equal(validateConfig(valid),valid);
