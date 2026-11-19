@@ -51,7 +51,7 @@ function reportFromBundle(bytes,hash){
 }
 // Ordinary edits must not replace a live page before its original delivery settles.
 // This gate is also called immediately before proposal for already-admitted jobs.
-export function assertPageCorrectionDelivery(db,bundle){
+export function assertPageCorrectionDelivery(db,bundle,schedulerActivation){
  const report=bundle.report;
  if(!['correction','material_update','maintenance'].includes(report.revision_notice?.kind))return;
  // A successor cannot discard its predecessor's page contract, even when all
@@ -71,6 +71,7 @@ export function assertPageCorrectionDelivery(db,bundle){
    const expected={request_id:predecessorId,report_date:report.date,report_commit:detail.commit,bundle_sha256:predecessor.hash};
    const installed=db.prepare("SELECT 1 FROM sqlite_master WHERE name='scheduled_handoffs'").get();
    const handoff=installed&&db.prepare('SELECT binding,phase,result FROM scheduled_handoffs WHERE request_id=?').get(predecessorId);
+   if(!handoff&&schedulerActivation&&report.date<schedulerActivation&&report.schema_version!=='1.2')return;
    need(handoff&&equal(JSON.parse(handoff.binding),expected),'page_correction_delivery_incomplete');
    const receipt=JSON.parse(handoff.result);
    const refused=['policy_rejected','awaiting_first_delivery'].includes(handoff.phase)&&firstNoticeRejected(receipt,expected);

@@ -74,6 +74,8 @@ test('the publication path accepts six topics and blocks a one-page first report
   const bundle=await decodeBundle(await encodeBundle(fullFiles,'morning-20261119-r2','a'.repeat(40),'b'.repeat(40)));
   const binding={request_id:previous,report_date:day,report_commit:MERGE,bundle_sha256:hash};
   installScheduledTables(s.db,['scheduled_handoffs']);
+  assert.doesNotThrow(()=>assertPageCorrectionDelivery(s.db,bundle,'2026-11-20'));
+  assert.throws(()=>assertPageCorrectionDelivery(s.db,bundle,day),/page_correction_delivery_incomplete/);
   s.db.prepare("INSERT INTO scheduled_handoffs VALUES (?,?,'admission_pending',NULL,0)").run(previous,JSON.stringify(binding));
   assert.throws(()=>assertPageCorrectionDelivery(s.db,bundle),/page_correction_delivery_incomplete/);
   const refusal={...binding,status:'rejected',error:'first_notice_requires_all_six_articles'};

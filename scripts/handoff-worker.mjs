@@ -4,7 +4,7 @@ import {decodeBundle,requireThat,SHA} from "./report-handoff.mjs";
 import {failureDetail,safeDiagnostic,isSlackWriteUnexecuted} from "./handoff-recovery.mjs";
 const PR=new RegExp("^https://github.com/"+REPOSITORY+"/pull/([1-9][0-9]*)$");
 // An interrupted write must be reconciled before the original request advances.
-export async function advanceHandoff(state,id,io){
+export async function advanceHandoff(state,id,io,schedulerActivation){
  let job=state.get(id);requireThat(job,"Unknown request");
  if(["sending","receipt_unknown"].includes(job.phase)){
   requireThat(typeof io.findReceipt==='function',"Unresolved external mutation; operator reconciliation required");
@@ -36,7 +36,7 @@ export async function advanceHandoff(state,id,io){
   if(proposalAfter>(io.now??Date.now)()){
    state.move(id,'received','received',{...job.detail,recovery:{...job.detail.recovery,next_at:Math.max(job.detail.recovery?.next_at??0,proposalAfter)}});return;
   }
-  assertPageCorrectionDelivery(state.db,bundle);
+  assertPageCorrectionDelivery(state.db,bundle,schedulerActivation);
   if(!state.move(id,"received","proposing",job.detail))return;
   try{
    const result=await io.propose(bundle.files,bundle.data.expected_base_sha);

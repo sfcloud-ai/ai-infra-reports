@@ -35,27 +35,44 @@ class ReportPartActivationTests(unittest.TestCase):
             db.execute('CREATE TABLE jobs(id TEXT,hash TEXT,phase TEXT,detail TEXT)')
             db.execute('CREATE TABLE research_control_runs(request_id TEXT,report_date TEXT,permit TEXT)')
             db.execute('CREATE TABLE research_page_rounds(request_id TEXT,run_id TEXT,permit TEXT)')
-            edition_cutover_preflight.check(db)
+            pause = '1795000100.000000'
+            def check():
+                edition_cutover_preflight.check(db, pause)
+            with self.assertRaisesRegex(ValueError,'slack_intake_watermark_required'):
+                check()
+            db.execute('CREATE TABLE publisher_intake_scan(id INTEGER,watermark TEXT,upper_bound TEXT,page_cursor TEXT)')
+            with self.assertRaisesRegex(ValueError,'drain_slack_intake'):
+                check()
+            db.execute("INSERT INTO publisher_intake_scan VALUES(1,?,NULL,NULL)", (pause,))
+            check()
             db.execute('INSERT INTO research_control_runs VALUES (?,?,?)', ('original','2026-11-18',json.dumps({'bundle_sha256':'a'*64})))
             with self.assertRaisesRegex(ValueError,'settle_original_permit'):
-                edition_cutover_preflight.check(db)
-            db.execute('INSERT INTO jobs VALUES (?,?,?,?)', ('original','b'*64,'receipt_sent',json.dumps({'proof':{'publication_status':'verified'}})))
+                check()
+            def detail(digest):
+                return json.dumps({'commit':'c'*40,'proof':{'publication_status':'verified','commit':'c'*40,'bundle_sha256':digest}})
+            db.execute('INSERT INTO jobs VALUES (?,?,?,?)', ('original','b'*64,'receipt_sent',detail('b'*64)))
             with self.assertRaisesRegex(ValueError,'settle_original_permit'):
-                edition_cutover_preflight.check(db)
-            db.execute("UPDATE jobs SET hash=?", ('a'*64,))
-            edition_cutover_preflight.check(db)
+                check()
+            db.execute(cd.JOB_REPLACEMENT_SCHEMA)
+            db.execute("INSERT INTO job_replacement_audit VALUES(?,?,?,?,?,?,?,?,?,?)",
+                       ('original','a'*64,'1795000000.000000',b'original','received','{}','b'*64,'c'*40,'2026-11-18','authorized correction'))
+            check()
+            db.execute("UPDATE jobs SET detail=?", (detail('d'*64),))
+            with self.assertRaisesRegex(ValueError,'settle_original_permit'):
+                check()
+            db.execute("UPDATE jobs SET hash=?,detail=?", ('a'*64,detail('a'*64)))
+            check()
             db.execute('CREATE TABLE research_control_events(phase TEXT,bytes BLOB)')
             db.execute('INSERT INTO research_control_events VALUES (?,?)', ('pending',b'{"action":"page_permit"}'))
             with self.assertRaisesRegex(ValueError,'settle_original_permit_command'):
-                edition_cutover_preflight.check(db)
+                check()
             db.execute("UPDATE research_control_events SET phase='sent'")
             db.execute('CREATE TABLE slack_submission_events(phase TEXT)')
             db.execute("INSERT INTO slack_submission_events VALUES ('pending')")
             with self.assertRaisesRegex(ValueError,'settle_original_intake'):
-                edition_cutover_preflight.check(db)
+                check()
             db.execute("UPDATE slack_submission_events SET phase='done'")
-            db.execute('CREATE TABLE publisher_intake_scan(id INTEGER,watermark TEXT,upper_bound TEXT,page_cursor TEXT)')
-            db.execute("INSERT INTO publisher_intake_scan VALUES(1,'1795000000.000000','1795000300.000000','more')")
+            db.execute("UPDATE publisher_intake_scan SET watermark='1795000000.000000',upper_bound='1795000300.000000',page_cursor='more'")
             with self.assertRaisesRegex(ValueError,'drain_slack_intake'):
                 edition_cutover_preflight.check(db,'1795000100.000000')
             db.execute("UPDATE publisher_intake_scan SET upper_bound=NULL,page_cursor=NULL")

@@ -114,7 +114,7 @@ test('a bound admission rejection survives retries and identifies the correction
  let wrong=true,reply;
  const query=async(config,request)=>{
   calls.push(request.action);
-  return request.action==='status'?{status:'not_found'}:{status:'rejected',error:'first_notice_requires_all_six_articles',
+  return request.action==='status'?{status:'not_found'}:{status:'not_verified',error:'first_notice_requires_all_six_articles',
    request_id:id,report_commit:MERGE,bundle_sha256:wrong?'e'.repeat(64):hash};
  };
  try{

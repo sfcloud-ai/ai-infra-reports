@@ -162,7 +162,7 @@ export async function handoffTick(state,config,slack,io){
      // Defer before creating a write intent; other methods may still progress.
      state.move(candidate.id,before.phase,before.phase,{...before.detail,recovery:{...before.detail.recovery,next_at:Math.max(before.detail.recovery?.next_at??0,sharedDeadline)}});break;
     }
-    try{await advanceHandoff(state,candidate.id,io);}catch(error){
+    try{await advanceHandoff(state,candidate.id,io,config.scheduled_delivery?.activation_date);}catch(error){
      // Proposal/receipt handlers already preserve write outcome before throwing.
      const after=state.metadata(candidate.id);
      if((after.detail.recovery?.attempts??0)===(before.detail.recovery?.attempts??0))recordHandoffFailure(state,candidate.id,error,now());

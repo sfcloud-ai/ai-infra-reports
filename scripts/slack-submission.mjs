@@ -104,7 +104,7 @@ export async function advanceSubmission(state,config,slack,query=queryScheduled,
    db.exec('BEGIN IMMEDIATE');try{
     assertSubmission(db,config);
     if(pageRevisionReserved(db,row.request_id,date))throw Object.assign(Error('Revision reserved by original page continuation'),{researchPublicationRejection:'page_revision_reserved'});
-    assertPageCorrectionDelivery(db,bundle);
+    assertPageCorrectionDelivery(db,bundle,config.scheduled_delivery.activation_date);
     const prior=state.metadata(row.request_id);
     if(prior)requireThat(prior.hash===row.hash&&prior.source_ts===row.source_ts&&prior.detail.intake_file_id===row.file_id,'Original revision publication conflict');
     else{

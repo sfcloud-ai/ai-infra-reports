@@ -10,7 +10,7 @@ export function installScheduledTables(db,names){
  for(const name of names)db.exec(SCHEDULED_SCHEMA[name].replace('CREATE TABLE ','CREATE TABLE IF NOT EXISTS '));
 }
 export function firstNoticeRejected(result,binding){
- return result?.status==='rejected'&&result.error==='first_notice_requires_all_six_articles'&&
+ return ['not_verified','rejected'].includes(result?.status)&&result.error==='first_notice_requires_all_six_articles'&&
   result.request_id===binding.request_id&&result.report_commit===binding.report_commit&&result.bundle_sha256===binding.bundle_sha256;
 }
 export function scheduledSchemaObjects(db){
