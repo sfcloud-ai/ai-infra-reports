@@ -1,0 +1,149 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-11-19",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-11-19",
+  "subtitle": "部分晨报｜ModelScope 目录仍有时段缺口，arXiv 公告清单待核。",
+  "articles": [
+    {
+      "id": "model-serving-gpu",
+      "title": "模型服务与 GPU 超配：SGLang 把排队提示也算进分流负载",
+      "summary": "MI350X 四个 DP rank 的对照中，只计在用 KV 时三次请求均落到积压 rank，改用 V4 上报的在用 KV 加排队提示后为零次。",
+      "sha256": "4e764443fd55900684bc4452a33814e255b9295c9d1690c9eda84a3aa53f11de"
+    },
+    {
+      "id": "hardware-status",
+      "title": "硬件与算力平台：八张 RTX PRO 6000 上的稀疏索引耗时",
+      "summary": "八张 RTX PRO 6000 Blackwell Server Edition 离线运行 DeepSeek-V4.1-Flash；对比作者 sm120-offline 分支的早期实现，索引器从 4.9 降到 2.1 毫秒/步，整步从 6.99 到 7.17 steps/s。",
+      "sha256": "a53fb6dc848a239548d947ea00f497b8f386eb3a6715d15c26cb9fb0124e6040"
+    },
+    {
+      "id": "model-architecture-status",
+      "title": "模型与架构：vLLM 留住最近一次跨界的 Mamba 状态",
+      "summary": "Mamba align 稀疏保留模式下，每请求每组稳态持块从一块变为两块，峰值预算原已涵盖两块。另核对三家公开模型目录及 Qwen 官方英文接口的 41 篇正文。",
+      "sha256": "5e14092e5fd40a3540c7ec19c0a00bee84c22e75cac221d4e586508871a6194c"
+    },
+    {
+      "id": "embodied-training",
+      "title": "制造业具身智能训练：缺陷样本怎样生成，限步回合怎样留存",
+      "summary": "Cosmos 区分缺陷样本、属性增强成本和组集时间；LeRobot 在模拟评估达到步数上限时写入末帧并保留成功标记。两项均未给出产线质量指标。",
+      "sha256": "18fbf4778734f4c91632afbf9fb8b7ce20ed77394ea84d67a6bb19811fae9bd2"
+    },
+    {
+      "id": "small-model-status",
+      "title": "前沿小模型：Rumble-2-Flash 开放 0.5B 语音识别权重",
+      "summary": "Reson8 以 Apache-2.0 开放多语言语音识别权重。H200 上 vLLM 的英语赛道平均词错误率为 6.60%；302 小时呼叫中心评测另报 7.86%。",
+      "sha256": "ab7012bee0b9d18d67b8b3e36cf3d9e37d997d0b1c5a8613ff76155b016e44ba"
+    },
+    {
+      "id": "inference-engines",
+      "title": "推理引擎每日变动：vLLM 校正滑窗卸载收尾，另两家推进路由和离线适配",
+      "summary": "vLLM 逐步计算滑窗 KV 扫描下界，在符合尾段保留条件时降低下界，保护结束时的存储。另有 SGLang 可选 DP 路由策略、DeepInfer 离线测试和技术博客部署记录。",
+      "sha256": "93f598a7272a31f7b293aaea46e712d565c4416d3658ebeab42d820af06df36f"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-11-19-sglang-pr-51147",
+      "event_key": "sglang-pr-51147",
+      "title": "SGLang 在四个 DP rank 上用引擎报告的 KV 负载选择请求去向",
+      "summary": "MI350X 四个 DP rank 的对照中，只计在用 KV 时三次请求均落到积压 rank，改用 V4 上报的在用 KV 加排队提示后为零次。旧版上报只包含在用 KV。",
+      "source_urls": [
+        "https://api.github.com/repos/sgl-project/sglang/pulls/51147",
+        "https://api.github.com/repos/sgl-project/sglang/pulls/51147/files?page=1&per_page=12"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-11-19-deepinfer-pr-289",
+      "event_key": "deepinfer-pr-289",
+      "title": "DeepInfer 在 nv-dev 合入 RTX PRO 6000 Blackwell 的 SM120 离线路径",
+      "summary": "开发分支 nv-dev 的 SM120 离线路径在八张 RTX PRO 6000 Blackwell Server Edition 上与作者 sm120-offline 分支的早期实现对照。DSpark 5、64 路解码下，步速 6.99→7.17 steps/s，索引器 4.9→2.1 毫秒/步。",
+      "source_urls": [
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/pulls/289",
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/pulls/289/files?page=1&per_page=16"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status"
+    },
+    {
+      "id": "2026-11-19-vllm-pr-67053",
+      "event_key": "vllm-pr-67053",
+      "title": "vLLM 为后续轮次保留最近一次 decode 边界的 Mamba 状态",
+      "summary": "vLLM 在 Mamba align 稀疏保留模式下暂留最近的解码边界，在请求释放时登记一份可复用状态。稳态每请求每组多持一块，原峰值规划已预留两块。",
+      "source_urls": [
+        "https://api.github.com/repos/vllm-project/vllm/pulls/67053",
+        "https://api.github.com/repos/vllm-project/vllm/pulls/67053/files?page=1&per_page=12"
+      ],
+      "update_of": null,
+      "article_id": "model-architecture-status"
+    },
+    {
+      "id": "2026-11-19-nvidia-cosmos-datasets-20261118",
+      "event_key": "nvidia-cosmos-datasets-20261118",
+      "title": "NVIDIA Cosmos 用合成缺陷图和来源清单构建工业视觉训练数据",
+      "summary": "Cosmos 生成可追溯的缺陷图像对。按八张 RTX PRO 6000 Blackwell 服务器每天约 960 美元计算，另列图像属性增强约 42,649 对/天、视频增强约 305 段/天；费用仅计计算。",
+      "source_urls": [
+        "https://developer.nvidia.com/blog/build-training-ready-physical-ai-datasets-with-two-prompts-in-nvidia-cosmos/"
+      ],
+      "update_of": null,
+      "article_id": "embodied-training"
+    },
+    {
+      "id": "2026-11-19-lerobot-pr-5405",
+      "event_key": "lerobot-pr-5405",
+      "title": "LeRobot 补存达到评估步数上限的回合",
+      "summary": "LeRobot 在模拟评估达到步数上限时同样保存整段回合和末帧，成功状态沿用模拟器结果。CPU 测试共 11 项通过。",
+      "source_urls": [
+        "https://api.github.com/repos/huggingface/lerobot/pulls/5405",
+        "https://api.github.com/repos/huggingface/lerobot/pulls/5405/files?page=1&per_page=12"
+      ],
+      "update_of": null,
+      "article_id": "embodied-training"
+    },
+    {
+      "id": "2026-11-19-reson8-rumble-2-flash-open-weights",
+      "event_key": "reson8-rumble-2-flash-open-weights",
+      "title": "Reson8 公布 Rumble-2-Flash 开放权重和语音识别评测",
+      "summary": "Reson8 以 Apache-2.0 开放多语言语音识别权重。H200 上 vLLM 的英语赛道平均词错误率为 6.60%；302 小时呼叫中心评测另报 7.86%。",
+      "source_urls": [
+        "https://huggingface.co/blog/rumble-2-flash",
+        "https://github.com/huggingface/blog/pull/3608",
+        "https://huggingface.co/Reson8/Rumble-2-Flash"
+      ],
+      "update_of": null,
+      "article_id": "small-model-status"
+    },
+    {
+      "id": "2026-11-19-vllm-pr-68359",
+      "event_key": "vllm-pr-68359",
+      "title": "vLLM 在每个调度步校正滑窗 KV 过期块的扫描下界",
+      "summary": "按计算进度触发存储时，各调度步都计算扫描下界；当保留间隔设为 None 且对齐尾段起点低于已存进度时才降低下界。四个调度器用例验证修复，双卡离线实验记录到分支覆盖。",
+      "source_urls": [
+        "https://api.github.com/repos/vllm-project/vllm/pulls/68359",
+        "https://api.github.com/repos/vllm-project/vllm/pulls/68359/files?page=1&per_page=12"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    }
+  ],
+  "images": [
+    {
+      "path": "assets/overview.png",
+      "sha256": "447fccf7dc5b009fa202fc483ed44665ec351cddcff2b21aa4dcad4eaaadcc3e",
+      "alt": "六主题总览，含 SGLang V4 路由上报、SM120 离线路径、Mamba 状态、训练数据、Rumble-2-Flash 开放权重与滑窗 KV。页脚列出ModelScope 模型目录和 arXiv 公告清单的覆盖边界。"
+    },
+    {
+      "path": "assets/routing.png",
+      "sha256": "533bc61fe1e04a8e3688689e8f1263511ed2f9a52d3e76703c4cb5f12ddb9860",
+      "alt": "V4 上报在用 KV 与排队提示，旧版只报在用 KV。路由器计入本地新分派并随机二选一；读数缺失或过期时回退到在途请求数。"
+    },
+    {
+      "path": "assets/training-data.png",
+      "sha256": "84eb6ceff208fe6930ba97856c3f904952ac4ed7288ecd6325241393248b5d00",
+      "alt": "两条独立流程：Cosmos 生成带来源的缺陷图像对；LeRobot 将自然结束或限步结束的回合保存。"
+    }
+  ],
+  "poster": "assets/overview.png"
+}
