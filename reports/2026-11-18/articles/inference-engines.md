@@ -26,7 +26,21 @@
 
 作者环境为 8×910B3、CANN 9.2.0、Python 3.12、torch_npu 2.13.0.rc1。对这份涉及 111 个文件的提案，本期只采用与上述布局直接相关的 diff。主线说明列的是 SM100/Ascend 950 的离线路径，当前开源实现缺完整 KV 系统、分离部署和负载均衡。讨论上线前，先验证固定 PR head 的数值对齐、图回退和页边界，再核对 MTP 与视觉语言任务。A5、GPU 以及 H100/H200 均没有这组真机结果。
 
-**代码与文章的检索范围。** 在截至 11 月 17 日 22:20 UTC 的 24 小时内，默认分支按 committer.date 可见的提交数为 vLLM 91、SGLang 100。两仓的 PR 列表分别只读取按更新时间排列的前 20 项，不能由提交数推出所有 PR、后续回退或博客均已核完。DeepInfer 官方技术文章的全窗目录仍缺。四类跨仓发现也只记录了本期 24 小时范围，不能替代扩窗文章的检索记录。
+## 同期合入的五项补查
+
+这些提交都出现在原日期窗口保存的默认分支清单中。11 月 19 日补读了各自的 PR、文件差异和合并提交。
+
+| 变更 | 适用范围与工程含义 |
+| --- | --- |
+| [vLLM #61051](https://github.com/vllm-project/vllm/pull/61051) | PyTorch 将 CUDA 和 ROCm 张量都标为 `device.type == "cuda"`。这两种设备使用 Triton 直接搬运连续字节段，省去批量收集源块的临时显存。这条路径要求源块和目标块的编号没有交集，遇到链式拷贝会触发断言。CPU 和 XPU 等其他设备沿用索引拷贝。作者在 GB200、CUDA 13.0 上验证。 |
+| [vLLM #67966](https://github.com/vllm-project/vllm/pull/67966) | 在可扩展 KV 缓存的启动路径，缩容会解除部分块的映射。此次修复在容量预热前清零块表里的陈旧索引。故障最初出现在使用 ROCm AITER 的 MI355X 上，触发测试为 EAGLE 最大长度测试。 |
+| [SGLang #44447](https://github.com/sgl-project/sglang/pull/44447) | Qwen3.8-Flash-Next 在共享 CP/TP 的 prefill 组内分片全注意力 KV 页时，需要启用 `--enable-kv-cache-sharding`，并使 decode 侧的 attention TP 宽度与共享组匹配。decode 从多个 prefill rank 接收 KV，辅助状态由匹配的 rank 发送，涉及 Mooncake 和 NIXL。PR 未提供同条件测速。 |
+| [SGLang #50771](https://github.com/sgl-project/sglang/pull/50771) | 启用 NVIDIA Mega-MoE 本地化时，程序在模型权重就位后停止 DeepGEMM 的 MLOPart 辅助进程，再估算 KV 容量。程序最多等 5 秒让相关 MPS 进程退出；超时会记录告警并继续启动，此时残余显存占用仍可能影响估算。 |
+| [SGLang #50895](https://github.com/sgl-project/sglang/pull/50895) | 分离部署的 decode 侧把仍在运行请求的首个 token 和第一次 decode 输出一起发出。GB300 上 DeepSeek-V4.1/MTP 的多轮负载中，作者报告 p90 TPOT 降低约 3%–6%；首 token 会等待一次 decode，吞吐在运行噪声范围内。 |
+
+**检索口径。** 原研究截止于 11 月 17 日 22:20 UTC。此前 24 小时的原始默认分支清单含 vLLM 91 条、SGLang 100 条提交。11 月 19 日按明确起止时间补查 GitHub 的公开 PR：vLLM 有 191 项在窗内创建、91 项合并，SGLang 分别为 199 项和 105 项；同一 PR 可以同时出现于两个集合。过去 24 小时的更新排序另受截止后编辑影响，不能把回查时看到的排序还原成当日快照。SGLang 当时的官方目录和随后保存的 Inkling 正文均署 11 月 12 日。[SGLang 官方博客](https://www.sglang.io/blog)
+
+按保留的事件时间戳逐项核对，窗口内有活动的 PR 至少包括 vLLM 865 个和 SGLang 749 个。其余 349 个 vLLM 候选和 326 个 SGLang 候选缺少能落在窗口内的时间证据。其中 16 个 SGLang PR 出现在历史搜索结果里，但返回的更新时间已过截止点，已从确认数中扣除。DeepInfer 官方技术文章仍缺完整窗口目录。
 
 ## 原始来源
 

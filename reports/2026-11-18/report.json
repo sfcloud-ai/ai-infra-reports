@@ -1,7 +1,7 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "date": "2026-11-18",
-  "revision": 1,
+  "revision": 2,
   "title": "AI Infra 晨报 · 2026-11-18",
   "subtitle": "归档稿，正式生产审计尚未完成。部分晨报｜覆盖缺口：架构、引擎。官方模型文章、权重记录和引擎 PR 未覆盖完整窗口。",
   "articles": [
@@ -39,7 +39,7 @@
       "id": "inference-engines",
       "title": "推理引擎每日变动：解码队列、推测验证与异构缓存布局",
       "summary": "vLLM 的草稿 KV、SGLang 的传输队列与自适应验证、DeepInfer 的在审 Ascend 布局分别影响分配、调度与异构适配。",
-      "sha256": "89843ea5b934c7a549e938efd8cc4d8c7154d990f60db9ef117a55f6620a08f3"
+      "sha256": "6ed4cf171ef3cd06eddec36a4894c2ccde9bf6e75f803f65b7702a17e6323ec7"
     }
   ],
   "entries": [
@@ -104,7 +104,7 @@
       "article_id": "small-model-status"
     },
     {
-      "id": "2026-11-18-sglang-pr-50712",
+      "id": "2026-11-18-sglang-pr-50712-r2",
       "event_key": "sglang-pr-50712",
       "title": "SGLang：retracted 请求等待时继续轮询 decode 传输队列",
       "summary": "11月17日合并 #50712（372b35034dbf3855044eb9a52a7fa7477c39cc1b）。旧逻辑在 retracted queue 非空时提前返回，完成但尚未接收的传输仍占页和 decode reservation，使待恢复请求一直无法容纳。改动保留 transfer queue 轮询，同时禁止新 preallocation，既让传输完成后的释放取得进展，也维持 retracted 请求优先级。",
@@ -112,11 +112,11 @@
         "https://api.github.com/repos/sgl-project/sglang/pulls/50712",
         "https://api.github.com/repos/sgl-project/sglang/commits/372b35034dbf3855044eb9a52a7fa7477c39cc1b"
       ],
-      "update_of": null,
+      "update_of": "2026-11-18-sglang-pr-50712",
       "article_id": "inference-engines"
     },
     {
-      "id": "2026-11-18-sglang-pr-46190",
+      "id": "2026-11-18-sglang-pr-46190-r2",
       "event_key": "sglang-pr-46190",
       "title": "SGLang 将 DFlash2 选择器置信度接入自适应验证预算",
       "summary": "合并提交 4b9f9043faee0eb8824c47aaaaeee8f29c5af35e。用选择器行的最大概率估计各位置的接受率，复用 DSpark 规划器按请求分配验证长度。cap-accept 验全块但截断接受；compact 打包后按 token 档位回放 CUDA 图。小批次若最短方案仍占同档图，可跳过预算计算。",
@@ -124,11 +124,11 @@
         "https://api.github.com/repos/sgl-project/sglang/pulls/46190",
         "https://api.github.com/repos/sgl-project/sglang/commits/4b9f9043faee0eb8824c47aaaaeee8f29c5af35e"
       ],
-      "update_of": null,
+      "update_of": "2026-11-18-sglang-pr-46190",
       "article_id": "inference-engines"
     },
     {
-      "id": "2026-11-18-deepinfer-pr-288",
+      "id": "2026-11-18-deepinfer-pr-288-r2",
       "event_key": "deepinfer-pr-288",
       "title": "DeepInfer：Ascend A2/W4A8 提案显式区分主 KV 与 indexer 布局",
       "summary": "11月17日创建的 #288 仍为open、merged_at=null。已读PR说明及关键diff：提案增加Ascend A2运行路径、W4A8/W8A8加载与布局选择；V4.1主/SWA int8记录为512字节量化值+128字节BF16 RoPE+16字节scale，共656B/token；indexer为128字节int8+4字节scale，共132B。BF16主缓存兜底为1152B/token，int8页要求block_size为16的倍数。",
@@ -136,6 +136,66 @@
         "https://github.com/deepseek-ai/DeepInfer/pull/288.diff",
         "https://api.github.com/repos/deepseek-ai/DeepInfer/pulls?direction=desc&page=1&per_page=20&sort=updated&state=all",
         "https://github.com/deepseek-ai/DeepInfer"
+      ],
+      "update_of": "2026-11-18-deepinfer-pr-288",
+      "article_id": "inference-engines"
+    },
+    {
+      "id": "2026-11-18-vllm-pr-61051",
+      "event_key": "vllm-pr-61051",
+      "title": "vLLM 用 Triton 搬运写时复制所需的 KV 字节段",
+      "summary": "PyTorch 将 CUDA 和 ROCm 张量都标为 `device.type == \"cuda\"`。这两种设备使用 Triton 直接搬运连续字节段，省去批量收集源块的临时显存。这条路径要求源块和目标块的编号没有交集，遇到链式拷贝会触发断言。CPU 和 XPU 等其他设备沿用索引拷贝。作者在 GB200、CUDA 13.0 上验证。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/61051",
+        "https://github.com/vllm-project/vllm/commit/4d7f225e4e8209879ef14175be6ba263da7c900c"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    },
+    {
+      "id": "2026-11-18-vllm-pr-67966",
+      "event_key": "vllm-pr-67966",
+      "title": "vLLM 在可扩展 KV 缓存缩容后重置块表",
+      "summary": "在可扩展 KV 缓存的启动路径，缩容会解除部分块的映射。此次修复在容量预热前清零块表里的陈旧索引。故障最初出现在使用 ROCm AITER 的 MI355X 上，触发测试为 EAGLE 最大长度测试。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/67966",
+        "https://github.com/vllm-project/vllm/commit/01fb22eed6b5ae67f7b97bc19dc637bd413851c7"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    },
+    {
+      "id": "2026-11-18-sglang-pr-44447",
+      "event_key": "sglang-pr-44447",
+      "title": "SGLang 为分离部署的全注意力 KV 页增加分片传输",
+      "summary": "Qwen3.8-Flash-Next 在共享 CP/TP 的 prefill 组内分片全注意力 KV 页时，需要启用 `--enable-kv-cache-sharding`，并使 decode 侧的 attention TP 宽度与共享组匹配。decode 从多个 prefill rank 接收 KV，辅助状态由匹配的 rank 发送，涉及 Mooncake 和 NIXL。PR 未提供同条件测速。",
+      "source_urls": [
+        "https://github.com/sgl-project/sglang/pull/44447",
+        "https://github.com/sgl-project/sglang/commit/09185be8f9d1368a0d628c681ca50c84d847d38f"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    },
+    {
+      "id": "2026-11-18-sglang-pr-50771",
+      "event_key": "sglang-pr-50771",
+      "title": "SGLang 在估算 KV 容量前清理 DeepGEMM 辅助进程",
+      "summary": "启用 NVIDIA Mega-MoE 本地化时，程序在模型权重就位后停止 DeepGEMM 的 MLOPart 辅助进程，再估算 KV 容量。程序最多等 5 秒让相关 MPS 进程退出；超时会记录告警并继续启动，此时残余显存占用仍可能影响估算。",
+      "source_urls": [
+        "https://github.com/sgl-project/sglang/pull/50771",
+        "https://github.com/sgl-project/sglang/commit/d8a6e5a9deddfc92d1b0d21aeb7bed743f0a3e4e"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    },
+    {
+      "id": "2026-11-18-sglang-pr-50895",
+      "event_key": "sglang-pr-50895",
+      "title": "SGLang 分离部署的 decode 侧合并首 token 和第一次解码输出",
+      "summary": "分离部署的 decode 侧把仍在运行请求的首个 token 和第一次 decode 输出一起发出。GB300 上 DeepSeek-V4.1/MTP 的多轮负载中，作者报告 p90 TPOT 降低约 3%–6%；首 token 会等待一次 decode，吞吐在运行噪声范围内。",
+      "source_urls": [
+        "https://github.com/sgl-project/sglang/pull/50895",
+        "https://github.com/sgl-project/sglang/commit/6795aed9755ece703d226063155fcf8ef7c5f150"
       ],
       "update_of": null,
       "article_id": "inference-engines"
@@ -158,5 +218,9 @@
       "alt": "YAM 控制循环的反馈时效、每臂停止和共享故障处理"
     }
   ],
-  "poster": "assets/overview.png"
+  "poster": "assets/overview.png",
+  "revision_notice": {
+    "kind": "material_update",
+    "summary": "补录原日期窗口内合入的五项 vLLM 与 SGLang 变更，并标明回溯核对仍缺时间依据的范围。"
+  }
 }
