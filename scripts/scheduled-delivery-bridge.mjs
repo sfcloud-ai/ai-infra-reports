@@ -3,7 +3,7 @@
 import {spawn} from 'node:child_process';
 import {digest} from './archive.mjs';
 import {scopeDigest} from './handoff-state.mjs';
-import {firstNoticeRejected,installScheduledTables} from './scheduled-delivery-state.mjs';
+import {firstNoticeRejected,installScheduledTables,olderCorrectionAwaitsFirstNotice} from './scheduled-delivery-state.mjs';
 import {decodeBundle,requireThat,REQUEST} from './report-handoff.mjs';
 import {validateCheckerConfig} from './notice-checker.mjs';
 import {safeDiagnostic,isSlackWriteUnexecuted} from './handoff-recovery.mjs';
@@ -94,6 +94,7 @@ export async function advanceScheduledDelivery(state,config,query=queryScheduled
   const binding=JSON.stringify({request_id:id,report_date:bundle.report.date,report_commit:job.detail.commit,bundle_sha256:job.hash});
   const revised=!!bundle.report.revision_notice;
   let local=db.prepare('SELECT * FROM scheduled_handoffs WHERE request_id=?').get(id);
+  if(revised&&(!local||local.phase==='new')&&olderCorrectionAwaitsFirstNotice(db,bundle.report.date,bundle.report.revision))continue;
   if(local){requireThat(local.binding===binding,'Scheduled original binding differs');if(['complete','skipped','superseded','policy_rejected'].includes(local.phase))continue;}
   else{db.prepare("INSERT INTO scheduled_handoffs VALUES (?,?,'new',NULL,0)").run(id,binding);local={phase:'new'};}
   // New reports first, then persistent round-robin. An old unknown job may

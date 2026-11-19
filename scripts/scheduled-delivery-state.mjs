@@ -13,6 +13,15 @@ export function firstNoticeRejected(result,binding){
  return ['not_verified','rejected'].includes(result?.status)&&result.error==='first_notice_requires_all_six_articles'&&
   result.request_id===binding.request_id&&result.report_commit===binding.report_commit&&result.bundle_sha256===binding.bundle_sha256;
 }
+export function olderCorrectionAwaitsFirstNotice(db,day,revision){
+ if(revision<3||!db.prepare("SELECT 1 FROM sqlite_master WHERE name='scheduled_handoffs'").get())return false;
+ const prefix=`morning-${day.replaceAll('-','')}-r`;
+ const waiting=db.prepare("SELECT request_id FROM scheduled_handoffs WHERE phase='awaiting_first_delivery' AND json_extract(binding,'$.report_date')=?").all(day);
+ if(!waiting.some(row=>row.request_id.startsWith(prefix)&&Number(row.request_id.slice(prefix.length))<revision))return false;
+ const first=db.prepare("SELECT h.phase,h.result,j.hash,j.detail FROM scheduled_handoffs h JOIN jobs j ON j.id=h.request_id WHERE h.request_id=?").get(prefix+'1');
+ return !first||first.phase!=='policy_rejected'||!firstNoticeRejected(JSON.parse(first.result),
+  {request_id:prefix+'1',report_commit:JSON.parse(first.detail).commit,bundle_sha256:first.hash});
+}
 export function scheduledSchemaObjects(db){
  const objects=db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name IN ('scheduled_handoffs','scheduled_bridge_scope','scheduled_status_replies') ORDER BY name").all();
  requireThat(objects.every(o=>o.type==='table'&&SCHEDULED_SCHEMA[o.name]===o.sql),'Unexpected scheduled delivery schema');

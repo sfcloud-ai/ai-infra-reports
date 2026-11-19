@@ -3,7 +3,7 @@
 import {isDeepStrictEqual as equal} from 'node:util';
 import {decodeResearchArchive} from './research-archive.mjs';
 import {storedRecoveryForOperation} from './research-archive-recovery.mjs';
-import {firstNoticeRejected} from './scheduled-delivery-state.mjs';
+import {firstNoticeRejected,olderCorrectionAwaitsFirstNotice} from './scheduled-delivery-state.mjs';
 import {digest} from './archive.mjs';
 import {validatePageDelivery,validatePageProgressReport,validatePageCorrectionReport,replacesPageEdition,completeEditionSnapshot,requireMaterialCompletion,TOPIC_IDS,WHOLE_EDITION_FROM} from './page-delivery.mjs';
 const fail=code=>{throw Object.assign(Error(code),{researchControlCode:code});};
@@ -54,6 +54,7 @@ function reportFromBundle(bytes,hash){
 export function assertPageCorrectionDelivery(db,bundle,schedulerActivation){
  const report=bundle.report;
  if(!['correction','material_update','maintenance'].includes(report.revision_notice?.kind))return;
+ need(!olderCorrectionAwaitsFirstNotice(db,report.date,report.revision),'page_correction_delivery_incomplete');
  // A successor cannot discard its predecessor's page contract, even when all
  // six pages were ready. Check the bound original job before schema dispatch.
  const predecessorId=`morning-${report.date.replaceAll('-','')}-r${report.revision-1}`;

@@ -64,11 +64,29 @@ class ReportPartActivationTests(unittest.TestCase):
             check()
             db.execute("UPDATE research_control_runs SET report_date='2026-11-19'")
             db.execute("INSERT INTO research_page_rounds VALUES ('revision','original',NULL)")
-            db.execute("CREATE TABLE research_control_ops(request_id TEXT,kind TEXT,phase TEXT)")
-            db.execute("INSERT INTO research_control_ops VALUES ('original','model','intent')")
+            db.execute("CREATE TABLE research_control_ops(request_id TEXT,operation_id TEXT,kind TEXT,phase TEXT)")
+            db.execute("INSERT INTO research_control_ops VALUES ('original','op','model','intent')")
             with self.assertRaisesRegex(ValueError,'settle_original_page_dispatch'):
                 check()
             db.execute("UPDATE research_control_ops SET phase='unknown'")
+            with self.assertRaisesRegex(ValueError,'settle_original_page_dispatch'):
+                check()
+            db.execute("UPDATE research_control_ops SET kind='native'")
+            with self.assertRaisesRegex(ValueError,'settle_original_page_dispatch'):
+                check()
+            db.execute("CREATE TABLE research_control_commands(request_id TEXT,command_id TEXT,bytes BLOB,result TEXT)")
+            db.execute("CREATE TABLE research_archives(request_id TEXT,hash TEXT,file_id TEXT,source_ts TEXT,bytes BLOB)")
+            archive = b"original"
+            digest = hashlib.sha256(archive).hexdigest()
+            for key, action, args, result in [
+                ("begin", "archive_recovery_begin", dict(operation_id="op", archive_sha256=digest, file_id="F1", total_bytes=len(archive)), {}),
+                ("commit", "archive_recovery_commit", dict(recovery_id="begin"), {"recovery": {"source_ts": pause}}),
+            ]:
+                db.execute("INSERT INTO research_control_commands VALUES('original',?,?,?)",
+                           (key, json.dumps(dict(action=action,args=args)), json.dumps(dict(status="committed",**result))))
+            db.execute("INSERT INTO research_archives VALUES('original',?,'F1',?,?)", (digest,pause,archive))
+            check()
+            db.execute("UPDATE research_archives SET bytes=?", (b"modified",))
             with self.assertRaisesRegex(ValueError,'settle_original_page_dispatch'):
                 check()
             db.execute("UPDATE research_control_ops SET phase='acknowledged'")
@@ -92,6 +110,13 @@ class ReportPartActivationTests(unittest.TestCase):
             db.execute("UPDATE publisher_intake_scan SET watermark='1795000300.000000'")
             edition_cutover_preflight.check(db,'1795000100.000000')
             db.execute('CREATE TABLE scheduled_handoffs(request_id TEXT,binding TEXT,phase TEXT,result TEXT)')
+            db.execute("UPDATE jobs SET detail=json_set(detail,'$.proof.edition','2026-11-18/r1')")
+            edition_cutover_preflight.check(db,pause,"2026-11-19")
+            with self.assertRaisesRegex(ValueError,'settle_original_scheduler_admission'):
+                edition_cutover_preflight.check(db,pause,"2026-11-18")
+            db.execute("INSERT INTO scheduled_handoffs VALUES ('original','{}','complete',NULL)")
+            edition_cutover_preflight.check(db,pause,"2026-11-18")
+            db.execute("DELETE FROM scheduled_handoffs")
             db.execute("INSERT INTO scheduled_handoffs VALUES ('original','{}','admission_pending',NULL)")
             with self.assertRaises(cd.Deferred):
                 edition_cutover_preflight.check(db,'1795000100.000000')

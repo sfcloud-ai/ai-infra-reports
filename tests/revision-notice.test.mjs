@@ -13,7 +13,7 @@ import {checkDailyDelivery} from '../scripts/publisher-watchdog.mjs';
 import {TOPIC_IDS} from '../scripts/page-delivery.mjs';
 import {assertPageCorrectionDelivery} from '../scripts/research-page-authority.mjs';
 import {stageFile} from '../scripts/slack-stage-cli.mjs';
-import {installScheduledTables,requireSettledScheduled} from '../scripts/scheduled-delivery-state.mjs';
+import {installScheduledTables,olderCorrectionAwaitsFirstNotice,requireSettledScheduled} from '../scripts/scheduled-delivery-state.mjs';
 import {readReports,migrateArchive,replaceCurrentReport,validateArchive,reindexArchive} from '../scripts/archive.mjs';
 import {publicationSite} from './helpers/publication-site.mjs';
 import {FILES,MERGE,DAY} from './helpers/cloud-sender-fixture.mjs';
@@ -81,8 +81,14 @@ test('the publication path accepts six topics and blocks a one-page first report
   s.db.prepare("UPDATE scheduled_handoffs SET phase='observed',result=? WHERE request_id=?")
    .run(JSON.stringify({...binding,status:'queued',phase:'pending',parts_sent:1,parts_total:2}),previous);
   assert.throws(()=>assertPageCorrectionDelivery(s.db,bundle),/page_correction_delivery_incomplete/);
+  const second={...binding,request_id:'morning-20261119-r2'};
+  s.db.prepare("INSERT INTO scheduled_handoffs VALUES (?,?,'awaiting_first_delivery',NULL,0)").run(second.request_id,JSON.stringify(second));
+  const third={report:{...bundle.report,revision:3}};
+  assert.throws(()=>assertPageCorrectionDelivery(s.db,third),/page_correction_delivery_incomplete/);
+  assert.equal(olderCorrectionAwaitsFirstNotice(s.db,'2026-11-20',3),false);
   const refusal={...binding,status:'rejected',error:'first_notice_requires_all_six_articles'};
   s.db.prepare("UPDATE scheduled_handoffs SET phase='policy_rejected', result=? WHERE request_id=?").run(JSON.stringify(refusal),previous);
+  assert.equal(olderCorrectionAwaitsFirstNotice(s.db,day,3),false);
   assert.doesNotThrow(()=>assertPageCorrectionDelivery(s.db,bundle));
  }finally{s.close();}
 });
