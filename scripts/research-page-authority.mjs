@@ -5,7 +5,7 @@ import {decodeResearchArchive} from './research-archive.mjs';
 import {storedRecoveryForOperation} from './research-archive-recovery.mjs';
 import {firstNoticeRejected} from './scheduled-delivery-state.mjs';
 import {digest} from './archive.mjs';
-import {validatePageDelivery,validatePageProgressReport,validatePageCorrectionReport,replacesPageEdition,completeEditionSnapshot,TOPIC_IDS,WHOLE_EDITION_FROM} from './page-delivery.mjs';
+import {validatePageDelivery,validatePageProgressReport,validatePageCorrectionReport,replacesPageEdition,completeEditionSnapshot,requireMaterialCompletion,TOPIC_IDS,WHOLE_EDITION_FROM} from './page-delivery.mjs';
 const fail=code=>{throw Object.assign(Error(code),{researchControlCode:code});};
 const need=(ok,code)=>{if(!ok)fail(code);};
 export const PAGE_AUTHORITY_VERSION=1;
@@ -62,6 +62,7 @@ export function assertPageCorrectionDelivery(db,bundle){
   const raw=Buffer.from(predecessor.bytes);need(digest(raw)===predecessor.hash,'page_correction_previous');
   const data=JSON.parse(raw),file=data.files.find(f=>f.path.endsWith('/report.json'));
   const priorReport=JSON.parse(Buffer.from(file.base64,'base64'));
+  requireMaterialCompletion(priorReport,report);
   const replacement=replacesPageEdition(priorReport,report);
   if(priorReport.schema_version==='1.2'&&!replacement)need(report.schema_version==='1.2','page_correction_schema_downgrade');
   if(replacement||!completeEditionSnapshot(priorReport)){

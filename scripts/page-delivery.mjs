@@ -12,6 +12,11 @@ export function completeEditionSnapshot(report,date=report?.date){
 export function requireCompleteEdition(report){
  if(!completeEditionSnapshot(report))throw Object.assign(Error('Publication requires six complete topic pages'),{researchPublicationRejection:'publication_requires_six_complete_topics'});
 }
+export function requireMaterialCompletion(previous,next){
+ if(!previous||previous.date<WHOLE_EDITION_FROM||next.revision_notice?.kind==='material_update')return;
+ if(TOPIC_IDS.some(id=>!previous.articles.some(a=>a.id===id)||!previous.entries.some(e=>e.article_id===id)))
+  throw Object.assign(Error('Completing missing topics requires a material update'),{researchPublicationRejection:'incomplete_edition_requires_material_update'});
+}
 export function replacesPageEdition(previous,next){
  return previous?.schema_version==='1.2'&&previous.date>=WHOLE_EDITION_FROM&&Array.isArray(previous.page_delivery?.pending)
   &&next?.date===previous.date&&next.revision===previous.revision+1&&next.schema_version==='1.1'

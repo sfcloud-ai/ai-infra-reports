@@ -11,6 +11,16 @@ def check(database):
         raise ValueError("publisher_ledger_required")
     if database.execute("SELECT 1 FROM jobs WHERE phase!='receipt_sent' LIMIT 1").fetchone():
         raise ValueError("settle_original_publication_before_advancing_main")
+    for table, terminal in (("slack_submission_events", "'done','fenced'"),
+                            ("publisher_inbox", "'admitted','fenced'"),
+                            ("slack_staged_bundles", "'admitted'"),
+                            ("research_page_staged", "'admitted'")):
+        if table in tables and database.execute(
+                f"SELECT 1 FROM {table} WHERE phase NOT IN ({terminal}) LIMIT 1").fetchone():
+            raise ValueError("settle_original_intake_before_advancing_main")
+    if "research_control_report_parts" in tables and database.execute(
+            "SELECT 1 FROM research_control_report_parts LIMIT 1").fetchone():
+        raise ValueError("settle_original_intake_before_advancing_main")
     if "research_control_events" in tables and database.execute("""
             SELECT 1 FROM research_control_events WHERE phase='pending'
             AND json_extract(CAST(bytes AS TEXT),'$.action') IN ('permit','page_permit') LIMIT 1

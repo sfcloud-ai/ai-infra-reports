@@ -56,6 +56,13 @@ test('the publication path accepts six topics and blocks a one-page first report
  Object.assign(replacement,{schema_version:'1.1',revision:2,revision_notice:report.revision_notice});
  fullFiles.set(out+'report.json',Buffer.from(JSON.stringify(replacement)));
  assert.doesNotThrow(()=>replaceCurrentReport(existingPartial,fullFiles));
+ const oldUnpaged=new Map(existingPartial),oldReport=JSON.parse(oldUnpaged.get(out+'report.json'));
+ oldReport.schema_version='1.0';delete oldReport.page_delivery;
+ oldUnpaged.set(out+'report.json',Buffer.from(JSON.stringify(oldReport)));reindexArchive(oldUnpaged);
+ const maintenance=new Map(fullFiles);
+ maintenance.set(out+'report.json',Buffer.from(JSON.stringify({...replacement,revision_notice:{kind:'maintenance',summary:'Formatting'}})));
+ assert.throws(()=>replaceCurrentReport(oldUnpaged,maintenance),/requires a material update/);
+ assert.doesNotThrow(()=>replaceCurrentReport(oldUnpaged,fullFiles));
  const previous='morning-20261119-r1',hash=digest(partial);
  const s=new HandoffState(':memory:',handoffScope(config));
  try{

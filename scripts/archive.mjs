@@ -1,4 +1,4 @@
-import {completeEditionSnapshot,replacesPageEdition,validatePageProgressReport,validatePageCorrectionReport} from './page-delivery.mjs';
+import {completeEditionSnapshot,requireMaterialCompletion,replacesPageEdition,validatePageProgressReport,validatePageCorrectionReport} from './page-delivery.mjs';
 import {evidenceAssets,evidenceAssetReferences} from "./evidence-assets.mjs";
 import {validateReportFields} from './revision-notice.mjs';
 // Report-only, data-only contract shared by the publisher, CI and trusted merge gate.
@@ -220,6 +220,7 @@ function validateCurrentChange(base,head) {
   const date=[...changed][0],old=previous.reports.find(r=>r.date===date),next=result.reports.find(r=>r.date===date);
   assert(next&&next.revision===(old?.revision||0)+1,"revisions must be consecutive");
   assert(completeEditionSnapshot(next,date),'Publication requires six complete topic pages');
+  requireMaterialCompletion(old,next);
   if((next.page_delivery&&next.revision>1||old?.page_delivery)&&!replacesPageEdition(old,next)){
     if(next.revision_notice?.kind==='page_completion')validatePageProgressReport(old,next);
     else validatePageCorrectionReport(old,next);

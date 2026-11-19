@@ -48,6 +48,11 @@ class ReportPartActivationTests(unittest.TestCase):
             db.execute('INSERT INTO research_control_events VALUES (?,?)', ('pending',b'{"action":"page_permit"}'))
             with self.assertRaisesRegex(ValueError,'settle_original_permit_command'):
                 edition_cutover_preflight.check(db)
+            db.execute("UPDATE research_control_events SET phase='sent'")
+            db.execute('CREATE TABLE slack_submission_events(phase TEXT)')
+            db.execute("INSERT INTO slack_submission_events VALUES ('pending')")
+            with self.assertRaisesRegex(ValueError,'settle_original_intake'):
+                edition_cutover_preflight.check(db)
 
     @unittest.skipUnless(os.name == 'posix', 'Linux deployment lock')
     def test_competing_deployment_and_activation_defer_without_mutating(self):
