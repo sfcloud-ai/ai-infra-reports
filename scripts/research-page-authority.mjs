@@ -5,7 +5,7 @@ import {decodeResearchArchive} from './research-archive.mjs';
 import {storedRecoveryForOperation} from './research-archive-recovery.mjs';
 import {firstNoticeRejected} from './scheduled-delivery-state.mjs';
 import {digest} from './archive.mjs';
-import {validatePageDelivery,validatePageProgressReport,validatePageCorrectionReport,replacesPageEdition,TOPIC_IDS,WHOLE_EDITION_FROM} from './page-delivery.mjs';
+import {validatePageDelivery,validatePageProgressReport,validatePageCorrectionReport,replacesPageEdition,completeEditionSnapshot,TOPIC_IDS,WHOLE_EDITION_FROM} from './page-delivery.mjs';
 const fail=code=>{throw Object.assign(Error(code),{researchControlCode:code});};
 const need=(ok,code)=>{if(!ok)fail(code);};
 export const PAGE_AUTHORITY_VERSION=1;
@@ -62,7 +62,9 @@ export function assertPageCorrectionDelivery(db,bundle){
   const raw=Buffer.from(predecessor.bytes);need(digest(raw)===predecessor.hash,'page_correction_previous');
   const data=JSON.parse(raw),file=data.files.find(f=>f.path.endsWith('/report.json'));
   const priorReport=JSON.parse(Buffer.from(file.base64,'base64'));
-  if(replacesPageEdition(priorReport,report)){
+  const replacement=replacesPageEdition(priorReport,report);
+  if(priorReport.schema_version==='1.2'&&!replacement)need(report.schema_version==='1.2','page_correction_schema_downgrade');
+  if(replacement||!completeEditionSnapshot(priorReport)){
    const detail=JSON.parse(predecessor.detail);
    need(detail.proof?.publication_status==='verified'&&detail.proof.commit===detail.commit&&detail.proof.bundle_sha256===predecessor.hash,'page_correction_previous');
    const expected={request_id:predecessorId,report_date:report.date,report_commit:detail.commit,bundle_sha256:predecessor.hash};
@@ -73,7 +75,7 @@ export function assertPageCorrectionDelivery(db,bundle){
    const refused=['policy_rejected','awaiting_first_delivery'].includes(handoff.phase)&&firstNoticeRejected(receipt,expected);
    const admitted=['observed','complete','skipped','superseded'].includes(handoff.phase)&&Object.entries(expected).every(([key,value])=>receipt?.[key]===value);
    need(refused||admitted,'page_correction_delivery_incomplete');
-  }else if(priorReport.schema_version==='1.2')need(report.schema_version==='1.2','page_correction_schema_downgrade');
+  }
  }
  if(report.schema_version!=='1.2')return;
  const previous=report.page_delivery?.previous;

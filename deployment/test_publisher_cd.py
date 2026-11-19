@@ -44,6 +44,10 @@ class ReportPartActivationTests(unittest.TestCase):
                 edition_cutover_preflight.check(db)
             db.execute("UPDATE jobs SET hash=?", ('a'*64,))
             edition_cutover_preflight.check(db)
+            db.execute('CREATE TABLE research_control_events(phase TEXT,bytes BLOB)')
+            db.execute('INSERT INTO research_control_events VALUES (?,?)', ('pending',b'{"action":"page_permit"}'))
+            with self.assertRaisesRegex(ValueError,'settle_original_permit_command'):
+                edition_cutover_preflight.check(db)
 
     @unittest.skipUnless(os.name == 'posix', 'Linux deployment lock')
     def test_competing_deployment_and_activation_defer_without_mutating(self):

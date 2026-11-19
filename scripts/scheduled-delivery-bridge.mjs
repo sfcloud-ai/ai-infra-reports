@@ -42,15 +42,17 @@ function earlierStartedRequest(db,day,revision){
  }
  return null;
 }
-function laterCompleteInitial(db,day,revision){
- const rows=db.prepare("SELECT request_id,binding,result FROM scheduled_handoffs WHERE phase='complete' AND json_extract(binding,'$.report_date')=? AND json_extract(result,'$.delivery_kind')='initial' AND json_extract(result,'$.report_revision')>?").all(day,revision);
+function laterCompleteDelivery(db,day,revision){
+ const rows=db.prepare("SELECT request_id,binding,result FROM scheduled_handoffs WHERE phase='complete' AND json_extract(binding,'$.report_date')=? AND json_extract(result,'$.report_revision')>? ORDER BY json_extract(result,'$.report_revision')").all(day,revision);
  for(const row of rows){
   const binding=JSON.parse(row.binding),receipt=JSON.parse(row.result),images=receipt.images;
   if(row.request_id===binding.request_id&&boundReceipt(receipt,binding)
    &&Number.isSafeInteger(receipt.report_revision)&&row.request_id==='morning-'+day.replaceAll('-','')+'-r'+receipt.report_revision
-   &&receipt.status==='sent'&&receipt.phase==='complete'&&Number.isSafeInteger(receipt.parts_total)&&receipt.parts_total>=2
-   &&receipt.parts_sent===receipt.parts_total&&Array.isArray(images)&&images.length===1
-   &&images[0]?.file_id==='scheduled-poster'&&images[0].status==='sent'&&images[0].error==null)return row.request_id;
+   &&receipt.status==='sent'&&receipt.phase==='complete'&&Number.isSafeInteger(receipt.parts_total)
+   &&receipt.parts_sent===receipt.parts_total&&Array.isArray(images)
+   &&(receipt.delivery_kind==='initial'&&receipt.parts_total>=2&&images.length===1
+      &&images[0]?.file_id==='scheduled-poster'&&images[0].status==='sent'&&images[0].error==null
+      ||revision>1&&receipt.delivery_kind==='revision_update'&&receipt.parts_total===1&&images.length===0))return row.request_id;
  }
  return null;
 }
@@ -88,7 +90,7 @@ export async function advanceScheduledDelivery(state,config,query=queryScheduled
   db.prepare('UPDATE scheduled_handoffs SET poll_order=(SELECT COALESCE(MAX(poll_order),0)+1 FROM scheduled_handoffs) WHERE request_id=?').run(id);
   try{
    if(local.phase==='awaiting_first_delivery'){
-    const coveredBy=laterCompleteInitial(db,bundle.report.date,bundle.report.revision);
+    const coveredBy=laterCompleteDelivery(db,bundle.report.date,bundle.report.revision);
     if(coveredBy&&firstNoticeRejected(JSON.parse(local.result),JSON.parse(binding))){
      db.prepare("UPDATE scheduled_handoffs SET phase='policy_rejected',result=json_set(result,'$.covered_by',?) WHERE request_id=?").run(coveredBy,id);
      return {request_id:id,phase:'policy_rejected',wecom_status:'not_verified',covered_by:coveredBy};
