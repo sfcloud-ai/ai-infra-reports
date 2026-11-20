@@ -2098,6 +2098,70 @@
       "content_sha256": "e39f949c9996fde9ca9f35347c7b985a8ee5e60bfa9e0fbd117857cb91d057c1"
     },
     {
+      "id": "2026-11-18-deepinfer-pr-288-r2",
+      "event_key": "deepinfer-pr-288",
+      "date": "2026-11-18",
+      "revision": 2,
+      "fingerprint": "9f2a1a7b6a5a796e403c4ecbd062ac0156d5c984dc2b4e6b0fc7da340d80fb43",
+      "content_sha256": "2f0cff24273a899f3b371b8e55e76120036b87d714477d3bc78882812846d070"
+    },
+    {
+      "id": "2026-11-18-sglang-pr-44447",
+      "event_key": "sglang-pr-44447",
+      "date": "2026-11-18",
+      "revision": 2,
+      "fingerprint": "9db5affa8564597d140eb93b4e2ad11251e79157856e4213ee574740c6056cfb",
+      "content_sha256": "358e00a02893ca93a5899423ae5f5d4e999ca74ca251ad23dfda85a3d230092c"
+    },
+    {
+      "id": "2026-11-18-sglang-pr-46190-r2",
+      "event_key": "sglang-pr-46190",
+      "date": "2026-11-18",
+      "revision": 2,
+      "fingerprint": "2af5ab36d1f51f5fce70048d6ea036d671d9cbb42ea0ac433213c2061b9e643e",
+      "content_sha256": "6152bb6db952f25e984770a4d818093663c2771c5f95f480522cb28525033fa0"
+    },
+    {
+      "id": "2026-11-18-sglang-pr-50712-r2",
+      "event_key": "sglang-pr-50712",
+      "date": "2026-11-18",
+      "revision": 2,
+      "fingerprint": "026029f7b3073c63db12e20a438b650f3dd169b152f17fa8da83ebba3ba2c2e0",
+      "content_sha256": "47906ea000c931ef9a8c873a575a286597bda1ac962dd676af9c5afa3224eedb"
+    },
+    {
+      "id": "2026-11-18-sglang-pr-50771",
+      "event_key": "sglang-pr-50771",
+      "date": "2026-11-18",
+      "revision": 2,
+      "fingerprint": "6f9dcb835904b6a52e2132ae580d4e4a700302309af7e028835690d38127f715",
+      "content_sha256": "0bc9ede0a7b1087abebb242126f678cee2464472939b5a17687bbdd62838025f"
+    },
+    {
+      "id": "2026-11-18-sglang-pr-50895",
+      "event_key": "sglang-pr-50895",
+      "date": "2026-11-18",
+      "revision": 2,
+      "fingerprint": "134c01d4ffd4bf9d0fda82a12070701be16eec2dff3adac0ab74646eccf536a0",
+      "content_sha256": "b171c0e13d23f6f8a817a5b47ab2bdc1e96a1c2795e9fe745b4254ad4b1c1d60"
+    },
+    {
+      "id": "2026-11-18-vllm-pr-61051",
+      "event_key": "vllm-pr-61051",
+      "date": "2026-11-18",
+      "revision": 2,
+      "fingerprint": "63e5654ae68d4b5b3dc3dc62a189db07f78292975a22f178728a3381b5807f93",
+      "content_sha256": "81cec5fe7b776164abf46646303536bf9cd634558f9cd8a3bc23a955c2768099"
+    },
+    {
+      "id": "2026-11-18-vllm-pr-67966",
+      "event_key": "vllm-pr-67966",
+      "date": "2026-11-18",
+      "revision": 2,
+      "fingerprint": "da52165febe7d977280cbb509261f8f903a48b2886ffebde87841d755530c83b",
+      "content_sha256": "81bb4a119b89db247558c3d97fee485a92bd269b7ff87cd048b9a60fd8897bab"
+    },
+    {
       "id": "2026-11-19-deepinfer-pr-289",
       "event_key": "deepinfer-pr-289",
       "date": "2026-11-19",
