@@ -1647,6 +1647,59 @@
       ],
       "poster": "assets/overview.png",
       "path": "reports/2026-11-19/"
+    },
+    {
+      "schema_version": "1.0",
+      "date": "2026-11-20",
+      "revision": 1,
+      "title": "AI Infra 晨报 · 2026-11-20",
+      "subtitle": "部分晨报｜覆盖缺口：架构、引擎。LMSYS 两篇文章的时点或正文待核。智谱、DeepSeek、Qwen 的 ModelScope 分发记录未查全。",
+      "articles": [
+        {
+          "id": "model-serving-gpu",
+          "title": "模型服务与 GPU 超配：哪些 KV 值得写回 Mooncake",
+          "summary": "vLLM 按请求限制 KV 写入，仍可读取已有缓存。NVIDIA Dynamo 的两个客户案例分别衡量权重更新、训练步时和 GPU 小时。",
+          "sha256": "9a13a69c4686002eb553b8aa043a5a78a7d231cbc03a54cd7796ca2d116c820f",
+          "path": "reports/2026-11-20/articles/model-serving-gpu.md"
+        },
+        {
+          "id": "hardware-status",
+          "title": "硬件与算力平台：从显微镜探测器到 GPU 能谱",
+          "summary": "DAQIRI 的仪器数据流、IGX Thor 单队列短包测试和线缆环回时延回答三个不同的问题。",
+          "sha256": "8415fcf8f54c81f6a61ae376008d6a0b2e81ce10441189af4add2054e17ee16d",
+          "path": "reports/2026-11-20/articles/hardware-status.md"
+        },
+        {
+          "id": "model-architecture-status",
+          "title": "模型与架构：DeepSeek 定宽验证如何复用一块 K",
+          "summary": "SGLang 在同一请求的验证组内复用解包后的 BF16 K。H20-3e 双开关对照中，平均 TPOT 下降，平均首 token 等待反而增加。",
+          "sha256": "df2670cab4df24195f54bde8d3cf82bb493deab625e9d060e174772f87ac7fd2",
+          "path": "reports/2026-11-20/articles/model-architecture-status.md"
+        },
+        {
+          "id": "embodied-training",
+          "title": "制造业具身智能训练：换回训练指令，多少回合能碰到方块",
+          "summary": "固定 SmolVLA 检查点与种子，ALOHA 仿真每组 50 回合。换回数据集指令后，接触方块 32 回合，完成交接 2 回合。",
+          "sha256": "0ea1a25fa462a86ca1133a0c79ee07da60df16bcc6364a05e45723a4106ffde8",
+          "path": "reports/2026-11-20/articles/embodied-training.md"
+        },
+        {
+          "id": "small-model-status",
+          "title": "前沿小模型：RynnValue-8B 如何估算离任务完成还有多久",
+          "summary": "LeRobot 的新推理集成将轨迹视频和任务描述映射为剩余秒数。8B 仓库创建与旧 4B 仓库修订各有记录，质量和部署成本尚待同条件测量。",
+          "sha256": "c33eb59f9998e482c719720973b29a284a957bdd0ec565282cc21015ec27e826",
+          "path": "reports/2026-11-20/articles/small-model-status.md"
+        },
+        {
+          "id": "inference-engines",
+          "title": "推理引擎每日变动：从缓存写入限额到 SM120 专家通信",
+          "summary": "vLLM 与 SGLang 的改动进入 main。DeepInfer 在 nv-dev 切换 SM120 的 MoE 后端，随后的构建修订固定了 NCCL 版本。",
+          "sha256": "b38d475cf6e0e384e3e8931f220d18bc4af8eb39202bcfb847ed695f74e6a20d",
+          "path": "reports/2026-11-20/articles/inference-engines.md"
+        }
+      ],
+      "poster": "assets/overview.png",
+      "path": "reports/2026-11-20/"
     }
   ],
   "entries": [
@@ -5489,6 +5542,117 @@
       "article_id": "inference-engines",
       "fingerprint": "ebe00525a534f5170f635f0a8aeb14de4b91718185713ad2cfc26864450bbc0c",
       "date": "2026-11-19",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-20-vllm-pr-68529",
+      "event_key": "vllm-pr-68529",
+      "title": "vLLM 为 Mooncake 新增按请求生效的 KV 写入额度",
+      "summary": "每块 16 个 token 时，上限 100 允许常规写入前 96 个 token。零上限仍可查找、加载已有缓存。改动已合入 main，现有验证为 CPU 调度器测试。",
+      "source_urls": [
+        "https://api.github.com/repos/vllm-project/vllm/pulls/68529",
+        "https://api.github.com/repos/vllm-project/vllm/pulls/68529/files?page=1&per_page=100"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "d326fa39d14bc50a0928b910b6548b28ba2a3cbd61a2ad4023b00dbbada226f5",
+      "date": "2026-11-20",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-20-nvidia-dynamo-rl-rollout-20261119",
+      "event_key": "nvidia-dynamo-rl-rollout-20261119",
+      "title": "Dynamo 的 rollout 案例分别衡量权重更新、步时和 GPU 小时",
+      "summary": "CoreWeave 的最高 15 倍指权重更新速度。H Company 的平均训练步时最多缩短 20%、GPU 小时最多减少 5%。两个案例的负载、系统和分母不同。",
+      "source_urls": [
+        "https://developer.nvidia.com/blog/",
+        "https://developer.nvidia.com/blog/reducing-rollout-bottlenecks-in-reinforcement-learning-with-nvidia-dynamo/"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "df73a63862b7491d619387007b183a37e1c5c71fff532c005e2a6303fdaf74f1",
+      "date": "2026-11-20",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-20-nvidia-daqiri-instruments-20261119",
+      "event_key": "nvidia-daqiri-instruments-20261119",
+      "title": "DAQIRI 将探测器数据送入 GPU，单独测量短包吞吐与环回时延",
+      "summary": "IGX Thor 单队列中，64 与 256 字节包的 ibverbs 每核吞吐接近 DPDK 的两倍；8 KB 包时接近。2–4 微秒来自直接轮询的线缆环回。",
+      "source_urls": [
+        "https://developer.nvidia.com/blog/",
+        "https://developer.nvidia.com/blog/enabling-real-time-ai-for-scientific-instruments-with-gpu-native-data-acquisition/"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status",
+      "fingerprint": "ba7b06a0ed7221d3e9be5a07681cb1dfe23609fc5b9b15c3141ffeb01d3f1396",
+      "date": "2026-11-20",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-20-sglang-pr-49068",
+      "event_key": "sglang-pr-49068",
+      "title": "SGLang 在定宽目标验证中按请求组复用 BF16 K 分块",
+      "summary": "新路径保留逐行因果范围，默认关闭。H20-3e 实验分支同时切换两个复用开关，平均 TTFT 增加 10.85%，平均 TPOT 降低 8.54%。",
+      "source_urls": [
+        "https://api.github.com/repos/sgl-project/sglang/pulls/49068",
+        "https://api.github.com/repos/sgl-project/sglang/pulls/49068/files?page=1&per_page=100",
+        "https://www.lmsys.org/blog/2026-11-19-deepseek-v41-h20/"
+      ],
+      "update_of": null,
+      "article_id": "model-architecture-status",
+      "fingerprint": "18d5a7a48a84acb031e012e954b076992fe1abc77cf9f7891fc699513c99984f",
+      "date": "2026-11-20",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-20-lerobot-pr-5390",
+      "event_key": "lerobot-pr-5390",
+      "title": "LeRobot 让 ALOHA 和 PushT 的默认评估指令与参考数据集对齐",
+      "summary": "ALOHA 仿真中同一策略每组 50 回合，旧任务 ID 时接触和完成均为零，数据集指令时接触 32、完成 2。PushT 仅有配置和测试证据。",
+      "source_urls": [
+        "https://api.github.com/repos/huggingface/lerobot/pulls/5390",
+        "https://api.github.com/repos/huggingface/lerobot/pulls/5390/files?page=1&per_page=100"
+      ],
+      "update_of": null,
+      "article_id": "embodied-training",
+      "fingerprint": "830bd30cab0d76f43f3bfc5f29e8da74dd077a63942143bfad657deddf9156d5",
+      "date": "2026-11-20",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-20-lerobot-rynnvalue-8b-integration-20261119",
+      "event_key": "lerobot-rynnvalue-8b-integration-20261119",
+      "title": "LeRobot 增加 RynnValue-8B 推理集成，4B 同期修订处理器",
+      "summary": "固定配置指向上游 revision，采用 BF16，输入最多 8 帧。4B 同日指定差异没有权重文件。原团队的首发时间、8B 任务质量以及实际运行成本均待核。",
+      "source_urls": [
+        "https://huggingface.co/api/models?author=lerobot&direction=-1&expand=createdAt&expand=lastModified&expand=sha&limit=50&sort=lastModified",
+        "https://huggingface.co/lerobot/RynnValue-4B/commit/1ea1f9c1742b0f985ceba6841212793d74506c80",
+        "https://huggingface.co/lerobot/RynnValue-8B/raw/0a245773f2d8940170c1be6750464878d1788bf7/README.md",
+        "https://huggingface.co/lerobot/RynnValue-8B/raw/0a245773f2d8940170c1be6750464878d1788bf7/config.json"
+      ],
+      "update_of": null,
+      "article_id": "small-model-status",
+      "fingerprint": "dec78fed09461c298dcec10a632bb50de230dbacdab6ee4b0928d14a0d49a73d",
+      "date": "2026-11-20",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-20-deepinfer-pr-291",
+      "event_key": "deepinfer-pr-291",
+      "title": "DeepInfer 在 nv-dev 用 Cake MegaMoE 执行 SM120 专家通信与计算",
+      "summary": "8 张 RTX PRO 6000 的离线对照中，解码 7.18→9.93 步/秒，预填充 4,520→4,457 token/秒/GPU。后续 #294 固定 NCCL 2.30.7 并去掉 SM120 的 DeepEP 构建。",
+      "source_urls": [
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/pulls/291",
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/pulls/291/files?page=1&per_page=100",
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/pulls/294",
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/pulls/294/files?page=1&per_page=100",
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/releases?page=1&per_page=5"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "bb8dfcbe10ece907276d4f21fc6aad036a82883c733bd180d1550b21174c8c81",
+      "date": "2026-11-20",
       "revision": 1
     }
   ]
