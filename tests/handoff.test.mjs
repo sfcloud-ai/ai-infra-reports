@@ -158,21 +158,44 @@ test("merge evidence rejects missing, conflicting, spoofed, unrelated and incomp
  await assert.rejects(()=>publicMergeCommit(4,mergedPR,async()=>Response.json({message:"rate limited"},{status:403})),/Remote read failed/);
 });
 
-test("a persisted pr_open job resumes without re-proposing when merge_commit_sha is absent",async()=>{
- const dir=await mkdtemp(path.join(os.tmpdir(),"merge-resume-")),filename=path.join(dir,"state.sqlite");let current;
- try{
-  const first=rig(new HandoffState(filename,config));current=first.state;
-  await advanceHandoff(current,request,first.io);assert.equal(first.counts().proposals,1);
-  current.close();current=null;
-  const resumed=rig(new HandoffState(filename,config));current=resumed.state;
-  const read=resumed.io.readPR;
-  resumed.io.readPR=async()=>{const pr={...await read(),...mergedPR};delete pr.merge_commit_sha;return pr;};
-  resumed.io.readMergeCommit=(n,pr)=>publicMergeCommit(n,pr,async()=>Response.json([mergeEvent]));
-  for(const phase of ["merged","verified","receipt_sent"]){await advanceHandoff(current,request,resumed.io);assert.equal(current.get(request).phase,phase);}
-  assert.equal(current.get(request).detail.commit,merge);
-  assert.deepEqual(resumed.counts(),{proposals:0,receipts:1,verified:2});
- }finally{current?.close();await rm(dir,{recursive:true,force:true});}
+test("merge timestamps require canonical UTC seconds and allow only the observed forward tick",async()=>{
+ const read=(mergedAt,createdAt)=>publicMergeCommit(4,{...mergedPR,merged_at:mergedAt},async()=>
+  Response.json([{...mergeEvent,created_at:createdAt}]));
+ assert.equal(await read("2024-02-29T23:59:59Z","2024-03-01T00:00:00Z"),merge);
+ await assert.rejects(()=>read("2026-03-01T12:05:00Z","2026-02-29T12:05:01Z"),/Merge event identity mismatch/);
+ for(const createdAt of ["2026-10-31T12:04:59Z","2026-10-31T12:05:02Z",null]){
+  await assert.rejects(()=>read(mergedPR.merged_at,createdAt),/Merge event identity mismatch/);
+ }
+ for(const invalid of ["2026-02-29T12:05:00Z","2026-10-30T24:00:00Z","2026-10-31T12:05:00.000Z",
+                       "2026-10-31T12:05:00+00:00","2026-10-31T12:05:00z","2026-10-31T12:05:00Z\n"]){
+  await assert.rejects(()=>read(invalid,invalid),/Merged PR event metadata required/);
+  await assert.rejects(()=>read(mergedPR.merged_at,invalid),/Merge event identity mismatch/);
+ }
+ const delayed={...mergeEvent,created_at:"2026-10-31T12:05:01Z"};
+ const timeline=async()=>Response.json([delayed]);
+ assert.equal(await publicMergeCommit(4,{...mergedPR,merge_commit_sha:merge},timeline),merge);
+ await assert.rejects(()=>publicMergeCommit(4,{...mergedPR,merge_commit_sha:head},timeline),/Conflicting/);
+ await assert.rejects(()=>publicMergeCommit(4,mergedPR,async()=>Response.json([{...delayed,actor:{id:99}}])),/identity mismatch/);
 });
+
+for(const [legacyField,createdAt] of [[{},mergedPR.merged_at],[{merge_commit_sha:null},"2026-10-31T12:05:01Z"]]){
+ test(`a persisted pr_open job resumes without re-proposing with timeline timestamp ${createdAt}`,async()=>{
+  const dir=await mkdtemp(path.join(os.tmpdir(),"merge-resume-")),filename=path.join(dir,"state.sqlite");let current;
+  try{
+   const {state,io,counts}=rig(new HandoffState(filename,config));current=state;
+   await advanceHandoff(current,request,io);
+   assert.equal(current.get(request).phase,"pr_open");
+   current.close();current=null;
+   current=new HandoffState(filename,config);
+   const read=io.readPR;
+   io.readPR=async()=>{const pr={...await read(),...mergedPR};delete pr.merge_commit_sha;return {...pr,...legacyField};};
+   io.readMergeCommit=(n,pr)=>publicMergeCommit(n,pr,async()=>Response.json([{...mergeEvent,created_at:createdAt}]));
+   for(const phase of ["merged","verified","receipt_sent","receipt_sent"]){await advanceHandoff(current,request,io);assert.equal(current.get(request).phase,phase);}
+   assert.equal(current.get(request).detail.commit,merge);
+   assert.deepEqual(counts(),{proposals:1,receipts:1,verified:2});
+  }finally{current?.close();await rm(dir,{recursive:true,force:true});}
+ });
+}
 
 test("missing merge evidence preserves the existing job and cannot send or re-propose",async()=>{
  const {state,io,counts}=rig();try{
