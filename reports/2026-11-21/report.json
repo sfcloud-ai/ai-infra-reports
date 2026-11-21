@@ -1,0 +1,167 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-11-21",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-11-21",
+  "subtitle": "部分晨报｜覆盖缺口：架构。智谱、DeepSeek、Qwen 的 ModelScope 分发清单尚未查全。三家 Hugging Face 目录及官方公告已核对。",
+  "articles": [
+    {
+      "id": "model-serving-gpu",
+      "title": "模型服务与 GPU 超配：同一模型的两个引擎能共用哪些显存",
+      "summary": "vLLM 让 DeepSeek-V4.1 引擎组按行分摊只读 Engram 表。把预填充与解码放进同一组会减少表副本，也会让两类流量争用网卡。",
+      "sha256": "5dd463d5547311184cd5e807373b31ddd224c011857709926cd7fa6b9c3f00d2"
+    },
+    {
+      "id": "hardware-status",
+      "title": "硬件与算力平台：四张 CMP170HX 上，续写为何少重算了上千个 token",
+      "summary": "社区项目在四张改装为 64 GB 的 CMP170HX 上缩小 Mamba 检查点网格。20K 续写的两个探针各重算 15 个 token；64K 仍接近 3,000。",
+      "sha256": "f581fc5ca6b1a2eda7013f1f27fcff96d3c29c3811912710abcec3352400f723"
+    },
+    {
+      "id": "model-architecture-status",
+      "title": "模型与架构：Inkling 2 Mini 三轮共用权重，为什么仍要分开存状态",
+      "summary": "固定检查点总参数 26.4B，中间 12 层执行三遍，各轮保留自己的 KV 与卷积状态。单张 GB200 的 1M 启动和 TP4 的长上下文正确性来自不同试验。",
+      "sha256": "33884cccd3e1f46c84b07ba4c51cee3b42c3005dd51005d1cc9513758f1ce2a1"
+    },
+    {
+      "id": "embodied-training",
+      "title": "制造业具身智能训练：动作选中了第 3 条，掩码为何来自第 2 条",
+      "summary": "LeRobot 修复按配方筛选训练样本时的行索引错误。布尔 padding 掩码现在和动作使用同一组整数行号，修复后的相关 CPU 测试共 132 项通过。",
+      "sha256": "0387495d1787c9a9d42428035068ed65caeb55d6e1c27a2607ef68133f4cac7f"
+    },
+    {
+      "id": "small-model-status",
+      "title": "前沿小模型：为 20 GB 检查点做预算，还要算进什么",
+      "summary": "三组官方模型目录各检查最近 50 项，限定论文检索返回零项。本页以同一期的 Inkling 2 Mini 说明质量评分、权重文件大小和在线服务成本各自能回答什么。",
+      "sha256": "aaeb52fab48ca14c90a582faf5845cf832b7f08aec01c01286c4ae2d7446d683"
+    },
+    {
+      "id": "inference-engines",
+      "title": "推理引擎每日变动：视频扩散推理何时才该写入历史 KV",
+      "summary": "SGLang 把视频去噪过程的临时 KV 与已完成帧的历史分开。单张 RTX PRO 6000 上，901 帧完整历史测试含编码写盘，由 52.266 秒降至 42.886 秒。",
+      "sha256": "d9a3d49634ac2df0ed0146a7feb0142ca8cdb3daee2c89d21b8e2d63cc183f1d"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-11-21-vllm-pr-67539",
+      "event_key": "vllm-pr-67539",
+      "title": "vLLM 在同模型引擎组内分片只读 Engram 表",
+      "summary": "两节点各四张 GB200 的混合预填充/解码试验中，限制每张网卡最多四个大预填充取行请求在途，解码步由不限流时的 11.914 ms 降至 10.870 ms。共享范围限于 Engram 表。",
+      "source_urls": [
+        "https://api.github.com/repos/vllm-project/vllm/pulls/67539",
+        "https://api.github.com/repos/vllm-project/vllm/pulls/67539/files?per_page=100",
+        "https://api.github.com/search/issues?order=desc&page=1&per_page=100&q=repo%3Avllm-project%2Fvllm+is%3Apr+merged%3A2026-11-19T22%3A20%3A00Z..2026-11-20T22%3A20%3A00Z&sort=updated",
+        "https://api.github.com/repos/vllm-project/vllm/commits?page=1&per_page=100&since=2026-11-19T22%3A20%3A00Z&until=2026-11-20T22%3A20%3A00Z",
+        "https://api.github.com/repos/vllm-project/vllm/releases/latest"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-11-21-cmp170hx-mamba-block-grid-4e8e432",
+      "event_key": "cmp170hx-mamba-block-grid-4e8e432",
+      "title": "社区 CMP170HX 项目缩小检查点网格，减少续写重算",
+      "summary": "在相同补丁树、PP4 和 12,928-token 保留间隔下，20K 两个探针的重算量从 1,321、1,334 降至 15、15 个 token；64K 降至 2,971、2,917。测量限于四张改装 64 GB 的板卡。",
+      "source_urls": [
+        "https://api.github.com/repos/g4bwy/qwen3.8-flash-next-cmp-170hx/commits/4e8e4321c45bfe66eaed19fdb1456cecfae2953b",
+        "https://raw.githubusercontent.com/g4bwy/qwen3.8-flash-next-cmp-170hx/4e8e4321c45bfe66eaed19fdb1456cecfae2953b/README.md",
+        "https://api.github.com/repositories/1371120840/commits?page=1&per_page=30&since=2026-11-19T22%3A20%3A00Z&until=2026-11-20T22%3A20%3A00Z"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status"
+    },
+    {
+      "id": "2026-11-21-inkling-2-mini-fixed-checkpoint-20261120",
+      "event_key": "inkling-2-mini-fixed-checkpoint-20261120",
+      "title": "Inkling 2 Mini 开放固定三轮 MoE 检查点，vLLM 给出逐轮缓存实现",
+      "summary": "11 月 20 日的固定权重版本为 1fb4134b。模型有 24 个物理层，中间 12 层执行三遍，共用权重、分轮保存状态。单张 GB200 的 1M 配置启动与 TP4 的 550/550 正确性评测应分开引用。",
+      "source_urls": [
+        "https://huggingface.co/thinkingmachines/Inkling-2-Mini/raw/1fb4134b9a74f9681054f4ef82e4bf1f458a2337/README.md",
+        "https://huggingface.co/api/models/thinkingmachines/Inkling-2-Mini/commits/main",
+        "https://huggingface.co/thinkingmachines/Inkling-2-Mini/raw/1fb4134b9a74f9681054f4ef82e4bf1f458a2337/config.json",
+        "https://thinkingmachines.ai/model-card/inkling-2-mini/",
+        "https://thinkingmachines.ai/news/inkling-2-mini/",
+        "https://raw.githubusercontent.com/vllm-project/vllm-project.github.io/c29cac02828531bb410100ca4e4b92acd0006080/_posts/2026-11-20-inkling2-mini.md",
+        "https://api.github.com/repos/vllm-project/vllm-project.github.io/commits?path=_posts%2F2026-11-20-inkling2-mini.md&per_page=5",
+        "https://api.github.com/repos/vllm-project/vllm/pulls/69039",
+        "https://api.github.com/repos/vllm-project/vllm/pulls/69039/files?per_page=100",
+        "https://huggingface.co/api/models/thinkingmachines/TML-d24-varloop-research",
+        "https://huggingface.co/thinkingmachines/Inkling-2-Mini/commit/ed40e7da625f594fc9c4990f5f66be24873c22d7"
+      ],
+      "update_of": null,
+      "article_id": "model-architecture-status"
+    },
+    {
+      "id": "2026-11-21-lerobot-pr-5420",
+      "event_key": "lerobot-pr-5420",
+      "title": "LeRobot 修复训练配方过滤后动作与 padding 掩码错行",
+      "summary": "旧逻辑将整数行号先转成布尔值，再转回整数，可能让第 3 条动作配上第 2 条掩码。修复直接用原整数列表选行；相关 CPU 测试 132 项通过，尚无策略重训或实机结果。",
+      "source_urls": [
+        "https://api.github.com/repos/huggingface/lerobot/pulls/5420",
+        "https://api.github.com/repos/huggingface/lerobot/pulls/5420/files?per_page=100",
+        "https://api.github.com/repos/huggingface/lerobot/issues/5419",
+        "https://api.github.com/search/issues?order=desc&page=1&per_page=40&q=repo%3Ahuggingface%2Flerobot+is%3Apr+merged%3A2026-11-19T22%3A20%3A00Z..2026-11-20T22%3A20%3A00Z&sort=updated"
+      ],
+      "update_of": null,
+      "article_id": "embodied-training"
+    },
+    {
+      "id": "2026-11-21-small-model-quality-cost-status-20261121",
+      "event_key": "small-model-quality-cost-status-20261121",
+      "title": "小模型核查：三个家族目录与一次限定论文检索的质量成本边界",
+      "summary": "Smol、Gemma、Phi 的三个官方目录各取最近 50 项，已读项的最后修改均早于窗口。结合本期 Mini 固定卡区分任务评分、分发文件与运行峰值；模型发布已归入架构页。",
+      "source_urls": [
+        "https://huggingface.co/api/models?author=HuggingFaceTB&direction=-1&expand=createdAt&expand=lastModified&expand=sha&limit=50&sort=lastModified",
+        "https://huggingface.co/api/models?author=google&direction=-1&expand=createdAt&expand=lastModified&expand=sha&limit=50&search=gemma&sort=lastModified",
+        "https://huggingface.co/api/models?author=microsoft&direction=-1&expand=createdAt&expand=lastModified&expand=sha&limit=50&search=Phi&sort=lastModified",
+        "https://export.arxiv.org/api/query?max_results=15&search_query=%28%28cat%3Acs.CL+OR+cat%3Acs.LG+OR+cat%3Acs.CV%29+AND+%28abs%3A%22small+language+model%22+OR+abs%3A%22small+language+models%22+OR+abs%3A%22on-device+language%22+OR+abs%3A%22compact+language+model%22+OR+abs%3A%22sub-billion%22%29%29+AND+submittedDate%3A%5B202611192220+TO+202611202220%5D&sortBy=submittedDate&sortOrder=descending&start=0",
+        "https://huggingface.co/thinkingmachines/Inkling-2-Mini/raw/1fb4134b9a74f9681054f4ef82e4bf1f458a2337/README.md",
+        "https://thinkingmachines.ai/model-card/inkling-2-mini/",
+        "https://huggingface.co/thinkingmachines/Inkling-2-Mini/raw/1fb4134b9a74f9681054f4ef82e4bf1f458a2337/config.json",
+        "https://raw.githubusercontent.com/vllm-project/vllm-project.github.io/c29cac02828531bb410100ca4e4b92acd0006080/_posts/2026-11-20-inkling2-mini.md",
+        "https://api.github.com/repos/vllm-project/vllm/pulls/69039"
+      ],
+      "update_of": null,
+      "article_id": "small-model-status"
+    },
+    {
+      "id": "2026-11-21-sglang-pr-47889",
+      "event_key": "sglang-pr-47889",
+      "title": "SGLang 在 Cosmos3 请求内复用逐层缓冲，只把完成去噪的帧写入历史",
+      "summary": "单张 RTX PRO 6000 Blackwell Server Edition，901 帧 BF16、四步采样。完整历史含 MP4 编码和写盘，从 52.266 降至 42.886 秒；PyTorch 峰值已分配显存从 43.346 降至 37.631 GiB。",
+      "source_urls": [
+        "https://api.github.com/repos/sgl-project/sglang/pulls/47889",
+        "https://api.github.com/repos/sgl-project/sglang/pulls/47889/files?per_page=100",
+        "https://api.github.com/search/issues?order=desc&page=1&per_page=100&q=repo%3Asgl-project%2Fsglang+is%3Apr+merged%3A2026-11-19T22%3A20%3A00Z..2026-11-20T22%3A20%3A00Z&sort=updated",
+        "https://api.github.com/repos/sgl-project/sglang/commits?page=1&per_page=100&since=2026-11-19T22%3A20%3A00Z&until=2026-11-20T22%3A20%3A00Z",
+        "https://api.github.com/repos/sgl-project/sglang/releases/latest"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    }
+  ],
+  "images": [
+    {
+      "path": "assets/overview.png",
+      "sha256": "1849ba44ddb9cd4b3e1754b1b227f0d1b63c1a025a0e8823a331060f26335ddb",
+      "alt": "六个主题包括 Engram 表、CMP170HX 重算、固定版 Inkling 循环状态、LeRobot 掩码、小模型质量成本和 Cosmos3 视频 KV；下方注明三家模型的 ModelScope 清单缺口。"
+    },
+    {
+      "path": "assets/engram-groups.png",
+      "sha256": "dbd8b20c120e9be1227bc629868aa262c51212422c305ee36bcb2fb2e36c0571",
+      "alt": "预填充和解码在同一引擎组时合计一套按行分片的 Engram 表，分组时每组一套。实例活动 KV 和其他运行状态另计。"
+    },
+    {
+      "path": "assets/inkling-state.png",
+      "sha256": "d75223c3d83a99faa7c4d4e61b29e09938231864b6eed9e265fab59953ac92b0",
+      "alt": "零基第 6 至 17 层共用核心权重。固定版三轮各有自己的 KV 和卷积状态；可选共享 KV 属于另一研究检查点。"
+    },
+    {
+      "path": "assets/action-mask.png",
+      "sha256": "4a49ef314f454982aab48c74bdd9ef6e986e64f94dda8970920f87a1d3d3ef73",
+      "alt": "三个样本保留零基行 2 的动作。旧掩码路径把行号 2 转为布尔真、再转成 1；修复后直接用整数 2，动作和掩码取自同一行。"
+    }
+  ],
+  "poster": "assets/overview.png"
+}

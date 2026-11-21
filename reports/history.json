@@ -2216,6 +2216,62 @@
       "revision": 1,
       "fingerprint": "ebe00525a534f5170f635f0a8aeb14de4b91718185713ad2cfc26864450bbc0c",
       "content_sha256": "8b1028fdece23485cf2a4176885f167683a26bea2b272bd1a8a280cf16cb6817"
+    },
+    {
+      "id": "2026-11-20-deepinfer-pr-291",
+      "event_key": "deepinfer-pr-291",
+      "date": "2026-11-20",
+      "revision": 1,
+      "fingerprint": "bb8dfcbe10ece907276d4f21fc6aad036a82883c733bd180d1550b21174c8c81",
+      "content_sha256": "958de8d177907dd16ff2cafde50124dc17651ee9fc55933a9788eef91ce7f58f"
+    },
+    {
+      "id": "2026-11-20-lerobot-pr-5390",
+      "event_key": "lerobot-pr-5390",
+      "date": "2026-11-20",
+      "revision": 1,
+      "fingerprint": "830bd30cab0d76f43f3bfc5f29e8da74dd077a63942143bfad657deddf9156d5",
+      "content_sha256": "4516a12cc61df796688ee592b465d6805ab70430bb3688b64091208136f3c3f6"
+    },
+    {
+      "id": "2026-11-20-lerobot-rynnvalue-8b-integration-20261119",
+      "event_key": "lerobot-rynnvalue-8b-integration-20261119",
+      "date": "2026-11-20",
+      "revision": 1,
+      "fingerprint": "dec78fed09461c298dcec10a632bb50de230dbacdab6ee4b0928d14a0d49a73d",
+      "content_sha256": "dca984561dd61225b0e60f7f35e2e27a419d89cc0611de64e954d3b3a369d29c"
+    },
+    {
+      "id": "2026-11-20-nvidia-daqiri-instruments-20261119",
+      "event_key": "nvidia-daqiri-instruments-20261119",
+      "date": "2026-11-20",
+      "revision": 1,
+      "fingerprint": "ba7b06a0ed7221d3e9be5a07681cb1dfe23609fc5b9b15c3141ffeb01d3f1396",
+      "content_sha256": "71e14c72e981a909cc1d3b5c53261269b90573f777b0b17194e176b3461c1316"
+    },
+    {
+      "id": "2026-11-20-nvidia-dynamo-rl-rollout-20261119",
+      "event_key": "nvidia-dynamo-rl-rollout-20261119",
+      "date": "2026-11-20",
+      "revision": 1,
+      "fingerprint": "df73a63862b7491d619387007b183a37e1c5c71fff532c005e2a6303fdaf74f1",
+      "content_sha256": "f9fa17dbbe0e71641effd4e59d43457539c066bd435d24216bb40912c09c49d4"
+    },
+    {
+      "id": "2026-11-20-sglang-pr-49068",
+      "event_key": "sglang-pr-49068",
+      "date": "2026-11-20",
+      "revision": 1,
+      "fingerprint": "18d5a7a48a84acb031e012e954b076992fe1abc77cf9f7891fc699513c99984f",
+      "content_sha256": "d9f42dcdaf2a1a35068f9bc9d5ee4548fb992250133b6f82a681ecbbdc5ff418"
+    },
+    {
+      "id": "2026-11-20-vllm-pr-68529",
+      "event_key": "vllm-pr-68529",
+      "date": "2026-11-20",
+      "revision": 1,
+      "fingerprint": "d326fa39d14bc50a0928b910b6548b28ba2a3cbd61a2ad4023b00dbbada226f5",
+      "content_sha256": "f95fa51dba472f39469563deaddb4ae9e1bfd24bdc3adf71a32adf63150eb210"
     }
   ]
 }
