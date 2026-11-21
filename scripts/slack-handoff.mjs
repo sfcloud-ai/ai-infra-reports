@@ -141,11 +141,18 @@ export async function publicGitHub(route,fetcher=fetch,now=Date.now){
  requireThat(/^\/(pulls\/[1-9]\d*|git\/commits\/[a-f0-9]{40})$/.test(route),"GitHub read route");
  return (await publicRead(route,fetcher,now)).data;
 }
+function githubTimestampMs(value){
+ if(typeof value!=="string"||value.length!==20)return NaN;
+ const ms=Date.parse(value);
+ // Round-trip to reject dates that Date.parse normalizes, such as February 30.
+ return Number.isFinite(ms)&&new Date(ms).toISOString().replace(".000Z","Z")===value?ms:NaN;
+}
 // Read the repository's own merge event, never a commit mentioned in a comment
 // or the current branch tip. Some PR representations omit merge_commit_sha.
 export async function publicMergeCommit(number,pr,fetcher=fetch,now=Date.now){
  requireThat(/^[1-9]\d*$/.test(String(number))&&Number.isSafeInteger(Number(number))&&pr?.number===Number(number)&&pr.merged===true&&pr.state==="closed","Merged PR identity required");
- requireThat(typeof pr.merged_at==="string"&&/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test(pr.merged_at)&&Number.isSafeInteger(pr.merged_by?.id)&&pr.merged_by.id>0,"Merged PR event metadata required");
+ const mergedAt=githubTimestampMs(pr.merged_at);
+ requireThat(Number.isFinite(mergedAt)&&Number.isSafeInteger(pr.merged_by?.id)&&pr.merged_by.id>0,"Merged PR event metadata required");
  const origin="https://api.github.com/repos/"+REPOSITORY;
  const {response,data:events}=await publicRead(`/issues/${number}/timeline?per_page=100`,fetcher,now);
  // A partial page cannot prove uniqueness. Leave the durable phase unchanged
@@ -154,7 +161,9 @@ export async function publicMergeCommit(number,pr,fetcher=fetch,now=Date.now){
  const merged=events.filter(e=>e.event==="merged");
  requireThat(merged.length===1,"Missing or ambiguous merge event");
  const event=merged[0];
- requireThat(Number.isSafeInteger(event.id)&&event.id>0&&typeof event.commit_id==="string"&&SHA.test(event.commit_id)&&event.commit_url===`${origin}/commits/${event.commit_id}`&&event.created_at===pr.merged_at&&event.actor?.id===pr.merged_by.id,"Merge event identity mismatch");
+ // GitHub can record the timeline event in the second after the PR merge.
+ const eventDelayMs=githubTimestampMs(event.created_at)-mergedAt;
+ requireThat(Number.isSafeInteger(event.id)&&event.id>0&&typeof event.commit_id==="string"&&SHA.test(event.commit_id)&&event.commit_url===`${origin}/commits/${event.commit_id}`&&(eventDelayMs===0||eventDelayMs===1000)&&event.actor?.id===pr.merged_by.id,"Merge event identity mismatch");
  requireThat(pr.merge_commit_sha==null||pr.merge_commit_sha===event.commit_id,"Conflicting merge commit evidence");
  return event.commit_id;
 }
