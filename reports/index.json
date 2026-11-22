@@ -1753,6 +1753,59 @@
       ],
       "poster": "assets/overview.png",
       "path": "reports/2026-11-21/"
+    },
+    {
+      "schema_version": "1.0",
+      "date": "2026-11-22",
+      "revision": 1,
+      "title": "AI Infra 晨报 · 2026-11-22",
+      "subtitle": "部分晨报｜覆盖缺口：架构。智谱博客返回 404，官网目录与更新记录未覆盖全部文章。",
+      "articles": [
+        {
+          "id": "model-serving-gpu",
+          "title": "模型服务与 GPU 超配：SGLang 把 MoE 工作区放在 KV 池之前",
+          "summary": "B300 测试的首个长请求只差 12–33 MB 就能完成临时分配。SGLang 调整了显存预留顺序，实际 KV 容量仍待实测。",
+          "sha256": "00349ac36acbe8d5b91c45a9eea622e61257f3e3a66a803f99822b6f7168fb9f",
+          "path": "reports/2026-11-22/articles/model-serving-gpu.md"
+        },
+        {
+          "id": "hardware-status",
+          "title": "硬件与算力平台：四张 RTX 3090 上，解码提速，冷预填充几乎持平",
+          "summary": "Merlin 3.0.2.2 默认启用四卡 PCIe P2P 解码设置。同机 4,046 token 输入、thinking on 的单流解码从 262.0 升到 315.5 tok/s，长输入的首 token 等待时间变化很小。",
+          "sha256": "9a677f69cdce68267a993de3e3a6665236112fa66316dbff42a17ab9b7287744",
+          "path": "reports/2026-11-22/articles/hardware-status.md"
+        },
+        {
+          "id": "model-architecture-status",
+          "title": "模型与架构：Inkling 2 Mini 合入 vLLM，三遍循环各存一份状态",
+          "summary": "同一组核心层每个 token 运行三遍，权重只需一组，各遍的 KV 与卷积状态却要独立。此次更新补上主线实现和 GB200 作者复核。",
+          "sha256": "a8567b270db6b1df58af55f07950750618bac159fe4bfe3fccc88ea7068aecf5",
+          "path": "reports/2026-11-22/articles/model-architecture-status.md"
+        },
+        {
+          "id": "embodied-training",
+          "title": "制造业具身智能训练：动作可以提前输出，控制效果还得在闭环里测",
+          "summary": "LeRobot 合入按时间顺序生成动作的 NAT VLA。另一个独立 MuJoCo 项目重训后，验证损失相近，机械臂抬升成功率却下降。",
+          "sha256": "68dd2c64521ba1a923ba6cc4fc0f667876ccb5db9ccc5eec5c6d94fd1c6b3314",
+          "path": "reports/2026-11-22/articles/embodied-training.md"
+        },
+        {
+          "id": "small-model-status",
+          "title": "前沿小模型：有多少组采样真的见过新动作成功",
+          "summary": "一项合成游戏实验用基础策略估计训练中会有多少采样组见到新动作获胜。图 1 拟合 400 次运行，整篇论文共记录 1,558 次。",
+          "sha256": "7c8bb5cc8e6014f49a238c6592ccb1d5f158a60503f9d906897371a206b2a4d9",
+          "path": "reports/2026-11-22/articles/small-model-status.md"
+        },
+        {
+          "id": "inference-engines",
+          "title": "推理引擎每日变动：vLLM 加快循环状态更新，SGLang 减少 Q/K 拷贝",
+          "summary": "vLLM 的 16 位 GDN 内核在缓存前缀的解码测试中缩短了每步时间。SGLang 的 ROCm 路径直接处理带步长的 Q/K；DeepInfer 窗内代码和发布列表均无新增。",
+          "sha256": "90b0c5ec5a75fd94ee243e18c02c73c2b237c8471b1e1ede2ceec2b998121417",
+          "path": "reports/2026-11-22/articles/inference-engines.md"
+        }
+      ],
+      "poster": "assets/overview.png",
+      "path": "reports/2026-11-22/"
     }
   ],
   "entries": [
@@ -5821,6 +5874,150 @@
       "article_id": "inference-engines",
       "fingerprint": "46f071feac6bd261b2ae3356cfe7920be9142ecce5abe131484ae03d6c02eea6",
       "date": "2026-11-21",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-22-sglang-pr-51995",
+      "event_key": "sglang-pr-51995",
+      "title": "SGLang 先为 MoE 预留工作区，再按剩余显存确定 KV 池大小",
+      "summary": "在 SM100 的 FlashInfer trtllm-gen MXFP4 MoE 路径，模型加载时先建工作区，KV 池随后定容。旧故障中首个约 16K token 预填充差 12–33 MB；改动后的实测容量待补。",
+      "source_urls": [
+        "https://api.github.com/repos/sgl-project/sglang/commits?page=1&per_page=100&since=2026-11-20T22%3A20%3A00Z&until=2026-11-21T22%3A20%3A00Z",
+        "https://api.github.com/repos/sgl-project/sglang/pulls/51995",
+        "https://api.github.com/repos/sgl-project/sglang/pulls/51995/files?per_page=100",
+        "https://api.github.com/search/issues?order=desc&page=1&per_page=100&q=repo%3Asgl-project%2Fsglang+is%3Apr+is%3Amerged+revert+in%3Atitle+merged%3A2026-11-21T21%3A01%3A51Z..2026-11-22T12%3A01%3A52Z&sort=updated",
+        "https://api.github.com/search/issues?order=desc&page=1&per_page=100&q=repo%3Asgl-project%2Fsglang+is%3Apr+merged%3A2026-11-20T22%3A20%3A00Z..2026-11-21T22%3A20%3A00Z&sort=updated"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "63375b57ac3dd0a6e0421a9a401b2ff87199e500592e3bb9dea9f3cf09ebd41c",
+      "date": "2026-11-22",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-22-merlin-3022-qwen27b-rtx3090-decode",
+      "event_key": "merlin-3022-qwen27b-rtx3090-decode",
+      "title": "四张 RTX 3090 上，Merlin 单流解码加快，长输入的冷预填充几乎持平",
+      "summary": "Merlin 3.0.2.2 在同一台四张 RTX 3090 的主机上，4,046 token 输入、thinking on 的单流解码由 262.0 提至 315.5 tok/s，261,888 token 的冷预填充为 2,115 和 2,118 tok/s。",
+      "source_urls": [
+        "https://api.github.com/repos/halt95/merlin-engine/commits/5522dd91266d42b628ba2ffab801b364ed5e384c",
+        "https://api.github.com/repos/halt95/merlin-engine/commits?per_page=30&since=2026-11-20T22%3A20%3A00Z&until=2026-11-21T22%3A20%3A00Z",
+        "https://raw.githubusercontent.com/halt95/merlin-engine/5522dd91266d42b628ba2ffab801b364ed5e384c/benchmarks/2026-11-12/Qwen3.8-27B-BENCH-CARD.md",
+        "https://raw.githubusercontent.com/halt95/merlin-engine/5522dd91266d42b628ba2ffab801b364ed5e384c/benchmarks/2026-11-21/Qwen3.8-27B-BENCH-CARD.md",
+        "https://raw.githubusercontent.com/halt95/merlin-engine/7a4b3e37678c97be594fe6af937c262e2fae388b/README.md"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status",
+      "fingerprint": "1a334822602e15b5fec90e673221d55a1e020f0c44adff3613d96a3cd1273383",
+      "date": "2026-11-22",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-22-vllm-pr-69028-inkling2-mini-mainline",
+      "event_key": "inkling-2-mini-fixed-checkpoint-20261120",
+      "title": "Inkling 2 Mini 的三遍循环适配合入 vLLM，各遍分别保存 KV 与卷积状态",
+      "summary": "11 月 21 日主线合入固定三遍 Mini 的实现。共享核心参数，各遍分别维护 KV 和卷积状态。作者在 GB200、TP1、DSpark 的 200 道 GSM8K 测试中得到 97.0%。",
+      "source_urls": [
+        "https://api.github.com/repos/vllm-project/vllm/commits?page=1&per_page=100&since=2026-11-20T22%3A20%3A00Z&until=2026-11-21T22%3A20%3A00Z",
+        "https://api.github.com/repos/vllm-project/vllm/pulls/69021",
+        "https://api.github.com/repos/vllm-project/vllm/pulls/69021/files?per_page=100",
+        "https://api.github.com/repos/vllm-project/vllm/pulls/69028",
+        "https://api.github.com/repos/vllm-project/vllm/pulls/69028/files?per_page=100",
+        "https://api.github.com/repos/vllm-project/vllm/releases/latest",
+        "https://api.github.com/search/issues?order=desc&page=1&per_page=100&q=repo%3Avllm-project%2Fvllm+is%3Apr+is%3Amerged+revert+in%3Atitle+merged%3A2026-11-21T08%3A55%3A34Z..2026-11-22T12%3A01%3A52Z&sort=updated",
+        "https://api.github.com/search/issues?order=desc&page=1&per_page=100&q=repo%3Avllm-project%2Fvllm+is%3Apr+merged%3A2026-11-20T22%3A20%3A00Z..2026-11-21T22%3A20%3A00Z&sort=updated"
+      ],
+      "update_of": "2026-11-21-inkling-2-mini-fixed-checkpoint-20261120",
+      "article_id": "model-architecture-status",
+      "fingerprint": "fc88bf439b8d17b105947eaa4ba12c278715ae2fb29c1113484c21913e8a1c3c",
+      "date": "2026-11-22",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-22-lerobot-pr-5416-nat-vla",
+      "event_key": "lerobot-pr-5416-nat-vla",
+      "title": "LeRobot 合入 NAT VLA，策略可在整段动作生成完前输出第一批动作",
+      "summary": "NAT VLA 可按时间顺序流式生成动作。作者的 RTX 4090、LIBERO 帧测试中首个动作约 40 ms；30 Hz 循环在首段之后的换段等待降到 0.1 ms。合并时权重和动作分词器尚未公开下载。",
+      "source_urls": [
+        "https://api.github.com/repos/huggingface/lerobot/pulls/5416",
+        "https://api.github.com/repos/huggingface/lerobot/pulls/5416/files?per_page=100",
+        "https://api.github.com/search/issues?order=desc&page=1&per_page=100&q=repo%3Ahuggingface%2Flerobot+is%3Apr+is%3Amerged+revert+in%3Atitle+merged%3A2026-11-21T18%3A26%3A33Z..2026-11-22T12%3A01%3A52Z&sort=updated",
+        "https://api.github.com/search/issues?order=desc&page=1&per_page=40&q=repo%3Ahuggingface%2Flerobot+is%3Apr+merged%3A2026-11-20T22%3A20%3A00Z..2026-11-21T22%3A20%3A00Z&sort=updated"
+      ],
+      "update_of": null,
+      "article_id": "embodied-training",
+      "fingerprint": "b87f4919bda0ac934d30e9b5644661204a85860aa55c8aa988e63c3165989d3c",
+      "date": "2026-11-22",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-22-sim2real-vla-retrain-lift-2ad8e59",
+      "event_key": "sim2real-vla-retrain-lift-2ad8e59",
+      "title": "同一套仿真任务重训后，离散策略验证损失相近，闭环抬升成功率下降",
+      "summary": "同一 MuJoCo 任务两次训练的验证损失为 1.612 和 1.636，但训练分布的抬升成功率由 61% 降至 34%，留出集由 29% 降至 21%。每个任务、每个切分使用 200 个固定种子回合。",
+      "source_urls": [
+        "https://api.github.com/repos/OJ102/sim2real-vla/commits/2ad8e59935f536a1a4751304398cd16024496c2e",
+        "https://api.github.com/repos/OJ102/sim2real-vla/commits?per_page=30&since=2026-11-20T22%3A20%3A00Z&until=2026-11-21T22%3A20%3A00Z",
+        "https://raw.githubusercontent.com/OJ102/sim2real-vla/45f56372b3198ee11d41d84fc1bfc2e84a14b705/README.md"
+      ],
+      "update_of": null,
+      "article_id": "embodied-training",
+      "fingerprint": "c7de1a61f69e33713ee0178aa26f28245bf544be9f1316802ffa2831eb20e102",
+      "date": "2026-11-22",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-22-arxiv-2611-26084-v1-rl-success-groups",
+      "event_key": "arxiv-2611-26084-v1-rl-success-groups",
+      "title": "小模型何时学会改换动作？一项合成游戏实验把采样预算落到成功组数",
+      "summary": "11 月 19 日论文，属 72 小时回溯。主设置使用 10.7M 参数 GPT。基础策略和训练预算预计能产生约 35 个成功组时，约半数训练运行学会换动作；该数值随训练配方变化。",
+      "source_urls": [
+        "https://arxiv.org/abs/2611.26084v1",
+        "https://arxiv.org/html/2611.26084v1",
+        "https://arxiv.org/pdf/2611.26084v1",
+        "https://export.arxiv.org/api/query?max_results=15&search_query=%28%28cat%3Acs.CL+OR+cat%3Acs.LG+OR+cat%3Acs.CV%29+AND+%28abs%3A%22small+language+model%22+OR+abs%3A%22small+language+models%22+OR+abs%3A%22on-device+language%22+OR+abs%3A%22compact+language+model%22+OR+abs%3A%22sub-billion%22%29%29+AND+submittedDate%3A%5B202611182220+TO+202611212220%5D&sortBy=submittedDate&sortOrder=descending&start=0",
+        "https://export.arxiv.org/api/query?max_results=15&search_query=%28%28cat%3Acs.CL+OR+cat%3Acs.LG+OR+cat%3Acs.CV%29+AND+%28abs%3A%22small+language+model%22+OR+abs%3A%22small+language+models%22+OR+abs%3A%22on-device+language%22+OR+abs%3A%22compact+language+model%22+OR+abs%3A%22sub-billion%22%29%29+AND+submittedDate%3A%5B202611202220+TO+202611212220%5D&sortBy=submittedDate&sortOrder=descending&start=0"
+      ],
+      "update_of": null,
+      "article_id": "small-model-status",
+      "fingerprint": "830f8fa6c045f23d67f4679fe10dcfed9c31737e8760fa807e938b7aff16c9e0",
+      "date": "2026-11-22",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-22-vllm-pr-69065-16bit-gdn-mtp",
+      "event_key": "vllm-pr-69065-16bit-gdn-mtp",
+      "title": "vLLM 为 16 位循环状态新增 GDN 推测解码内核",
+      "summary": "在 4×GB300、已缓存长前缀、每个引擎 32 请求的对照中，折算的每步解码时间由 16.92–16.98 ms 降为 16.07–16.11 ms。",
+      "source_urls": [
+        "https://api.github.com/repos/vllm-project/vllm/commits?page=1&per_page=100&since=2026-11-20T22%3A20%3A00Z&until=2026-11-21T22%3A20%3A00Z",
+        "https://api.github.com/repos/vllm-project/vllm/pulls/69065",
+        "https://api.github.com/repos/vllm-project/vllm/pulls/69065/files?per_page=100",
+        "https://api.github.com/search/issues?order=desc&page=1&per_page=100&q=repo%3Avllm-project%2Fvllm+is%3Apr+is%3Amerged+revert+in%3Atitle+merged%3A2026-11-21T08%3A55%3A34Z..2026-11-22T12%3A01%3A52Z&sort=updated",
+        "https://api.github.com/search/issues?order=desc&page=1&per_page=100&q=repo%3Avllm-project%2Fvllm+is%3Apr+merged%3A2026-11-20T22%3A20%3A00Z..2026-11-21T22%3A20%3A00Z&sort=updated"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "7dbfea850af05c2ee1925fe80a4b070053accd56900d20db4d19d199b399f2d4",
+      "date": "2026-11-22",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-22-sglang-pr-39071-rocm-strided-qknorm",
+      "event_key": "sglang-pr-39071-rocm-strided-qknorm",
+      "title": "SGLang 在 ROCm 上直接归一化带步长的 Q/K 视图，减少拷贝",
+      "summary": "作者取证时的 PR 说明报告了两组数据。MI355X 测融合内核，MI325X 测离线模型，在 Qwen3-30B-A3B 负载下吞吐中位变化为 +3.11%；PR 在本期截止后有过编辑。",
+      "source_urls": [
+        "https://api.github.com/repos/sgl-project/sglang/commits?page=1&per_page=100&since=2026-11-20T22%3A20%3A00Z&until=2026-11-21T22%3A20%3A00Z",
+        "https://api.github.com/repos/sgl-project/sglang/pulls/39071",
+        "https://api.github.com/repos/sgl-project/sglang/pulls/39071/files?per_page=100",
+        "https://api.github.com/search/issues?order=desc&page=1&per_page=100&q=repo%3Asgl-project%2Fsglang+is%3Apr+is%3Amerged+revert+in%3Atitle+merged%3A2026-11-21T21%3A01%3A51Z..2026-11-22T12%3A01%3A52Z&sort=updated",
+        "https://api.github.com/search/issues?order=desc&page=1&per_page=100&q=repo%3Asgl-project%2Fsglang+is%3Apr+merged%3A2026-11-20T22%3A20%3A00Z..2026-11-21T22%3A20%3A00Z&sort=updated"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "7b05e25600dddfef21655907468788916286291de81756eb544ab2da6eeeffa9",
+      "date": "2026-11-22",
       "revision": 1
     }
   ]

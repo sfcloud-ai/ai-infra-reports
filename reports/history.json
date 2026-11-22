@@ -2272,6 +2272,54 @@
       "revision": 1,
       "fingerprint": "d326fa39d14bc50a0928b910b6548b28ba2a3cbd61a2ad4023b00dbbada226f5",
       "content_sha256": "f95fa51dba472f39469563deaddb4ae9e1bfd24bdc3adf71a32adf63150eb210"
+    },
+    {
+      "id": "2026-11-21-cmp170hx-mamba-block-grid-4e8e432",
+      "event_key": "cmp170hx-mamba-block-grid-4e8e432",
+      "date": "2026-11-21",
+      "revision": 1,
+      "fingerprint": "0757ad642dd827a1a65c4b8405db2044b5249d2790b8f6165d665239b79ccfd9",
+      "content_sha256": "f164d6c9812c8802d353e7c7ec3785e8fddad4de98247c80704e5145395fe8ac"
+    },
+    {
+      "id": "2026-11-21-inkling-2-mini-fixed-checkpoint-20261120",
+      "event_key": "inkling-2-mini-fixed-checkpoint-20261120",
+      "date": "2026-11-21",
+      "revision": 1,
+      "fingerprint": "23e099c75aaa466628523ba9d1519d06a60a89bacdbfdc9c2bcb6a922d58415b",
+      "content_sha256": "2d841df9e717670428e36cecce3972eac5c47370789418b2150b39d9db272350"
+    },
+    {
+      "id": "2026-11-21-lerobot-pr-5420",
+      "event_key": "lerobot-pr-5420",
+      "date": "2026-11-21",
+      "revision": 1,
+      "fingerprint": "152c62b8a403c875f969b345a2c93f67d5738f47accb1254c1e27a0cfd5e0280",
+      "content_sha256": "7812378fcf643dc3ca53384a7540d736534a328ac2fcee7113ed6f6dae9639f2"
+    },
+    {
+      "id": "2026-11-21-sglang-pr-47889",
+      "event_key": "sglang-pr-47889",
+      "date": "2026-11-21",
+      "revision": 1,
+      "fingerprint": "46f071feac6bd261b2ae3356cfe7920be9142ecce5abe131484ae03d6c02eea6",
+      "content_sha256": "174382026629813b37738d1650ceba7e69e66ca516319691b1f7b37ddd0ec596"
+    },
+    {
+      "id": "2026-11-21-small-model-quality-cost-status-20261121",
+      "event_key": "small-model-quality-cost-status-20261121",
+      "date": "2026-11-21",
+      "revision": 1,
+      "fingerprint": "76fce71a4a1b7d5fecb8d73208110b8c2ba0cfc2c9637bb256ee5c9e2eede4cf",
+      "content_sha256": "eab6953a637c9c95d454d56b677bc0bcd08699a1a0f96af144bec05409475554"
+    },
+    {
+      "id": "2026-11-21-vllm-pr-67539",
+      "event_key": "vllm-pr-67539",
+      "date": "2026-11-21",
+      "revision": 1,
+      "fingerprint": "b1a9ddba49b8e4b84041d4f59ca2d8f521b353352f40beba3ee01c93f783c559",
+      "content_sha256": "bf20e728a163263d719c078d0a0a6199a99648e6962d6b86db32fb9074e7d9ac"
     }
   ]
 }
