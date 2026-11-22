@@ -11,6 +11,7 @@ import {producerInspection,inspectCommand,INSPECT_PREFIX} from './producer-inspe
 import {inspectDay,dayCommand,DAY_PREFIX} from './producer-day.mjs';
 import {intakeStatus} from './publisher-inbox.mjs';
 import {submissionStatus} from './slack-submission.mjs';
+import {isOriginalManualRequest,originalManualDelivery} from './manual-delivery-fact.mjs';
 export function statusImages(value){
  if(value===undefined)return [];
  requireThat(Array.isArray(value)&&value.length<=32,'Bounded image receipts required');
@@ -85,6 +86,7 @@ export async function advanceScheduledDelivery(state,config,query=queryScheduled
  installScheduledTables(db,['scheduled_handoffs','scheduled_bridge_scope']);
  const scope=scopeDigest(c);db.prepare('INSERT OR IGNORE INTO scheduled_bridge_scope VALUES (1,?)').run(scope);
  requireThat(db.prepare('SELECT value FROM scheduled_bridge_scope WHERE id=1').get().value===scope,'Scheduled bridge scope changed; reconcile first');
+ let manualPending;
  const candidates=db.prepare("SELECT j.id FROM jobs j LEFT JOIN scheduled_handoffs h ON h.request_id=j.id WHERE j.phase IN ('verified','sending','receipt_unknown','receipt_sent') ORDER BY CASE WHEN h.request_id IS NULL THEN 0 ELSE 1 END, COALESCE(h.poll_order,0),j.source_ts").all();
  for(const {id}of candidates){
   const job=state.get(id),bundle=await decodeBundle(job.bytes);
@@ -93,6 +95,13 @@ export async function advanceScheduledDelivery(state,config,query=queryScheduled
   const binding=JSON.stringify({request_id:id,report_date:bundle.report.date,report_commit:job.detail.commit,bundle_sha256:job.hash});
   const revised=!!bundle.report.revision_notice;
   let local=db.prepare('SELECT * FROM scheduled_handoffs WHERE request_id=?').get(id);
+  if(isOriginalManualRequest(state,config,job,bundle.report.date)){
+   // This edition was handled manually. Missing evidence withholds a settled
+   // status; it must never reopen scheduled admission for the reserved ID.
+   if(local?.phase==='complete'||originalManualDelivery(state,config,id,local??null))continue;
+   manualPending={request_id:id,phase:'reconcile_pending',wecom_status:'not_verified'};
+   continue;
+  }
   if(revised&&(!local||local.phase==='new')&&olderCorrectionAwaitsFirstNotice(db,bundle.report.date,bundle.report.revision))continue;
   if(local){requireThat(local.binding===binding,'Scheduled original binding differs');if(['complete','skipped','superseded','policy_rejected'].includes(local.phase))continue;}
   else{db.prepare("INSERT INTO scheduled_handoffs VALUES (?,?,'new',NULL,0)").run(id,binding);local={phase:'new'};}
@@ -151,7 +160,7 @@ export async function advanceScheduledDelivery(state,config,query=queryScheduled
    return {request_id:id,phase:'reconcile_pending',wecom_status:'not_verified',diagnostic};
   }
  }
- return {phase:'idle'};
+ return manualPending??{phase:'idle'};
 }
 export async function advanceScheduledStatus(state,config,events,slack,query=queryScheduled){
  if(!events.length&&!state.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='scheduled_status_replies'").get())return;
