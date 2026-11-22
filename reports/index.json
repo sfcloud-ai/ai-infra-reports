@@ -1764,43 +1764,43 @@
         {
           "id": "model-serving-gpu",
           "title": "模型服务与 GPU 超配：SGLang 把 MoE 工作区放在 KV 池之前",
-          "summary": "B300 测试的首个长请求只差 12–33 MB 就能完成临时分配。SGLang 调整了显存预留顺序，实际 KV 容量仍待实测。",
-          "sha256": "00349ac36acbe8d5b91c45a9eea622e61257f3e3a66a803f99822b6f7168fb9f",
+          "summary": "SGLang 先为 SM100 的特定 MoE 路径预留工作区，再给 KV 池定容。故障出现在首个长预填充批次，部署时可据此检查显存峰值。",
+          "sha256": "0d5b4f3d25faf578df05d2450c3d2b96ff872486033bfb4827bebe20dbb87d46",
           "path": "reports/2026-11-22/articles/model-serving-gpu.md"
         },
         {
           "id": "hardware-status",
-          "title": "硬件与算力平台：四张 RTX 3090 上，解码提速，冷预填充几乎持平",
-          "summary": "Merlin 3.0.2.2 默认启用四卡 PCIe P2P 解码设置。同机 4,046 token 输入、thinking on 的单流解码从 262.0 升到 315.5 tok/s，长输入的首 token 等待时间变化很小。",
-          "sha256": "9a677f69cdce68267a993de3e3a6665236112fa66316dbff42a17ab9b7287744",
+          "title": "硬件与算力平台：Merlin 更新四张 RTX 3090 上的 P2P 解码默认设置",
+          "summary": "Merlin 3.0.2.2 调整 Qwen3.8-27B 四卡启动配置的解码默认值。使用该配置且开启 P2P 时，启动器保留用户已显式设置的值。",
+          "sha256": "4b910fc69dfd17af1cf7a336a5bc02c79f6483f10fdc3336d613bdfd86863192",
           "path": "reports/2026-11-22/articles/hardware-status.md"
         },
         {
           "id": "model-architecture-status",
           "title": "模型与架构：Inkling 2 Mini 合入 vLLM，三遍循环各存一份状态",
-          "summary": "同一组核心层每个 token 运行三遍，权重只需一组，各遍的 KV 与卷积状态却要独立。此次更新补上主线实现和 GB200 作者复核。",
-          "sha256": "a8567b270db6b1df58af55f07950750618bac159fe4bfe3fccc88ea7068aecf5",
+          "summary": "vLLM 加入固定版 Inkling 2 Mini。核心权重可以共用，三遍循环的 KV 与卷积状态分别保存。智谱博客返回 404，本期架构来源仍有覆盖缺口。",
+          "sha256": "adb014a53c756a22f340b4a8ecbaad57fa9378090f2637fe16b6e322d34c68b0",
           "path": "reports/2026-11-22/articles/model-architecture-status.md"
         },
         {
           "id": "embodied-training",
-          "title": "制造业具身智能训练：动作可以提前输出，控制效果还得在闭环里测",
-          "summary": "LeRobot 合入按时间顺序生成动作的 NAT VLA。另一个独立 MuJoCo 项目重训后，验证损失相近，机械臂抬升成功率却下降。",
-          "sha256": "68dd2c64521ba1a923ba6cc4fc0f667876ccb5db9ccc5eec5c6d94fd1c6b3314",
+          "title": "制造业具身智能训练：LeRobot 合入 NAT VLA，MuJoCo 重训复核抬升效果",
+          "summary": "LeRobot 合入 NAT VLA 时，默认权重和动作分词器尚未在 Hugging Face Hub 公开。另一项目的 MuJoCo 离散策略重训后，训练分布和留出集的闭环抬升成功率均下降。",
+          "sha256": "b58172efb5a5d363ae4b00acadbf96051cfd80aee73b9658b35b41e25de5a7ba",
           "path": "reports/2026-11-22/articles/embodied-training.md"
         },
         {
           "id": "small-model-status",
           "title": "前沿小模型：有多少组采样真的见过新动作成功",
-          "summary": "一项合成游戏实验用基础策略估计训练中会有多少采样组见到新动作获胜。图 1 拟合 400 次运行，整篇论文共记录 1,558 次。",
-          "sha256": "7c8bb5cc8e6014f49a238c6592ccb1d5f158a60503f9d906897371a206b2a4d9",
+          "summary": "在论文的合成游戏中，每次出题可以采样多次。作者把训练前估计的成功组数与随后学会换动作的运行比例作对照。",
+          "sha256": "c66125fce5a2c1702ba4582c349b9406e5e862a5e8fffba720b409db44ccbad1",
           "path": "reports/2026-11-22/articles/small-model-status.md"
         },
         {
           "id": "inference-engines",
-          "title": "推理引擎每日变动：vLLM 加快循环状态更新，SGLang 减少 Q/K 拷贝",
-          "summary": "vLLM 的 16 位 GDN 内核在缓存前缀的解码测试中缩短了每步时间。SGLang 的 ROCm 路径直接处理带步长的 Q/K；DeepInfer 窗内代码和发布列表均无新增。",
-          "sha256": "90b0c5ec5a75fd94ee243e18c02c73c2b237c8471b1e1ede2ceec2b998121417",
+          "title": "推理引擎每日变动：vLLM 新增 GDN 解码内核，SGLang 减少 Q/K 拷贝",
+          "summary": "vLLM 为 sm_103a 新增 16 位循环状态解码内核，SGLang 的 ROCm 融合路径直接处理带步长的 Q/K。本窗口内 DeepInfer 未见新增合并。",
+          "sha256": "e2cc81a8e06f23ccc72070fedef4a351c066d0955b22b6f9b3c58f67dcdf34ae",
           "path": "reports/2026-11-22/articles/inference-engines.md"
         }
       ],
@@ -5880,7 +5880,7 @@
       "id": "2026-11-22-sglang-pr-51995",
       "event_key": "sglang-pr-51995",
       "title": "SGLang 先为 MoE 预留工作区，再按剩余显存确定 KV 池大小",
-      "summary": "在 SM100 的 FlashInfer trtllm-gen MXFP4 MoE 路径，模型加载时先建工作区，KV 池随后定容。旧故障中首个约 16K token 预填充差 12–33 MB；改动后的实测容量待补。",
+      "summary": "在适用的 SM100 MXFP4 MoE 路径上，先预留进程内工作区，再以剩余显存为 KV 池定容。",
       "source_urls": [
         "https://api.github.com/repos/sgl-project/sglang/commits?page=1&per_page=100&since=2026-11-20T22%3A20%3A00Z&until=2026-11-21T22%3A20%3A00Z",
         "https://api.github.com/repos/sgl-project/sglang/pulls/51995",
@@ -5890,15 +5890,15 @@
       ],
       "update_of": null,
       "article_id": "model-serving-gpu",
-      "fingerprint": "63375b57ac3dd0a6e0421a9a401b2ff87199e500592e3bb9dea9f3cf09ebd41c",
+      "fingerprint": "e3f4c1e184e477a188b53f3ddda73218f44def606b60ce2412c1d2b13ed79043",
       "date": "2026-11-22",
       "revision": 1
     },
     {
       "id": "2026-11-22-merlin-3022-qwen27b-rtx3090-decode",
       "event_key": "merlin-3022-qwen27b-rtx3090-decode",
-      "title": "四张 RTX 3090 上，Merlin 单流解码加快，长输入的冷预填充几乎持平",
-      "summary": "Merlin 3.0.2.2 在同一台四张 RTX 3090 的主机上，4,046 token 输入、thinking on 的单流解码由 262.0 提至 315.5 tok/s，261,888 token 的冷预填充为 2,115 和 2,118 tok/s。",
+      "title": "Merlin 更新四卡 RTX 3090 启动配置的 P2P 解码默认值",
+      "summary": "在 27b-tp4-3090 配置下开启 P2P 时，3.0.2.2 为四项解码设置提供默认值，保留用户的显式覆盖。",
       "source_urls": [
         "https://api.github.com/repos/halt95/merlin-engine/commits/5522dd91266d42b628ba2ffab801b364ed5e384c",
         "https://api.github.com/repos/halt95/merlin-engine/commits?per_page=30&since=2026-11-20T22%3A20%3A00Z&until=2026-11-21T22%3A20%3A00Z",
@@ -5908,7 +5908,7 @@
       ],
       "update_of": null,
       "article_id": "hardware-status",
-      "fingerprint": "1a334822602e15b5fec90e673221d55a1e020f0c44adff3613d96a3cd1273383",
+      "fingerprint": "c6b87e724676a4ea42400c6ae1b2f89167de95a055061160dace4647399c63cd",
       "date": "2026-11-22",
       "revision": 1
     },
@@ -5916,7 +5916,7 @@
       "id": "2026-11-22-vllm-pr-69028-inkling2-mini-mainline",
       "event_key": "inkling-2-mini-fixed-checkpoint-20261120",
       "title": "Inkling 2 Mini 的三遍循环适配合入 vLLM，各遍分别保存 KV 与卷积状态",
-      "summary": "11 月 21 日主线合入固定三遍 Mini 的实现。共享核心参数，各遍分别维护 KV 和卷积状态。作者在 GB200、TP1、DSpark 的 200 道 GSM8K 测试中得到 97.0%。",
+      "summary": "固定版 Mini 的三遍计算共用核心权重。vLLM 分别维护各遍的注意力历史和卷积状态。",
       "source_urls": [
         "https://api.github.com/repos/vllm-project/vllm/commits?page=1&per_page=100&since=2026-11-20T22%3A20%3A00Z&until=2026-11-21T22%3A20%3A00Z",
         "https://api.github.com/repos/vllm-project/vllm/pulls/69021",
@@ -5929,15 +5929,15 @@
       ],
       "update_of": "2026-11-21-inkling-2-mini-fixed-checkpoint-20261120",
       "article_id": "model-architecture-status",
-      "fingerprint": "fc88bf439b8d17b105947eaa4ba12c278715ae2fb29c1113484c21913e8a1c3c",
+      "fingerprint": "fface9683c8a7497f2d1e72fb3a6307214e3e0d4afa91c631aa93e25b2862c07",
       "date": "2026-11-22",
       "revision": 1
     },
     {
       "id": "2026-11-22-lerobot-pr-5416-nat-vla",
       "event_key": "lerobot-pr-5416-nat-vla",
-      "title": "LeRobot 合入 NAT VLA，策略可在整段动作生成完前输出第一批动作",
-      "summary": "NAT VLA 可按时间顺序流式生成动作。作者的 RTX 4090、LIBERO 帧测试中首个动作约 40 ms；30 Hz 循环在首段之后的换段等待降到 0.1 ms。合并时权重和动作分词器尚未公开下载。",
+      "title": "LeRobot 合入基于 LFM2-VL 的 NAT VLA 策略",
+      "summary": "合入时，默认 NAT VLA 预训练权重和动作分词器尚未在 Hugging Face Hub 公开。",
       "source_urls": [
         "https://api.github.com/repos/huggingface/lerobot/pulls/5416",
         "https://api.github.com/repos/huggingface/lerobot/pulls/5416/files?per_page=100",
@@ -5946,15 +5946,15 @@
       ],
       "update_of": null,
       "article_id": "embodied-training",
-      "fingerprint": "b87f4919bda0ac934d30e9b5644661204a85860aa55c8aa988e63c3165989d3c",
+      "fingerprint": "4561192948580b448a068de1df823bd7331e456a974d5709104bbb50392bdd3c",
       "date": "2026-11-22",
       "revision": 1
     },
     {
       "id": "2026-11-22-sim2real-vla-retrain-lift-2ad8e59",
       "event_key": "sim2real-vla-retrain-lift-2ad8e59",
-      "title": "同一套仿真任务重训后，离散策略验证损失相近，闭环抬升成功率下降",
-      "summary": "同一 MuJoCo 任务两次训练的验证损失为 1.612 和 1.636，但训练分布的抬升成功率由 61% 降至 34%，留出集由 29% 降至 21%。每个任务、每个切分使用 200 个固定种子回合。",
+      "title": "MuJoCo 重训记录分别给出离散策略的验证损失与闭环抬升结果",
+      "summary": "这次离散策略重训的验证集主损失与原训练接近，MuJoCo 仿真中训练分布和留出集的闭环抬升成功率均下降。",
       "source_urls": [
         "https://api.github.com/repos/OJ102/sim2real-vla/commits/2ad8e59935f536a1a4751304398cd16024496c2e",
         "https://api.github.com/repos/OJ102/sim2real-vla/commits?per_page=30&since=2026-11-20T22%3A20%3A00Z&until=2026-11-21T22%3A20%3A00Z",
@@ -5962,7 +5962,7 @@
       ],
       "update_of": null,
       "article_id": "embodied-training",
-      "fingerprint": "c7de1a61f69e33713ee0178aa26f28245bf544be9f1316802ffa2831eb20e102",
+      "fingerprint": "8c82578731e13406fa56253f548660beff9f62ac9f3ebfefd123a4760cafb36a",
       "date": "2026-11-22",
       "revision": 1
     },
@@ -5970,7 +5970,7 @@
       "id": "2026-11-22-arxiv-2611-26084-v1-rl-success-groups",
       "event_key": "arxiv-2611-26084-v1-rl-success-groups",
       "title": "小模型何时学会改换动作？一项合成游戏实验把采样预算落到成功组数",
-      "summary": "11 月 19 日论文，属 72 小时回溯。主设置使用 10.7M 参数 GPT。基础策略和训练预算预计能产生约 35 个成功组时，约半数训练运行学会换动作；该数值随训练配方变化。",
+      "summary": "按每次出题分组，组内只要有一次在规定失败次数后换动作并获胜，就计一个成功组。",
       "source_urls": [
         "https://arxiv.org/abs/2611.26084v1",
         "https://arxiv.org/html/2611.26084v1",
@@ -5980,7 +5980,7 @@
       ],
       "update_of": null,
       "article_id": "small-model-status",
-      "fingerprint": "830f8fa6c045f23d67f4679fe10dcfed9c31737e8760fa807e938b7aff16c9e0",
+      "fingerprint": "e228c15669abd95ba0f29ad75185a27445d46a9a9f47a6ba12a03846efbd9e35",
       "date": "2026-11-22",
       "revision": 1
     },
@@ -5988,7 +5988,7 @@
       "id": "2026-11-22-vllm-pr-69065-16bit-gdn-mtp",
       "event_key": "vllm-pr-69065-16bit-gdn-mtp",
       "title": "vLLM 为 16 位循环状态新增 GDN 推测解码内核",
-      "summary": "在 4×GB300、已缓存长前缀、每个引擎 32 请求的对照中，折算的每步解码时间由 16.92–16.98 ms 降为 16.07–16.11 ms。",
+      "summary": "BF16 和 FP16 循环状态获得新的 GDN MTP 解码内核，构建目标为 sm_103a。",
       "source_urls": [
         "https://api.github.com/repos/vllm-project/vllm/commits?page=1&per_page=100&since=2026-11-20T22%3A20%3A00Z&until=2026-11-21T22%3A20%3A00Z",
         "https://api.github.com/repos/vllm-project/vllm/pulls/69065",
@@ -5998,7 +5998,7 @@
       ],
       "update_of": null,
       "article_id": "inference-engines",
-      "fingerprint": "7dbfea850af05c2ee1925fe80a4b070053accd56900d20db4d19d199b399f2d4",
+      "fingerprint": "ba3456051aeb7446dafc21a7092a7825281c7d9e0d4f352bae802ebcfe3963c1",
       "date": "2026-11-22",
       "revision": 1
     },
@@ -6006,7 +6006,7 @@
       "id": "2026-11-22-sglang-pr-39071-rocm-strided-qknorm",
       "event_key": "sglang-pr-39071-rocm-strided-qknorm",
       "title": "SGLang 在 ROCm 上直接归一化带步长的 Q/K 视图，减少拷贝",
-      "summary": "作者取证时的 PR 说明报告了两组数据。MI355X 测融合内核，MI325X 测离线模型，在 Qwen3-30B-A3B 负载下吞吐中位变化为 +3.11%；PR 在本期截止后有过编辑。",
+      "summary": "ROCm 融合路径能原地处理带步长的 Q、K 切片，减少为归一化而做的张量拷贝。",
       "source_urls": [
         "https://api.github.com/repos/sgl-project/sglang/commits?page=1&per_page=100&since=2026-11-20T22%3A20%3A00Z&until=2026-11-21T22%3A20%3A00Z",
         "https://api.github.com/repos/sgl-project/sglang/pulls/39071",
@@ -6016,7 +6016,7 @@
       ],
       "update_of": null,
       "article_id": "inference-engines",
-      "fingerprint": "7b05e25600dddfef21655907468788916286291de81756eb544ab2da6eeeffa9",
+      "fingerprint": "a47c083cf634105a3e5ff8b4a9a7988656a3813fc5847aa94146f8ba56fbd1d0",
       "date": "2026-11-22",
       "revision": 1
     }
