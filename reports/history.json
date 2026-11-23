@@ -2320,6 +2320,70 @@
       "revision": 1,
       "fingerprint": "b1a9ddba49b8e4b84041d4f59ca2d8f521b353352f40beba3ee01c93f783c559",
       "content_sha256": "bf20e728a163263d719c078d0a0a6199a99648e6962d6b86db32fb9074e7d9ac"
+    },
+    {
+      "id": "2026-11-22-arxiv-2611-26084-v1-rl-success-groups",
+      "event_key": "arxiv-2611-26084-v1-rl-success-groups",
+      "date": "2026-11-22",
+      "revision": 1,
+      "fingerprint": "e228c15669abd95ba0f29ad75185a27445d46a9a9f47a6ba12a03846efbd9e35",
+      "content_sha256": "ef8c3806e737a32d93425196266c3dc9266c552befa8c9f6de1d9212d98fe7d5"
+    },
+    {
+      "id": "2026-11-22-lerobot-pr-5416-nat-vla",
+      "event_key": "lerobot-pr-5416-nat-vla",
+      "date": "2026-11-22",
+      "revision": 1,
+      "fingerprint": "4561192948580b448a068de1df823bd7331e456a974d5709104bbb50392bdd3c",
+      "content_sha256": "c0013f58891f0dd66bb8fd6dacc4bfc3311921a3a107cd1a16e0bf7f452045ac"
+    },
+    {
+      "id": "2026-11-22-merlin-3022-qwen27b-rtx3090-decode",
+      "event_key": "merlin-3022-qwen27b-rtx3090-decode",
+      "date": "2026-11-22",
+      "revision": 1,
+      "fingerprint": "c6b87e724676a4ea42400c6ae1b2f89167de95a055061160dace4647399c63cd",
+      "content_sha256": "88c556481af44fed4af0e5186774fd2f473085b3b21b468d35443e0038cc10ee"
+    },
+    {
+      "id": "2026-11-22-sglang-pr-39071-rocm-strided-qknorm",
+      "event_key": "sglang-pr-39071-rocm-strided-qknorm",
+      "date": "2026-11-22",
+      "revision": 1,
+      "fingerprint": "a47c083cf634105a3e5ff8b4a9a7988656a3813fc5847aa94146f8ba56fbd1d0",
+      "content_sha256": "018eb5ce87ebbed76cda90c45b093d02549f19f2f5c49f5469037adf1b82ccae"
+    },
+    {
+      "id": "2026-11-22-sglang-pr-51995",
+      "event_key": "sglang-pr-51995",
+      "date": "2026-11-22",
+      "revision": 1,
+      "fingerprint": "e3f4c1e184e477a188b53f3ddda73218f44def606b60ce2412c1d2b13ed79043",
+      "content_sha256": "51926d4d273e4651bdb89ec61c260100238f388974661f17a4213cffe70cc90f"
+    },
+    {
+      "id": "2026-11-22-sim2real-vla-retrain-lift-2ad8e59",
+      "event_key": "sim2real-vla-retrain-lift-2ad8e59",
+      "date": "2026-11-22",
+      "revision": 1,
+      "fingerprint": "8c82578731e13406fa56253f548660beff9f62ac9f3ebfefd123a4760cafb36a",
+      "content_sha256": "adb306898c8e95abf56e8e25316e89050a6f12169f29c6d7562ba57aa513be96"
+    },
+    {
+      "id": "2026-11-22-vllm-pr-69028-inkling2-mini-mainline",
+      "event_key": "inkling-2-mini-fixed-checkpoint-20261120",
+      "date": "2026-11-22",
+      "revision": 1,
+      "fingerprint": "fface9683c8a7497f2d1e72fb3a6307214e3e0d4afa91c631aa93e25b2862c07",
+      "content_sha256": "410de3b18c2520ee4300ab490bab821e6fe9b25d695b074d889265d09501fdf3"
+    },
+    {
+      "id": "2026-11-22-vllm-pr-69065-16bit-gdn-mtp",
+      "event_key": "vllm-pr-69065-16bit-gdn-mtp",
+      "date": "2026-11-22",
+      "revision": 1,
+      "fingerprint": "ba3456051aeb7446dafc21a7092a7825281c7d9e0d4f352bae802ebcfe3963c1",
+      "content_sha256": "4f6da3bd6d3f3b5351ecabe27644c8787ec385211ecb1ffd011498f2711d9a44"
     }
   ]
 }

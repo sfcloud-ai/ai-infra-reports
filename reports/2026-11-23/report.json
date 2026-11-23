@@ -1,0 +1,140 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-11-23",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-11-23",
+  "subtitle": "部分晨报｜覆盖缺口：智谱博客返回 404，具身 72 小时论文查询限流，小模型 24 小时论文查询限流后超时。",
+  "articles": [
+    {
+      "id": "model-serving-gpu",
+      "title": "模型服务与 GPU 超配：CPU 层只能放 13 块，vLLM 如何把 119 块 KV 存下来",
+      "summary": "一次只能放 13 块的 CPU 卸载层，如何处理 119 块 KV？vLLM 让仍在运行的请求分批提交，已结束或交接的请求按未存键记录分配失败。",
+      "sha256": "7119cf5866e33a38ef9319b53483a392707ce1d7d4930510366f61742d7b28cd"
+    },
+    {
+      "id": "hardware-status",
+      "title": "硬件与算力平台：RTX 5090 短卷积投影快约七倍，流式响应间隔缩短多少",
+      "summary": "RTX 5090 上，短卷积输入投影从 13.9 降到 2.0 微秒。并发 1 的 DSpark 测试中，流式响应平均更新间隔（ITL）从 10.70 降至 9.89 或 9.91 毫秒，一次更新可包含多个 token。",
+      "sha256": "b725ab26e307f8cde3f5b71aceaff12fea6b15120c8a1c62da3e7209cdb774cd"
+    },
+    {
+      "id": "model-architecture-status",
+      "title": "模型与架构：Nemotron Shortcut 在 vLLM 中如何选注意力键、维护循环状态和分发专家",
+      "summary": "vLLM 合入 Nemotron Shortcut 的稀疏选键、循环状态和提前专家分发适配。验证依赖配套补丁，模型权重公开情况仍待核实。",
+      "sha256": "4b06d6f4ce487b5e6bc267c9e58bddf30456123432ba5da9404f509dd81bb4f7"
+    },
+    {
+      "id": "embodied-training",
+      "title": "制造业具身智能训练：LeRobot 如何对齐机器人与策略的关节顺序",
+      "summary": "72 小时回溯。LeRobot 按索引对齐机器人和策略的关节顺序，保留原归一化统计。代码测试覆盖选取、形状和配置读回。",
+      "sha256": "f216ce9bc3c7a400bcf913dcc2c4efd520eeacbfd9c22fe6f5fdcd7230547857"
+    },
+    {
+      "id": "small-model-status",
+      "title": "前沿小模型：WeMM-Video-2B 上传 BF16 权重，视听问答表现如何",
+      "summary": "72 小时回溯。腾讯的 WeMM-Video-2B BF16 权重上传提交记录于北京时间 11 月 20 日 09:41。两分片合计 6.12 GiB，论文表 2 对比同系列三个 Thinking 规格的视听问答得分。",
+      "sha256": "6d409bcc7153fdd50fd02090803d4e298463b261095b2d9bc1fc12c264b53b7f"
+    },
+    {
+      "id": "inference-engines",
+      "title": "推理引擎每日变动：HiCache 把驱逐等待移到前向流，首 token 和逐 token 延迟怎样变化",
+      "summary": "SGLang 通过共享栅栏为写回和后续 H2D 加载排序。GB300 回放中，首 token 延迟中位数从 4.26 降到 2.73 秒，逐 token 延迟中位数从 6.75 升到 6.92 毫秒。",
+      "sha256": "bd3d21df00e25353eb97a882a1720571bbe7cda9a3ec6f97371d9e565733f96c"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-11-23-vllm-pr-66719",
+      "event_key": "vllm-pr-66719",
+      "title": "vLLM 让运行中的请求分批卸载 KV",
+      "summary": "一次只能放 13 块的 CPU 卸载层，如何处理 119 块 KV？vLLM 让仍在运行的请求分批提交，已结束或交接的请求按未存键记录分配失败。",
+      "source_urls": [
+        "https://api.github.com/repos/vllm-project/vllm/pulls/66719",
+        "https://api.github.com/repos/vllm-project/vllm/pulls/66719/files?per_page=100"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-11-23-vllm-pr-69168",
+      "event_key": "vllm-pr-69168",
+      "title": "RTX 5090 的短卷积输入投影得到专用路径",
+      "summary": "RTX 5090 上，短卷积输入投影从 13.9 降到 2.0 微秒。并发 1 的 DSpark 测试中，流式响应平均更新间隔（ITL）从 10.70 降至 9.89 或 9.91 毫秒，一次更新可包含多个 token。",
+      "source_urls": [
+        "https://api.github.com/repos/vllm-project/vllm/pulls/69168",
+        "https://api.github.com/repos/vllm-project/vllm/pulls/69168/files?per_page=100"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status"
+    },
+    {
+      "id": "2026-11-23-vllm-pr-68198",
+      "event_key": "vllm-pr-68198",
+      "title": "vLLM 合入 Nemotron Shortcut 的模型执行路径",
+      "summary": "vLLM 合入 Nemotron Shortcut 的稀疏选键、循环状态和提前专家分发适配。验证依赖配套补丁，模型权重公开情况仍待核实。",
+      "source_urls": [
+        "https://api.github.com/repos/vllm-project/vllm/pulls/68198",
+        "https://api.github.com/repos/vllm-project/vllm/pulls/68198/files?per_page=100"
+      ],
+      "update_of": null,
+      "article_id": "model-architecture-status"
+    },
+    {
+      "id": "2026-11-23-lerobot-pr-5446",
+      "event_key": "lerobot-pr-5446",
+      "title": "LeRobot 新增观测和动作的关节重排步骤",
+      "summary": "72 小时回溯。LeRobot 按索引对齐机器人和策略的关节顺序，保留原归一化统计。代码测试覆盖选取、形状和配置读回。",
+      "source_urls": [
+        "https://api.github.com/repos/huggingface/lerobot/pulls/5446",
+        "https://api.github.com/repos/huggingface/lerobot/pulls/5446/files?page=1&per_page=100"
+      ],
+      "update_of": null,
+      "article_id": "embodied-training"
+    },
+    {
+      "id": "2026-11-23-tencent-wemm-video-2b-bf16-20261120",
+      "event_key": "tencent-wemm-video-2b-bf16-20261120",
+      "title": "腾讯上传 WeMM-Video-2B BF16 权重",
+      "summary": "72 小时回溯。腾讯的 WeMM-Video-2B BF16 权重上传提交记录于北京时间 11 月 20 日 09:41。两分片合计 6.12 GiB，论文表 2 对比同系列三个 Thinking 规格的视听问答得分。",
+      "source_urls": [
+        "https://huggingface.co/tencent/WeMM-Video-2B/commit/aaff85654e51d16aecf4f8197f7eb625333b74db",
+        "https://huggingface.co/tencent/WeMM-Video-2B/blob/821690998399cac0f55bb7f7f805ebafa650c3a4/README.md",
+        "https://arxiv.org/html/2611.26409v1#S5.T2",
+        "https://huggingface.co/api/models/tencent/WeMM-Video-2B/revision/aaff85654e51d16aecf4f8197f7eb625333b74db?blobs=true",
+        "https://huggingface.co/api/models/tencent/WeMM-Video-2B/revision/821690998399cac0f55bb7f7f805ebafa650c3a4?blobs=true"
+      ],
+      "update_of": null,
+      "article_id": "small-model-status"
+    },
+    {
+      "id": "2026-11-23-sglang-pr-50469",
+      "event_key": "sglang-pr-50469",
+      "title": "SGLang 在满足流条件的路径上异步处理 HiCache 写回",
+      "summary": "SGLang 通过共享栅栏为写回和后续 H2D 加载排序。GB300 回放中，首 token 延迟中位数从 4.26 降到 2.73 秒，逐 token 延迟中位数从 6.75 升到 6.92 毫秒。",
+      "source_urls": [
+        "https://api.github.com/repos/sgl-project/sglang/pulls/50469",
+        "https://api.github.com/repos/sgl-project/sglang/pulls/50469/files?per_page=100"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    }
+  ],
+  "images": [
+    {
+      "path": "assets/overview.png",
+      "sha256": "01736d535332ae7b1c520e8b4b2250ff7cedf9598e16ce10d0dc3b47fd1d0499",
+      "alt": "六篇晨报总览，具身关节重排和 WeMM-Video-2B 权重上传标注 72 小时回溯。"
+    },
+    {
+      "path": "assets/kv-offload.png",
+      "sha256": "fd85019850b4fdca09b89215706598477f49e3fc2313df0528e180939f8c82b3",
+      "alt": "单个运行中的请求通过 13 块 CPU 卸载层分批写出 119 个 KV 块。"
+    },
+    {
+      "path": "assets/rtx5090-projection.png",
+      "sha256": "6362264a31d53c7aa00c2ec26c064b28e36998cf1092f506967ba5858f93142d",
+      "alt": "RTX 5090 短卷积投影的内核耗时，以及并发 1 时 DSpark 流式响应的平均更新间隔（ITL）。"
+    }
+  ],
+  "poster": "assets/overview.png"
+}
