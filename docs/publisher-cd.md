@@ -18,7 +18,11 @@ root 所有的 `/etc/ai-report-publisher-cd.json` 明确指定 `base`、`control
 
 ### 2026-11-21 手工送达记录
 
-原始记录保留为 `admission_pending`，旧控制器会在选择候选版本前推迟升级。由管理员先在发布空档审核并手工安装包含该期防重检查的固定 Publisher 基线，核对原手工回执和 relay 归属，备份服务入口与版本指针，确认新进程健康。然后审核并安装可识别同一事实的固定控制器，用普通 CD 切换到另一个通过主线 CI 的提交，单独核对 `updated` 和新进程。由管理员从已核实的原交付取证中取得私有凭据，核对其 SHA256 与 `scripts/manual-delivery-fact.mjs` 中固定值一致，以 root 所有、Publisher 服务组、模式 `0440` 一次性安装到 `/etc/ai-report-original-20261121.fact`。已有文件的字节必须完全一致。启动普通 CD 前，在只读账本副本中确认固定控制器接受该条精确记录。缺失或无效的凭据不能证明送达，Publisher 仍禁止该期重新登记。原调度记录与送达回执保留。
+11 月 21 日的正文和海报由手工通道送达。原调度行停在 `admission_pending`，会使 CD 在选版前退出。在发布空档按顺序取得 `control-entry.lock`、`deployment.lock`，确认没有未完成的 CD 操作。持锁核对现役 relay 的原请求、正文及海报摘要和 2/2 回执。若 Publisher 早于防重基线 `0bcd657`，先备份服务入口、版本指针，手工部署基线并核对新进程健康。从原交付取证取得 `/etc/ai-report-original-20261121.fact`，核对其 SHA256 与 `scripts/manual-delivery-fact.mjs` 的固定值一致。使用单链接普通文件，root 所有、Publisher 主组、模式 `0440`。
+
+从已审查的提交暂存 `deployment/reconcile-original-manual.mjs`，保留相对目录布局。逐文件比对实际现役 release 的 `scripts/` 与该提交中的文件及字节，并比对 `package-lock.json`。一致时可将暂存目录中的 `scripts` 链接到该只读 release 的 `scripts/`，复用其已安装依赖。否则直接暂存已审查的源码和按其锁文件安装的依赖。使用服务的 Node 和服务账号。以 SQLite backup 另存一份受保护的原账本，再制作演练副本。将演练配置放在服务账号所有的私有目录中，文件权限为 `0600`，把 `state_dir` 改为演练目录，核对其 `handoff.sqlite` 与线上文件的设备号和 inode 组合不同。
+
+先执行 `node deployment/reconcile-original-manual.mjs /path/to/rehearsal-publisher.json` 并核对副本。然后对现役配置执行 `node deployment/reconcile-original-manual.mjs /path/to/active-publisher.json`。命令取得现有 handoff 锁，核验手工回执并通过原调度入口只读查询同一 ID。自动准入返回 `not_found` 后，将真实结果记为 `complete`、`delivery_kind=manual_initial`。完整的原调度行保存在 `result.reconciliation.previous`，包括原始诊断文本。重复执行会复核已存回执并返回 `changed:false`。随后释放部署锁，运行普通 CD，核对 `updated`、服务实际版本和两个健康周期。
 
 这套 CD 只部署 Publisher，不发送日报、不改变晨报日程。Pages 使用原有工作流；转发器、控制运行时与校验器由 brief 仓库自己的受限部署入口更新。
 
