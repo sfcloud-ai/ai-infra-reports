@@ -3,6 +3,7 @@ import {isRepositoryResearchPlan,isLayeredResearchPlan,operationBudget} from './
 // Private, immutable research checkpoints. This storage lane grants no research
 // ownership, publication permission, or budget; those require separate policy.
 import {digest} from './archive.mjs';
+import {readFileSync} from 'node:fs';
 import {acceptDataCommand,acceptReadCommand,canonicalRequestDate,reportDate,requireThat} from './report-handoff.mjs';
 import {handoffScope,scopeDigest} from './handoff-state.mjs';
 import {assertSubmission} from './slack-submission.mjs';
@@ -126,13 +127,63 @@ export function storeResearchArchive(db,event,bytes){
  try{settleResearchArchiveUpload(db,event,bytes.length);}catch(e){if(e.researchPublicationRejection)rejectArchive(e.researchPublicationRejection);throw e;}
  return {hash,command_id:value.command_id,already_stored:false};
 }
+function hostProvenance(row,hash){
+ if(!row||!row.file_id?.startsWith('t4-sha256:')&&!row.source_ts?.startsWith('t4-receipt:'))return null;
+ if(row.file_id!=='t4-sha256:'+hash||!row.source_ts?.startsWith('t4-receipt:')||row.source_ts==='t4-receipt:')return {status:'rejected',code:'invalid_host_archive_provenance'};
+ return {transport:'t4_host_archive',host_receipt_id:row.source_ts};
+}
+let receiptGuard;
+function verifiedHostProvenance(db,metadata,hash){
+ const provenance=hostProvenance(metadata,hash);
+ if(!provenance?.transport)return provenance;
+ const row=db.prepare('SELECT * FROM research_archives WHERE hash=?').get(hash);
+ const invalid={status:'rejected',code:'invalid_stored_host_archive'};
+ if(!row||row.file_id!==metadata.file_id||row.source_ts!==metadata.source_ts)return invalid;
+ receiptGuard??=readFileSync(new URL('../deployment/host-archive-guard.sql',import.meta.url),'utf8').replaceAll('\r\n','\n').trim();
+ if(db.prepare("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='host_archive_native_guard'").get()?.sql!==receiptGuard)return invalid;
+ const key='archive:'+hash+':';
+ if(db.prepare("SELECT 1 FROM research_control_ops WHERE request_id=? AND kind='native' AND operation_key IN (?,?)").get(row.request_id,key+'post',key+'complete'))return invalid;
+ const ticket=db.prepare("SELECT operation_id,input,input_hash,native_result FROM research_control_ops WHERE request_id=? AND kind='native' AND operation_key=? AND phase='acknowledged'").get(row.request_id,key+'ticket');
+ if(!ticket||!UUID.test(ticket.operation_id)||digest(ticket.input)!==ticket.input_hash)return invalid;
+ const prefix='t4-receipt:'+ticket.operation_id+':';
+ const timestamp=row.source_ts.slice(prefix.length),millis=Date.parse(timestamp);
+ if(!row.source_ts.startsWith(prefix)||!Number.isFinite(millis)||new Date(millis).toISOString()!==timestamp)return invalid;
+ const chain=db.prepare(`WITH RECURSIVE ancestry(hash,previous_hash) AS (
+   SELECT r.hash,r.previous_hash FROM research_archive_heads h JOIN research_archives r ON r.hash=h.hash
+   WHERE h.report_date=:day AND r.report_date=:day AND r.request_id=:request
+   UNION SELECT r.hash,r.previous_hash FROM ancestry a JOIN research_archives r ON r.hash=a.previous_hash
+   WHERE r.report_date=:day AND r.request_id=:request)
+   SELECT max(hash=:hash) AS contains_archive,max(previous_hash IS NULL) AS has_root FROM ancestry`).get({day:row.report_date,request:row.request_id,hash});
+ if(!chain.contains_archive||!chain.has_root)return invalid;
+ let archive;
+ let manifest,input,result;
+ try{
+  archive=decodeResearchArchive(Buffer.from(row.bytes));manifest=JSON.parse(row.manifest);
+  input=JSON.parse(ticket.input);result=JSON.parse(ticket.native_result);
+ }catch{return invalid;}
+ if(input?.step!=='ticket'||input.sha256!==hash||input.archive_sha256!==hash||input.bytes!==row.bytes.length||
+    input.permit_id!==null||input.file_id!==null||input.source_ts!==null||result?.sha256!==hash||result.bytes!==row.bytes.length||
+    result.source_ts!==null||typeof result.file_id!=='string'||!/^F[A-Z0-9]+$/.test(result.file_id))return invalid;
+ const {value,files}=archive;
+ const validManifest=Array.isArray(manifest)&&manifest.length===files.length&&manifest.every((entry,i)=>
+  keys(entry,'path,sha256,bytes')&&entry.path===files[i].path&&entry.sha256===files[i].sha256&&entry.bytes===files[i].bytes);
+ return archive.hash===hash&&value.command_id===row.command_id&&value.request_id===row.request_id&&
+  value.report_date===row.report_date&&value.previous_sha256===row.previous_hash&&validManifest?provenance:invalid;
+}
+export function verifyStoredHostArchives(db){
+ const rows=db.prepare("SELECT hash,file_id,source_ts FROM research_archives WHERE file_id GLOB 't4-sha256:*' OR source_ts GLOB 't4-receipt:*'");
+ for(const row of rows.iterate())requireThat(verifiedHostProvenance(db,row,row.hash)?.transport==='t4_host_archive','invalid_stored_host_archive');
+}
 export function readResearchArchive(db,id,q){
  requireThat(keys(q,'query_id,action,hash,offset')&&UUID.test(q.query_id)&&['head','manifest','file','receipt'].includes(q.action)&&Number.isSafeInteger(q.offset)&&q.offset>=0,'Exact research query required');
  const day=canonicalRequestDate(id),head=db.prepare('SELECT hash FROM research_archive_heads WHERE report_date=?').get(day)?.hash??null;
  const common={request_id:id,report_date:day,query_id:q.query_id,head_sha256:head};
  if(q.action==='head')return {...common,status:head?'stored':'not_found'};
  if(q.action==='receipt'){
-  const stored=db.prepare('SELECT command_id,source_ts,file_id FROM research_archives WHERE request_id=? AND hash=?').get(id,q.hash);
+  const row=db.prepare('SELECT command_id,source_ts,file_id FROM research_archives WHERE request_id=? AND hash=?').get(id,q.hash);
+  const host=verifiedHostProvenance(db,row,q.hash);
+  if(host?.status==='rejected')return {...common,archive_sha256:q.hash,...host};
+  const stored=host?{command_id:row.command_id,...host}:row;
   const events=db.prepare("SELECT source_ts,phase,diagnostic FROM research_archive_events WHERE kind='save' AND request_id=? AND hash=? ORDER BY source_ts DESC LIMIT 8").all(id,q.hash).map(r=>({...r,diagnostic:r.diagnostic?JSON.parse(r.diagnostic):null}));
   return {...common,archive_sha256:q.hash,status:stored?'stored':events.length?events.every(r=>r.diagnostic?.outcome==='rejected')?'rejected':'pending':'not_found',stored:stored??null,events,...(db.prepare("SELECT 1 FROM sqlite_master WHERE name='research_control_commands'").get()?{recovery:archiveRecoveryEvidence(db,id,q.hash)}:{})};
  }
@@ -140,9 +191,11 @@ export function readResearchArchive(db,id,q){
  const row=hash?db.prepare('SELECT command_id,previous_hash,manifest,source_ts,file_id FROM research_archives WHERE request_id=? AND hash=?').get(id,hash):null;
  if(q.action==='manifest'){
   if(!row)return {...common,archive_sha256:hash,status:'not_found'};
+  const provenance=verifiedHostProvenance(db,row,hash)??{archive_source_ts:row.source_ts,file_id:row.file_id};
+  if(provenance.status==='rejected')return {...common,archive_sha256:hash,...provenance};
   const files=JSON.parse(row.manifest);
   if(q.offset>files.length)return {...common,archive_sha256:hash,status:'rejected',code:'invalid_manifest_offset'};
-  const result={...common,archive_sha256:hash,command_id:row.command_id,previous_sha256:row.previous_hash,archive_source_ts:row.source_ts,file_id:row.file_id,files:[],next_offset:null};
+  const result={...common,archive_sha256:hash,command_id:row.command_id,previous_sha256:row.previous_hash,...provenance,files:[],next_offset:null};
   for(let index=q.offset;index<Math.min(files.length,q.offset+32);index++){
    const page={...result,files:[...result.files,files[index]],next_offset:index+1<files.length?index+1:null};
    if(!receiptFits(page))break;
@@ -160,6 +213,27 @@ export function readResearchArchive(db,id,q){
  if(q.offset>f.bytes||q.offset%ARCHIVE_CHUNK!==0)return {...common,sha256:q.hash,status:'rejected',code:'invalid_file_offset'};
  const chunk=f.data.subarray(q.offset,q.offset+ARCHIVE_CHUNK);
  return {...common,sha256:f.sha256,total_bytes:f.bytes,offset:q.offset,content_base64:chunk.toString('base64'),chunk_sha256:digest(chunk),next_offset:q.offset+chunk.length<f.bytes?q.offset+chunk.length:null};
+}
+function readyHostReply(db,row){
+ const text=row.reply_text,prefix='!ai-research receipt ';
+ if(row.kind!=='read'||!text?.startsWith(prefix)||!text.includes('t4-'))return text;
+ const query=JSON.parse(row.query),result=JSON.parse(text.slice(prefix.length));
+ if(result.request_id!==row.request_id||result.source_ts!==row.source_ts||result.query_id!==query.query_id)return text;
+ const record=query.action==='manifest'?result:query.action==='receipt'?result.stored:null;
+ if(!record||(!Object.hasOwn(record,'file_id')&&!Object.hasOwn(record,'archive_source_ts')))return text;
+ const source=query.action==='manifest'?'archive_source_ts':'source_ts';
+ const cached={file_id:record.file_id,source_ts:record[source]};
+ let provenance=hostProvenance(cached,result.archive_sha256);
+ if(provenance?.transport){
+  const bound=db.prepare('SELECT request_id FROM research_archives WHERE hash=?').get(result.archive_sha256);
+  provenance=bound?.request_id===row.request_id&&(query.hash==='head'||query.hash===result.archive_sha256)?
+   verifiedHostProvenance(db,cached,result.archive_sha256):{status:'rejected',code:'invalid_stored_host_archive'};
+ }
+ if(!provenance)return text;
+ if(provenance.status==='rejected')return receiptText(row.source_ts,{request_id:row.request_id,query_id:query.query_id,
+  archive_sha256:result.archive_sha256,report_date:result.report_date,head_sha256:result.head_sha256,...provenance});
+ delete record.file_id;delete record[source];Object.assign(record,provenance);
+ return receiptText(row.source_ts,result);
 }
 export async function advanceResearchArchive(state,c,slack,now=Date.now()){
  const db=state.db;if(!assertResearchArchive(db,c))return;
@@ -195,6 +269,9 @@ export async function advanceResearchArchive(state,c,slack,now=Date.now()){
     requireThat(Buffer.byteLength(text)<=RECEIPT_LIMIT,'Bounded research receipt required');
     db.prepare("UPDATE research_archive_events SET phase='ready',reply_text=?,diagnostic=NULL WHERE source_ts=?").run(text,row.source_ts);
    }
+  }else if(row.phase==='ready'){
+   const text=readyHostReply(db,row);
+   if(text!==row.reply_text)db.prepare("UPDATE research_archive_events SET reply_text=? WHERE source_ts=? AND phase='ready'").run(text,row.source_ts);
   }
   const ready=db.prepare('SELECT reply_text FROM research_archive_events WHERE source_ts=?').get(row.source_ts);
   slack.assertReady?.('chat.postMessage');

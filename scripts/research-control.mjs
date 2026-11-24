@@ -23,6 +23,7 @@ export const LAYERED_RESEARCH_BUDGET_VERSION=1;
 export const MODEL_CONTINUATION_VERSION=1;
 export const CANCELLATION_PAGE_VERSION=1;
 export const CANCELLATION_SETTLEMENT_VERSION=1;
+export const HOST_ARCHIVE_RECEIPT_VERSION=1;
 
 const HASH=/^[a-f0-9]{64}$/,SHA=/^[a-f0-9]{40}$/,UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const keyName=/^[a-zA-Z0-9_.-]{1,80}$/,LEASE_MS=15*60000;
@@ -289,7 +290,9 @@ function nativeScope(db,run,input){
   }
   return base;
  }
- need(input.part===undefined&&string(input.archive_sha256,HASH)&&input.sha256===input.archive_sha256,'native_archive_binding');need(input.step!=='submit','archive_has_no_submit');return 'archive:'+input.archive_sha256;
+ need(input.part===undefined&&string(input.archive_sha256,HASH)&&input.sha256===input.archive_sha256,'native_archive_binding');
+ need(!db.prepare("SELECT 1 FROM research_archives WHERE hash=? AND request_id=? AND (file_id GLOB 't4-sha256:*' OR source_ts GLOB 't4-receipt:*')").get(input.archive_sha256,run.request_id),'archive_already_received_on_host');
+ need(input.step!=='submit','archive_has_no_submit');return 'archive:'+input.archive_sha256;
 }
 function nativePredecessor(db,run,op){
  const scope=nativeScope(db,run,op.input);need(op.key===scope+':'+op.input.step,'native_operation_key');

@@ -88,8 +88,13 @@ checkpoint with a new command ID. This is a rejected new checkpoint, not an
 unknown upload or permission to overwrite the old checkpoint.
 Manifest pages contain up to 32 files and stop earlier to keep the complete
 receipt within 4,000 UTF-8 bytes. Follow `next_offset`.
-`archive_source_ts` identifies the original save, while the outer `source_ts`
-always identifies the current query thread. Follow
+For Slack archives, the manifest identifies the original save with
+`archive_source_ts` and `file_id`. The receipt carries `stored.source_ts` and
+`stored.file_id`. For a verified T4 archive, the manifest and the receipt's
+`stored` object carry `transport: "t4_host_archive"` and `host_receipt_id`.
+The latter identifies the host's custody record. Chunk recovery retains the
+original Slack file ID even when the original POST outcome is unknown. Check
+the receipt's `recovery` field for that provenance. The outer `source_ts` always identifies the current query thread. Follow
 `previous_sha256` for earlier checkpoints. The first occurrence of a path while
 walking backwards is its current version. File queries are scoped to that
 request and return up to 2048-byte chunks, original total size, offset, chunk hash and

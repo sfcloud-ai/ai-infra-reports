@@ -15,6 +15,7 @@ import stat
 import subprocess
 import sys
 import tarfile
+import tempfile
 import time
 import urllib.parse
 import urllib.request
@@ -66,6 +67,16 @@ RESEARCH_ARCHIVE_SCHEMA = {
 }
 TABLES.update(RESEARCH_ARCHIVE_SCHEMA)
 ARCHIVE_RECOVERY_SCHEMA = 'CREATE TABLE research_control_archive_recovery(id INTEGER PRIMARY KEY CHECK(id=1),version INTEGER NOT NULL CHECK(version=1))'
+HOST_ARCHIVE_GUARD = """CREATE TRIGGER host_archive_native_guard BEFORE INSERT ON research_control_ops
+WHEN NEW.kind = 'native' AND substr(NEW.operation_key, 1, 8) = 'archive:'
+ AND EXISTS (
+   SELECT 1 FROM research_archives
+   WHERE request_id = NEW.request_id AND hash = substr(NEW.operation_key, 9, 64)
+     AND file_id = 't4-sha256:' || hash
+ )
+BEGIN
+ SELECT RAISE(ABORT, 'archive_already_received_on_host');
+END"""
 
 RESEARCH_CONTROL_SCHEMA = {
     'research_control_policy': 'CREATE TABLE research_control_policy(id INTEGER PRIMARY KEY CHECK(id=1),binding TEXT NOT NULL,evidence_reference TEXT NOT NULL)',
@@ -320,6 +331,11 @@ def snapshot(path, settled=True):
         if successor and {row[2] for row in successor} != RECOVERY_SUCCESSOR_SCHEMA:
             raise ValueError('unsupported_recovery_successor_schema')
         allowed = {row[1] for row in recovery + journal + successor if row[0] == 'trigger'}
+        host_guard = database.execute("SELECT type,name,sql FROM sqlite_master WHERE name='host_archive_native_guard'").fetchall()
+        if host_guard:
+            if host_guard != [('trigger', 'host_archive_native_guard', HOST_ARCHIVE_GUARD)]:
+                raise ValueError('invalid_host_archive_guard')
+            allowed.add('host_archive_native_guard')
         objects = database.execute("SELECT name FROM sqlite_master WHERE type IN ('view','trigger')").fetchall()
         if any(row[0] not in allowed for row in objects):
             raise ValueError("unsupported_ledger_object")
@@ -368,12 +384,25 @@ def snapshot(path, settled=True):
                     or archive_policy['publisher_scope_sha256'] != policy['publisher_scope_sha256']):
                 raise ValueError('invalid_research_archive_policy')
         authority = database.execute("SELECT type,name,sql FROM sqlite_master WHERE tbl_name LIKE 'research_control_%' ORDER BY name").fetchall()
+        has_host_archive = False
+        if research:
+            markers = database.execute("""SELECT hash,file_id,source_ts,bytes FROM research_archives
+                WHERE file_id GLOB 't4-sha256:*' OR source_ts GLOB 't4-receipt:*'""")
+            for archive_hash, file_id, source_ts, archive_bytes in markers:
+                if file_id != 't4-sha256:' + archive_hash or not source_ts.startswith('t4-receipt:') or source_ts == 't4-receipt:':
+                    raise ValueError('invalid_host_archive_provenance')
+                if hashlib.sha256(archive_bytes).hexdigest() != archive_hash:
+                    raise ValueError('invalid_host_archive_digest')
+                has_host_archive = True
+        if has_host_archive != bool(host_guard) or has_host_archive and not authority:
+            raise ValueError('incomplete_host_archive_guard')
         if authority:
             expected = {('table', name, sql) for name, sql in RESEARCH_CONTROL_SCHEMA.items()} | {
                 ('index', 'sqlite_autoindex_' + name + '_' + str(n), None)
                 for name, count in [('research_control_runs', 2), ('research_control_ops', 1),
                                     ('research_control_commands', 1), ('research_control_submissions', 1),
                                     ('research_control_events', 1)] for n in range(1, count + 1)}
+            expected.update(host_guard)
             if any(row[1] == 'research_control_report_parts' for row in authority):
                 expected.update({('table', 'research_control_report_parts', REPORT_PART_SCHEMA),
                                  ('index', 'sqlite_autoindex_research_control_report_parts_1', None),
@@ -387,6 +416,12 @@ def snapshot(path, settled=True):
                     raise ValueError('invalid_archive_recovery_marker')
             if set(authority) != expected or not research:
                 raise ValueError('unsupported_research_control_schema')
+            if has_host_archive and database.execute("""SELECT 1 FROM research_archives a JOIN research_control_ops o
+                    ON o.request_id=a.request_id AND o.kind='native'
+                    WHERE a.file_id='t4-sha256:'||a.hash AND
+                      (o.operation_key IN ('archive:'||a.hash||':post','archive:'||a.hash||':complete')
+                       OR (o.operation_key='archive:'||a.hash||':ticket' AND o.phase!='acknowledged')) LIMIT 1""").fetchone():
+                raise ValueError('host_archive_native_claim_conflict')
             records = database.execute('SELECT id,binding,evidence_reference FROM research_control_policy').fetchall()
             if len(records) != 1 or records[0][0] != 1 or not records[0][2]:
                 raise ValueError('incomplete_research_control_policy')
@@ -443,6 +478,8 @@ def snapshot(path, settled=True):
             if settled and database.execute("SELECT count(*) FROM publisher_intake_scan WHERE upper_bound IS NOT NULL OR page_cursor IS NOT NULL").fetchone()[0]:
                 raise Deferred("unfinished_intake_scan")
         result = [["recovery_schema", recovery]] if recovery else []
+        if host_guard:
+            result.append(["host_archive_guard", host_guard])
         if pages:
             result.append(["research_page_schema", pages])
         if research_recovery:
@@ -832,22 +869,35 @@ def cancellation_settlement_runtime_required(database):
     return required
 
 
+HOST_ARCHIVE_CAPABILITY = "const host=await import('./scripts/research-control.mjs');if(host.HOST_ARCHIVE_RECEIPT_VERSION!==1)throw Error('host_archive_requires_compatible_release');"
+
+
 def compatibility(config, release, operation, expected):
     """仅打开隔离的账本副本，不提供生产凭据或网络。"""
     probe = operation / ("probe-" + uuid.uuid4().hex)
     probe.mkdir(mode=0o700)
     database = probe / "handoff.sqlite"
     with closing(sqlite3.connect((Path(config["state"]) / "handoff.sqlite").as_uri() + "?mode=ro", uri=True)) as source:
+        source.execute("BEGIN")
+        if expected is None:
+            pages = source.execute("PRAGMA page_count").fetchone()[0]
+            size = pages * source.execute("PRAGMA page_size").fetchone()[0]
+            if shutil.disk_usage(probe).free < size + 2 * 1024 ** 3:
+                raise Deferred("insufficient_release_capacity")
         with closing(sqlite3.connect(database)) as target:
             source.backup(target)
             # 副本先关闭 WAL；避免只读指纹检查留下 root 拥有的 WAL/SHM。
             if target.execute("PRAGMA journal_mode=DELETE").fetchone()[0] != "delete":
                 raise ValueError("isolated_copy_journal_not_reset")
-    if snapshot(database) != expected:
+    copied_fingerprint = snapshot(database)
+    if expected is None:
+        expected = copied_fingerprint
+    elif copied_fingerprint != expected:
         raise ValueError("state_changed_during_backup")
     with closing(sqlite3.connect(database)) as isolated:
         needs_report_parts = isolated.execute("SELECT 1 FROM sqlite_master WHERE name='research_control_report_parts'").fetchone() is not None
         needs_archive_recovery = archive_recovery_runtime_required(isolated)
+        needs_host_archive = isolated.execute("SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='host_archive_native_guard'").fetchone()
         needs_model_continuation = model_continuation_runtime_required(isolated)
         needs_first_notice_rejection = first_notice_rejection_runtime_required(isolated)
         needs_cancellation_pages = cancellation_page_runtime_required(isolated)
@@ -867,6 +917,9 @@ def compatibility(config, release, operation, expected):
         script += "const parts=await import('./scripts/report-bundle-parts.mjs');if(parts.REPORT_PART_VERSION!==1)throw Error('report_parts_require_compatible_release');"
     if needs_archive_recovery:
         script += "const recovery=await import('./scripts/research-archive-recovery.mjs');if(recovery.ARCHIVE_RECOVERY_VERSION!==1)throw Error('archive_recovery_requires_compatible_release');"
+    if needs_host_archive:
+        script += HOST_ARCHIVE_CAPABILITY
+        script += "const {DatabaseSync}=await import('node:sqlite');const archives=await import('./scripts/research-archive.mjs');const archiveDb=new DatabaseSync('/probe/handoff.sqlite',{readOnly:true});try{archives.verifyStoredHostArchives(archiveDb)}finally{archiveDb.close()};"
     if needs_pages:
         script += "const pages=await import('./scripts/research-page-authority.mjs');if(pages.PAGE_AUTHORITY_VERSION!==1)throw Error('page_authority_requires_compatible_release');"
     if needs_revision:
@@ -890,6 +943,11 @@ def compatibility(config, release, operation, expected):
         raise ValueError("automatic_state_migration_not_supported")
 
 
+def host_guard_present(path):
+    with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)) as source:
+        return source.execute("SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='host_archive_native_guard'").fetchone() is not None
+
+
 def _tick(config):
     control = Path(config["control"])
     active = json.loads((control / "active.json").read_text())
@@ -901,7 +959,8 @@ def _tick(config):
     current = active["commit"]
     if not health(config, current):
         raise Deferred("current_service_not_healthy")
-    snapshot(Path(config["state"]) / "handoff.sqlite")
+    database = Path(config["state"]) / "handoff.sqlite"
+    snapshot(database)
     candidate = select_candidate(current)
     expected = os.environ.get("REPORT_CD_EXPECTED_SHA")
     if expected is not None and (not SHA.fullmatch(expected)
@@ -912,6 +971,21 @@ def _tick(config):
     blocked = control / "blocked.json"
     if blocked.exists() and json.loads(blocked.read_text()).get("commit") == candidate["commit"]:
         raise Deferred("candidate_previously_failed_inspect_record")
+    host_guard = host_guard_present(database)
+    if host_guard:
+        # The initially deployed reader may predate the retained receipts.
+        # Check its rollback capability while the original service is running.
+        rollback = Path(config["base"]) / "releases" / current
+        with tempfile.TemporaryDirectory(prefix="rollback-", dir=control) as preflight:
+            try:
+                # Read this immutable release's export before copying the live database.
+                container(config, rollback, ["/node/bin/node", "--input-type=module", "-e", HOST_ARCHIVE_CAPABILITY],
+                          uid=config["uid"], readonly=True, extra=legacy_dependency_mount(config, rollback))
+                compatibility(config, rollback, Path(preflight), expected=None)
+            except CommandFailure as error:
+                if b'Error: host_archive_requires_compatible_release' in error.output.splitlines():
+                    raise Deferred("host_archive_requires_manual_cutover") from None
+                raise
     operation = control / (candidate["commit"] + "-" + uuid.uuid4().hex)
     operation.mkdir(mode=0o700)
     proof = stage(config, candidate, operation)
@@ -920,7 +994,11 @@ def _tick(config):
     unit = Path(config["unit"])
     if select_candidate(current) != candidate or digest(unit) != proof["unit_sha256"] or digest(Path(config["publisher_config"])) != proof["config_sha256"]:
         raise Deferred("deployment_inputs_changed")
-    snapshot(Path(config["state"]) / "handoff.sqlite")
+    snapshot(database)
+    # The host receiver also owns deployment.lock. The normal publisher only
+    # stores authenticated Slack events and cannot install the first host receipt.
+    if not host_guard and host_guard_present(database):
+        raise Deferred("host_archive_arrived_during_staging")
     require_same_filesystem(operation, release.parent)
     if release.exists() or release.is_symlink():
         raise ValueError("candidate_directory_already_exists")
