@@ -2384,6 +2384,54 @@
       "revision": 1,
       "fingerprint": "ba3456051aeb7446dafc21a7092a7825281c7d9e0d4f352bae802ebcfe3963c1",
       "content_sha256": "4f6da3bd6d3f3b5351ecabe27644c8787ec385211ecb1ffd011498f2711d9a44"
+    },
+    {
+      "id": "2026-11-23-lerobot-pr-5446",
+      "event_key": "lerobot-pr-5446",
+      "date": "2026-11-23",
+      "revision": 1,
+      "fingerprint": "a10a76096cfa49724bcb41b49b6b874934d05d8ff61aaea083b8d0659868ef27",
+      "content_sha256": "b43941467959b422afca99791d42e607177c9588d5d1b9270317d4813560955b"
+    },
+    {
+      "id": "2026-11-23-sglang-pr-50469",
+      "event_key": "sglang-pr-50469",
+      "date": "2026-11-23",
+      "revision": 1,
+      "fingerprint": "f4e0ed7eec2b9ee60f047a97fdbb9b053b698acdda7e4a33a5089709fffb7348",
+      "content_sha256": "e4b7592954c43610e057c23ccc7b1f46267d5fe5688ea33434495f90b549d3d4"
+    },
+    {
+      "id": "2026-11-23-tencent-wemm-video-2b-bf16-20261120",
+      "event_key": "tencent-wemm-video-2b-bf16-20261120",
+      "date": "2026-11-23",
+      "revision": 1,
+      "fingerprint": "5b33a8d3489c022098841b8c48bb6aae615bf480ff2723844840485d4133a866",
+      "content_sha256": "8c5e9a09a435a55e97b8914a1c4254f324d7b6942dd1c80ce5e93246913a7dbb"
+    },
+    {
+      "id": "2026-11-23-vllm-pr-66719",
+      "event_key": "vllm-pr-66719",
+      "date": "2026-11-23",
+      "revision": 1,
+      "fingerprint": "d736ac61c91257943b75cc525dd073fa0295078486e37d89fa3c0c793468986d",
+      "content_sha256": "c4711fe0f142fe99423d4eb2a4cc2165326b3e148d15fbd828049b04f8b258f3"
+    },
+    {
+      "id": "2026-11-23-vllm-pr-68198",
+      "event_key": "vllm-pr-68198",
+      "date": "2026-11-23",
+      "revision": 1,
+      "fingerprint": "5447fa19ec0f99d7ddf6e79fbf633a6a706d100017dfef5fc6e38bf66c1f25eb",
+      "content_sha256": "ed9dfeca78195e01883653954be7d515ac018a2185ae2a2b7c2f14263de80e1d"
+    },
+    {
+      "id": "2026-11-23-vllm-pr-69168",
+      "event_key": "vllm-pr-69168",
+      "date": "2026-11-23",
+      "revision": 1,
+      "fingerprint": "e4f5dba302364d48e56a44a6636fe9a3532189f498d3527fb95cfe8c9a538f08",
+      "content_sha256": "cbce4b57076caae77bea175ab98e47b7d8c3a79dc10b584de2a4844925d42e43"
     }
   ]
 }

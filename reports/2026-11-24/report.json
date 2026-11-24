@@ -1,0 +1,144 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-11-24",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-11-24",
+  "subtitle": "部分晨报｜智谱部分入口、DeepSeek 新闻、Qwen 文章连接重置；LMSYS 文章正文及引擎发布记录待核。",
+  "articles": [
+    {
+      "id": "model-serving-gpu",
+      "title": "模型服务与 GPU 超配：两套预填充引擎如何放下 188.83 GiB 的 Engram 表",
+      "summary": "4×GB200 上，两套 TP1/DP2+EP 引擎使用 Grace EGM 后都能启动。16K 输入的单 token 请求 p50/p95 为 553/719 ms，每引擎主机副本为 563/735 ms。",
+      "sha256": "65ded008e4d23e041897fae6552f22a3132832cd84f410a99205447a9236d6f5"
+    },
+    {
+      "id": "hardware-status",
+      "title": "硬件与算力平台：H100 上的 MXFP8 路径为何影响 DeepSeek‑V4.1 的权重加载",
+      "summary": "H100 TP1 缩减实验使用 8 个专家、关闭 Engram，并将 dummy 权重的 UE8M0 缩放因子固定为 120，使旧版生成 FP8 副本。加载内存从 28.37 降到 17.52 GiB。",
+      "sha256": "51b2b0d7f98f1e66d2e321881b91c6e772ac04204e4457b623b6093c6d95ee6f"
+    },
+    {
+      "id": "model-architecture-status",
+      "title": "模型与架构：GLM‑5.4 把已有层再走一遍，KV 缓存要记住什么",
+      "summary": "官方于北京时间 11 月 23 日 18:27 宣布 GLM‑5.4。第二遍复用第一遍选中的 KV，并保留自己窗口内的新 KV。通用 API 待安全评估，权重为后续计划。",
+      "sha256": "3cf9ad0e3a8dd70d6af73cba89fa939d9df90504ae47cb312b102367a703f115"
+    },
+    {
+      "id": "embodied-training",
+      "title": "制造业具身智能训练：LeRobot 在第二个 epoch 恢复时，读到的还是原来那些帧吗",
+      "summary": "map-style 训练从 epoch 1 或以后恢复时，轮次起点也受影响。CPU 测试在第 12 步的 epoch 1 起点续跑至第 14 步，核对读取的帧索引。",
+      "sha256": "835ab802774a8071a54940e0d526def72d3818a8133a174a990ff6d848db2195"
+    },
+    {
+      "id": "small-model-status",
+      "title": "前沿小模型：2.35B 的 Audar 在 RTX 3080 跑通转写，英语片段仍需单独测",
+      "summary": "固定 BF16 模型总计 2.35B 参数。RTX 3080 上补丁使原生转写请求成功，指定英语的片段仍输出阿拉伯语；卡中阿语榜单成绩来自另一项评测。",
+      "sha256": "c1f70c715b6b95ae3c8410f7a0657677ba45a4244bdd5ca43ea1c9aa4bf5fa35"
+    },
+    {
+      "id": "inference-engines",
+      "title": "推理引擎每日变动：MI355X 的稀疏解码如何省去一次 KV 中转",
+      "summary": "单张 MI355X 的 TP1 配置中，每个 KV 头对应 12 个查询头。并发 16、两组模拟 MTP 接受长度均为 2.32 时，ITL p50 从 7.85 降至 6.97 ms。",
+      "sha256": "9841de5fe943071237cabf3e99cf17c4ff0d64064469ec190ebef227c37eaa33"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-11-24-vllm-pr-68685",
+      "event_key": "vllm-pr-67539",
+      "title": "Engram 共享表改用 Grace EGM 承载",
+      "summary": "4×GB200 上，两套 TP1/DP2+EP 引擎使用 Grace EGM 后都能启动。16K 输入的单 token 请求 p50/p95 为 553/719 ms，每引擎主机副本为 563/735 ms。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/68685",
+        "https://github.com/vllm-project/vllm/pull/68685/files",
+        "https://github.com/vllm-project/vllm/pull/67539"
+      ],
+      "update_of": "2026-11-21-vllm-pr-67539",
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-11-24-vllm-pr-69446",
+      "event_key": "vllm-pr-69446",
+      "title": "vLLM 修正 H100 在 TP1 下的 MXFP8 自动选择",
+      "summary": "H100 TP1 缩减实验使用 8 个专家、关闭 Engram，并将 dummy 权重的 UE8M0 缩放因子固定为 120，使旧版生成 FP8 副本。加载内存从 28.37 降到 17.52 GiB。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/69446",
+        "https://github.com/vllm-project/vllm/pull/69446/files",
+        "https://github.com/vllm-project/vllm/issues/68647"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status"
+    },
+    {
+      "id": "2026-11-24-zai-glm-54-announcement",
+      "event_key": "zai-glm-54-announcement-20261123",
+      "title": "Z.ai 介绍 GLM‑5.4 的循环架构和托管使用范围",
+      "summary": "官方于北京时间 11 月 23 日 18:27 宣布 GLM‑5.4。第二遍复用第一遍选中的 KV，并保留自己窗口内的新 KV。通用 API 待安全评估，权重为后续计划。",
+      "source_urls": [
+        "https://x.com/Zai_org/status/2124811995912286352",
+        "https://z.ai/blog/glm-5.4",
+        "https://zcode.z.ai/en/docs/qa",
+        "https://huggingface.co/api/models?author=zai-org&direction=-1&expand=createdAt&expand=lastModified&expand=sha&limit=1000&sort=createdAt"
+      ],
+      "update_of": null,
+      "article_id": "model-architecture-status"
+    },
+    {
+      "id": "2026-11-24-lerobot-pr-5483",
+      "event_key": "lerobot-pr-5483",
+      "title": "LeRobot 同步恢复后的训练采样 epoch",
+      "summary": "map-style 训练从 epoch 1 或以后恢复时，轮次起点也受影响。CPU 测试在第 12 步的 epoch 1 起点续跑至第 14 步，核对读取的帧索引。",
+      "source_urls": [
+        "https://github.com/huggingface/lerobot/pull/5483",
+        "https://github.com/huggingface/lerobot/pull/5483/files"
+      ],
+      "update_of": null,
+      "article_id": "embodied-training"
+    },
+    {
+      "id": "2026-11-24-vllm-pr-69226",
+      "event_key": "vllm-pr-69226",
+      "title": "vLLM 修复 Audar 2.35B 固定快照的原生转写兼容性",
+      "summary": "固定 BF16 模型总计 2.35B 参数。RTX 3080 上补丁使原生转写请求成功，指定英语的片段仍输出阿拉伯语；卡中阿语榜单成绩来自另一项评测。",
+      "source_urls": [
+        "https://github.com/vllm-project/vllm/pull/69226",
+        "https://github.com/vllm-project/vllm/pull/69226/files",
+        "https://huggingface.co/audarai/Audar-ASR-V1-Turbo/blob/371428bea487c7aec82b27dc21f8d4324002e98e/README.md",
+        "https://huggingface.co/audarai/Audar-ASR-V1-Turbo/raw/371428bea487c7aec82b27dc21f8d4324002e98e/config.json",
+        "https://huggingface.co/api/models/audarai/Audar-ASR-V1-Turbo/revision/371428bea487c7aec82b27dc21f8d4324002e98e?blobs=true"
+      ],
+      "update_of": null,
+      "article_id": "small-model-status"
+    },
+    {
+      "id": "2026-11-24-sglang-pr-45196",
+      "event_key": "sglang-pr-45196",
+      "title": "SGLang 在符合条件的 gfx950 路径直接读取稀疏 KV",
+      "summary": "单张 MI355X 的 TP1 配置中，每个 KV 头对应 12 个查询头。并发 16、两组模拟 MTP 接受长度均为 2.32 时，ITL p50 从 7.85 降至 6.97 ms。",
+      "source_urls": [
+        "https://github.com/sgl-project/sglang/pull/45196",
+        "https://github.com/sgl-project/sglang/pull/45196/files"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    }
+  ],
+  "images": [
+    {
+      "path": "assets/overview.png",
+      "sha256": "df05b5fccc8d524cdf62bf1f7d06c54521c936ce55c96fd690b7f01bc263583e",
+      "alt": "11 月 24 日六主题。GB200 迁移 Engram 表。H100 用 8 专家 dummy 权重、关闭 Engram，并把 UE8M0 缩放因子固定为 120，加载内存由 28.37 降到 17.52 GiB。GLM‑5.4 窗口内可保留两遍的 KV。LeRobot 从第 12 步的 epoch 1 起点恢复到第 14 步，逐步对照连续训练的帧索引。Audar 跑通转写。MI355X 每个 KV 头配 12 个查询头，并发 16、模拟接受长度 2.32 时，ITL p50 从 7.85 降到 6.97 ms。"
+    },
+    {
+      "path": "assets/glm-loop-kv.png",
+      "sha256": "9164877e02de1cfeff77342eea3a21a48f52965bb56de9509adfd78de1c2f35d",
+      "alt": "当第 100 个 token 仍在滑动窗口内且被第一遍选中时，第二遍可同时读取第一遍选中的 KV 与第二遍窗口内的新 KV。"
+    },
+    {
+      "path": "assets/engram-egm.png",
+      "sha256": "172a6876a4825847fef03590e6da533376733aeddbbb3e8e2874cdda65022b3b",
+      "alt": "四张 GB200 上，整请求对比 Grace EGM 与主机副本，独立查表另与 HBM 分片比较。"
+    }
+  ],
+  "poster": "assets/overview.png"
+}
