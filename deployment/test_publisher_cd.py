@@ -887,6 +887,8 @@ class StagingTests(unittest.TestCase):
 
     def test_work_arriving_during_staging_defers_without_stopping_original(self):
         before, target = "a" * 40, "b" * 40
+        with connection(self.root / "handoff.sqlite") as ledger:
+            ledger.execute("CREATE TABLE jobs(phase TEXT)")
         config = {"control": str(self.root), "state": str(self.root), "base": str(self.root / "base"),
                   "publisher_config": str(self.root / "config.json"), "unit": str(self.root / "unit")}
         (self.root / "active.json").write_text(json.dumps({"commit": before}))
@@ -907,6 +909,8 @@ class StagingTests(unittest.TestCase):
     def test_failed_pre_activation_check_does_not_occupy_release_path(self):
         # 实际 stage 写入每轮私有目录；下一轮重做隔离检查，不复用不完整结果。
         before, target = "a" * 40, "b" * 40
+        with connection(self.root / "handoff.sqlite") as ledger:
+            ledger.execute("CREATE TABLE jobs(phase TEXT)")
         config = {"control": str(self.root), "state": str(self.root), "base": str(self.root / "base"),
                   "publisher_config": str(self.root / "config.json"), "unit": str(self.root / "unit"), "validation_uid": 65534}
         (self.root / "active.json").write_text(json.dumps({"commit": before}))
@@ -1275,6 +1279,108 @@ class ArchiveRecoveryCdTests(unittest.TestCase):
     setUp = LedgerTests.setUp
     install = ResearchRecoveryCdTests.install
     config = ResearchRecoveryCdTests.config
+    def test_host_archive_requires_the_original_sqlite_guard_on_candidate_and_rollback(self):
+        self.install()
+        command = 'd1111111-1111-4111-8111-111111111111'
+        request = 'morning-20261124-r1'
+        file_hash = hashlib.sha256(b'original').hexdigest()
+        payload = json.dumps(dict(schema_version='research_archive_v1', command_id=command, request_id=request,
+            report_date='2026-11-24', previous_sha256=None, files=[dict(path='audit/sample.json', sha256=file_hash,
+            content_base64=base64.b64encode(b'original').decode())])).encode()
+        manifest = json.dumps([dict(path='audit/sample.json', sha256=file_hash, bytes=8)], separators=(',', ':'))
+        archive_hash = hashlib.sha256(payload).hexdigest()
+        ticket = 'a1111111-1111-4111-8111-111111111111'
+        source = 't4-receipt:' + ticket + ':2026-11-24T00:00:00.000Z'
+        original_input = dict(step='ticket',archive_sha256=archive_hash,sha256=archive_hash,bytes=len(payload),
+                              permit_id=None,file_id=None,source_ts=None)
+        original_result = dict(file_id='FSOURCE',source_ts=None,sha256=archive_hash,bytes=len(payload))
+        guard = Path(cd.__file__).with_name('host-archive-guard.sql').read_text().strip()
+        self.assertEqual(guard, cd.HOST_ARCHIVE_GUARD)
+        with connection(self.database) as database:
+            database.execute('INSERT INTO research_archives VALUES(?,?,?,?,?,?,?,?,?)',
+                             (command, '2026-11-24', request, archive_hash, None, manifest, payload,
+                              source, 't4-sha256:' + archive_hash))
+            database.execute("INSERT INTO research_archive_heads VALUES('2026-11-24',?)", (archive_hash,))
+            database.execute("INSERT INTO research_control_ops VALUES(?,?,'native',?,'input',?,'owner',1,0,'acknowledged',NULL,NULL,NULL,?)",
+                             (ticket,request,'archive:'+archive_hash+':ticket',json.dumps(original_input),json.dumps(original_result)))
+        with self.assertRaisesRegex(ValueError, 'incomplete_host_archive_guard'):
+            cd.snapshot(self.database)
+        with connection(self.database) as database:
+            database.execute(guard)
+        expected = cd.snapshot(self.database)
+        config, operation = self.config()
+        with connection(self.database) as database:
+            database.execute('DROP TRIGGER host_archive_native_guard')
+            database.execute("INSERT INTO research_control_ops VALUES('op-native','morning-20261124-r1','native',?,'p','{}','owner',1,1,'intent',NULL,NULL,NULL,NULL)", ('archive:'+archive_hash+':post',))
+            database.execute(guard)
+        with self.assertRaisesRegex(ValueError,'host_archive_native_claim_conflict'):
+            cd.snapshot(self.database)
+        with connection(self.database) as database:
+            database.execute("DELETE FROM research_control_ops WHERE operation_id='op-native'")
+        current = 'c' * 40
+        (self.root/'active.json').write_text(json.dumps({'commit': current}))
+        live_config = {**config, 'control': str(self.root), 'base': str(self.root)}
+        with patch.object(cd, 'health', return_value=True), patch.object(cd, 'select_candidate', return_value={'commit':'d'*40}), \
+                patch.object(cd, 'compatibility') as probe, patch.object(cd, 'container') as capability, \
+                patch.object(cd, 'legacy_dependency_mount', return_value=[]), \
+                patch.object(cd, 'stage') as stage, patch.object(cd, 'run') as system:
+            capability.side_effect = cd.CommandFailure(1, b'Error: host_archive_requires_compatible_release')
+            with self.assertRaisesRegex(cd.Deferred, 'host_archive_requires_manual_cutover'):
+                cd.tick(live_config)
+            probe.assert_not_called()
+            self.assertEqual(capability.call_args.args[1], self.root / 'releases' / current)
+            capability.side_effect = None
+            probe.side_effect = cd.CommandFailure(1, b'Error: host_archive_requires_compatible_release')
+            with self.assertRaisesRegex(cd.Deferred, 'host_archive_requires_manual_cutover'):
+                cd.tick(live_config)
+            self.assertEqual(probe.call_args.args[1], self.root / 'releases' / current)
+            self.assertIsNone(probe.call_args.kwargs['expected'])
+            probe.side_effect = cd.CommandFailure(1, b'host_archive_requires_compatible_release')
+            with self.assertRaises(cd.CommandFailure):
+                cd.tick(live_config)
+            stage.assert_not_called();system.assert_not_called()
+            self.assertFalse((self.root/'pending.json').exists())
+        with connection(self.database) as database:
+            database.execute("UPDATE research_archives SET source_ts='1.000001'")
+        with self.assertRaisesRegex(ValueError,'invalid_host_archive_provenance'):
+            cd.snapshot(self.database)
+        with connection(self.database) as database:
+            database.execute("UPDATE research_archives SET source_ts=?", (source,))
+            database.execute("UPDATE research_archives SET bytes=?", (b'different',))
+        with self.assertRaisesRegex(ValueError,'invalid_host_archive_digest'):
+            cd.snapshot(self.database)
+        with connection(self.database) as database:
+            database.execute("UPDATE research_archives SET bytes=?", (payload,))
+        def remove_guard(*args, **kwargs):
+            mount = kwargs['extra'][1]
+            copied = Path(mount[len('type=bind,src='):-len(',dst=/probe')])/'handoff.sqlite'
+            with connection(copied) as database:
+                database.execute('DROP TRIGGER host_archive_native_guard')
+        with patch.object(cd,'container',side_effect=remove_guard), patch.object(cd,'legacy_dependency_mount',return_value=[]), patch.object(os,'chown',create=True):
+            with self.assertRaisesRegex(ValueError,'incomplete_host_archive_guard'):
+                cd.compatibility(config,self.root,operation,expected)
+        self.assertEqual(cd.snapshot(self.database),expected)
+        scripts = self.root/'scripts'
+        scripts.mkdir()
+        (scripts/'handoff-state.mjs').write_text('export class HandoffState{};export const handoffScope=x=>x;')
+        (scripts/'notice-outbox.mjs').write_text('export class NoticeOutbox{};export const notificationScope=x=>x;')
+        (scripts/'run-handoff.mjs').write_text('')
+        (scripts/'research-control.mjs').write_text('export const HOST_ARCHIVE_RECEIPT_VERSION=0,REPOSITORY_RESEARCH_INPUTS_VERSION=1;')
+        def legacy(config, release, arguments, **kwargs):
+            result = subprocess.run(['node','--input-type=module','-e',arguments[-1]],cwd=release,capture_output=True,text=True)
+            self.assertNotEqual(result.returncode,0)
+            self.assertIn('Error: host_archive_requires_compatible_release',result.stderr.splitlines())
+            raise ValueError('legacy_host_archive_runtime')
+        with patch.object(cd,'container',side_effect=legacy), patch.object(cd,'legacy_dependency_mount',return_value=[]), patch.object(os,'chown',create=True):
+            with self.assertRaisesRegex(ValueError,'legacy_host_archive_runtime'):
+                cd.compatibility(config,self.root,operation,expected)
+        with connection(self.database) as database:
+            tables = database.execute("SELECT name FROM sqlite_master WHERE type='table' AND name GLOB 'research_control_*'").fetchall()
+            for (table,) in tables:
+                database.execute('DROP TABLE ' + table)
+        with self.assertRaisesRegex(ValueError,'incomplete_host_archive_guard'):
+            cd.snapshot(self.database)
+
     def marker(self):
         with connection(self.database) as database:
             database.execute(cd.ARCHIVE_RECOVERY_SCHEMA)

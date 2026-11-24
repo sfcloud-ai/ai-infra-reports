@@ -2,6 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,rm,mkdir,writeFile} from 'node:fs/promises';
+import {readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {spawnSync} from 'node:child_process';
@@ -13,7 +14,7 @@ import {SlackHandoff} from '../scripts/slack-handoff.mjs';
 import {handoffTick,validateConfig} from '../scripts/run-handoff.mjs';
 import {digest} from '../scripts/archive.mjs';
 import {stageFile} from '../scripts/slack-stage-cli.mjs';
-import {installResearchArchive,assertResearchArchive,decodeResearchArchive,acceptResearchArchive,advanceResearchArchive,readResearchArchive,ARCHIVE_SCHEMA,ARCHIVE_CHUNK} from '../scripts/research-archive.mjs';
+import {installResearchArchive,assertResearchArchive,decodeResearchArchive,acceptResearchArchive,advanceResearchArchive,readResearchArchive,verifyStoredHostArchives,ARCHIVE_SCHEMA,ARCHIVE_CHUNK} from '../scripts/research-archive.mjs';
 import {installFixtureAuthority,fixtureNative} from './helpers/repository-authority-fixture.mjs';
 import {SCOPE,DAY} from './helpers/cloud-sender-fixture.mjs';
 
@@ -73,6 +74,77 @@ test('file readback survives the single-message transport limit with complete or
    assert.deepEqual(Buffer.from(state.db.prepare('SELECT bytes FROM research_archives').get().bytes),bytes);
   }finally{state.close();}
  }
+});
+
+function seedRetainedHostReceipt(state,hash){
+ const key='archive:'+hash+':',db=state.db;
+ const ticket=db.prepare("SELECT operation_id FROM research_control_ops WHERE request_id=? AND operation_key=? AND phase='acknowledged'").get(id,key+'ticket');
+ const receipt='t4-receipt:'+ticket.operation_id+':2026-11-01T00:00:00.000Z';
+ db.prepare('DELETE FROM research_control_ops WHERE request_id=? AND operation_key IN (?,?)').run(id,key+'post',key+'complete');
+ db.prepare('UPDATE research_archives SET file_id=?,source_ts=? WHERE hash=?').run('t4-sha256:'+hash,receipt,hash);
+ db.exec(readFileSync(new URL('../deployment/host-archive-guard.sql',import.meta.url),'utf8').replaceAll('\r\n','\n'));
+ return receipt;
+}
+test('receipt and manifest preserve the recorded transport for existing archives',async()=>{
+ const state=setup(),bytes=packet(),hash=digest(bytes);
+ try{
+  await ingest(state,bytes);
+  const read=action=>readResearchArchive(state.db,id,{action,hash,offset:0,query_id:uuid});
+  assert.equal(read('receipt').stored.source_ts,ts);
+  assert.equal(read('manifest').archive_source_ts,ts);
+  const receipt=seedRetainedHostReceipt(state,hash);
+  const original=JSON.parse(state.db.prepare('SELECT manifest FROM research_archives WHERE hash=?').get(hash).manifest);
+  const key='archive:'+hash+':ticket';
+  const ticket=state.db.prepare('SELECT input_hash FROM research_control_ops WHERE request_id=? AND operation_key=?').get(id,key);
+  const inputHash=state.db.prepare('UPDATE research_control_ops SET input_hash=? WHERE request_id=? AND operation_key=?');
+  inputHash.run('0'.repeat(64),id,key);
+  assert.equal(read('receipt').code,'invalid_stored_host_archive');
+  inputHash.run(ticket.input_hash,id,key);
+  const source=state.db.prepare('UPDATE research_archives SET source_ts=? WHERE hash=?');
+  source.run(receipt.slice(0,-24),hash);
+  assert.throws(()=>verifyStoredHostArchives(state.db),/invalid_stored_host_archive/);
+  source.run(receipt,hash);
+  state.db.prepare('UPDATE research_archives SET manifest=? WHERE hash=?').run(JSON.stringify(original,null,2),hash);
+  assert.deepEqual(read('receipt').stored,{command_id:uuid,transport:'t4_host_archive',host_receipt_id:receipt});
+  const manifest=read('manifest');
+  verifyStoredHostArchives(state.db);
+  state.db.prepare('DELETE FROM research_archive_heads WHERE report_date=?').run(DAY);
+  assert.equal(read('receipt').code,'invalid_stored_host_archive');
+  state.db.prepare('INSERT INTO research_archive_heads VALUES(?,?)').run(DAY,hash);
+  state.db.prepare("UPDATE research_archives SET manifest='[]' WHERE hash=?").run(hash);
+  assert.equal(read('manifest').code,'invalid_stored_host_archive');
+  assert.throws(()=>verifyStoredHostArchives(state.db),/invalid_stored_host_archive/);
+  assert.equal(manifest.host_receipt_id,receipt);assert.equal(manifest.transport,'t4_host_archive');
+  assert.equal(manifest.file_id,undefined);assert.equal(manifest.archive_source_ts,undefined);
+  state.db.prepare('UPDATE research_archives SET source_ts=? WHERE hash=?').run(ts,hash);
+  assert.equal(read('receipt').code,'invalid_host_archive_provenance');
+  state.db.prepare('UPDATE research_archives SET source_ts=?,file_id=? WHERE hash=?').run(receipt,'FTEST',hash);
+  assert.equal(read('manifest').code,'invalid_host_archive_provenance');
+  assert.deepEqual(Buffer.from(state.db.prepare('SELECT bytes FROM research_archives WHERE hash=?').get(hash).bytes),bytes);
+ }finally{state.close();}
+});
+
+test('queued read replies preserve the original observation and send typed host provenance',async()=>{
+ const state=setup(),hash=digest(packet()),file_id='t4-sha256:'+hash;
+ try{
+  await ingest(state);
+  const source=seedRetainedHostReceipt(state,hash);
+  for(const [i,action] of ['manifest','receipt'].entries()){
+   const source_ts=String(1793491203+i)+'.000001',query={query_id:uuid,hash,action,offset:0};
+   const observed={source_ts,request_id:id,query_id:uuid,archive_sha256:hash,head_sha256:'e'.repeat(64)};
+   Object.assign(observed,action==='manifest'?{file_id,archive_source_ts:source,files:[],next_offset:null}:{stored:{file_id,source_ts:source},status:'stored'});
+   const initial='!ai-research receipt '+JSON.stringify(observed);
+   state.db.prepare("INSERT INTO research_archive_events(source_ts,kind,request_id,hash,query,phase,reply_text) VALUES(?,'read',?,?,?,'ready',?)")
+    .run(source_ts,id,hash,JSON.stringify(query),initial);
+   let sent;
+   await advanceResearchArchive(state,config,{controlReceipt:async(_ts,text)=>{sent=text;return '1793491250.000001';}},now);
+   const actual=JSON.parse(sent.slice('!ai-research receipt '.length)),record=actual.stored??actual;
+   assert.equal(record.host_receipt_id,source);assert.equal(record.transport,'t4_host_archive');assert.equal(record.file_id,undefined);
+   assert.equal(actual.head_sha256,observed.head_sha256);assert.equal(actual.source_ts,source_ts);
+   const saved=state.db.prepare('SELECT reply_text,phase FROM research_archive_events WHERE source_ts=?').get(source_ts);
+   assert.equal(saved.reply_text,sent);assert.equal(saved.phase,'sent');
+  }
+ }finally{state.close();}
 });
 
 test('long manifest pages fit one authenticated receipt without dropping or repeating files',async()=>{
