@@ -57,6 +57,12 @@ Use a persistent PTY with terminal echo disabled before providing native results
 or a private non-echoing stdin pipe. A signed upload URL must never appear in a
 terminal transcript, journal, checkpoint, or command argument.
 
+On Windows, run the research CLI and revision uploader with a private,
+non-echoing stdin pipe. Write each native result as one complete UTF-8 JSON
+line. Before requesting the first ticket, pass a harmless JSON line of at least
+3,000 bytes through the same pipe and compare its byte count and SHA-256 at
+both ends, excluding the line terminator.
+
 Use the original scope and upload binding described in
 [research authority](research-authority.md). The bridge obtains authenticated
 host control receipts before each native operation. Pass the original native

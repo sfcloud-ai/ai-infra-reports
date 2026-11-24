@@ -291,9 +291,36 @@ test('duplicate saves retain original source; changed operation bytes and stale 
 test('an unavailable predecessor remains pending and can arrive without losing the original child',async()=>{
  const state=setup(),parent=packet(),child=packet({command_id:'e1111111-1111-4111-8111-111111111111',previous_sha256:digest(parent),data:Buffer.from('child')});try{
   await ingest(state,child,ts);const event=state.db.prepare('SELECT * FROM research_archive_events').get();assert.equal(event.phase,'pending');assert.equal(JSON.parse(event.diagnostic).code,'archive_parent_unavailable');
-  await ingest(state,parent,'1793491202.000001');assert.equal(readResearchArchive(state.db,id,query()).head_sha256,digest(parent));
+  assert.equal(JSON.parse(event.diagnostic).missing_parent_sha256,digest(parent));
+  const {missing_parent_sha256,...legacy}=JSON.parse(event.diagnostic);
+  state.db.prepare('UPDATE research_archive_events SET diagnostic=? WHERE source_ts=?').run(JSON.stringify(legacy),ts);
   const msg=message(`!ai-research save ${id} ${digest(child)}`,ts,'FSOURCE');
-  await advanceResearchArchive(state,config,slackFor([msg],child),now+600000);assert.equal(readResearchArchive(state.db,id,query()).head_sha256,digest(child));
+  await advanceResearchArchive(state,config,slackFor([msg],child),now+600000);
+  const refreshed=state.db.prepare('SELECT phase,diagnostic FROM research_archive_events WHERE source_ts=?').get(ts);
+  assert.equal(refreshed.phase,'pending');assert.equal(JSON.parse(refreshed.diagnostic).missing_parent_sha256,missing_parent_sha256);
+  const unavailable={...slackFor([msg],child),download:async()=>{throw Object.assign(Error('timeout'),{code:'ETIMEDOUT'});}};
+  await advanceResearchArchive(state,config,unavailable,now+1200000);
+  const transient=JSON.parse(state.db.prepare('SELECT diagnostic FROM research_archive_events WHERE source_ts=?').get(ts).diagnostic);
+  assert.equal(transient.code,'ETIMEDOUT');assert.deepEqual(transient.verified_parent,JSON.parse(refreshed.diagnostic));
+  const url='https://files.slack.com/files-pri/'+config.team_id+'-'+event.file_id+'/archive';
+  const api=new SlackHandoff(config,'synthetic',async address=>address===url?new Response('',{status:503}):
+   Response.json({ok:true,file:{id:event.file_id,user:config.sender_user_id,user_team:config.team_id,name:'ai-brief-research-archive.json',mode:'hosted',
+    size:child.length,shares:{private:{[config.channel_id]:[{ts}]}},url_private_download:url}}));
+  await advanceResearchArchive(state,config,{...slackFor([msg],child),download:api.download.bind(api)},now+1380000);
+  const outage=JSON.parse(state.db.prepare('SELECT diagnostic FROM research_archive_events WHERE source_ts=?').get(ts).diagnostic);
+  assert.equal(outage.http_status,503);assert.deepEqual(outage.verified_parent,transient.verified_parent);
+  const interrupted=new SlackHandoff(config,'synthetic',async()=>new Response(new ReadableStream({
+   start(controller){controller.error(Error('fixture interrupted after headers'));}
+  })));
+  await advanceResearchArchive(state,config,{...slackFor([msg],child),exactPublish:interrupted.exactPublish.bind(interrupted)},now+1440000);
+  const partial=JSON.parse(state.db.prepare('SELECT diagnostic FROM research_archive_events WHERE source_ts=?').get(ts).diagnostic);
+  assert.equal(partial.code,'transport');assert.deepEqual(partial.verified_parent,transient.verified_parent);
+  const edited={...slackFor([msg],child),exactPublish:async()=>({...msg,edited:{ts}})};
+  await advanceResearchArchive(state,config,edited,now+1500000);
+  const changed=JSON.parse(state.db.prepare('SELECT diagnostic FROM research_archive_events WHERE source_ts=?').get(ts).diagnostic);
+  assert.equal(changed.verified_parent,undefined);
+  await ingest(state,parent,'1793491202.000001');assert.equal(readResearchArchive(state.db,id,query()).head_sha256,digest(parent));
+  await advanceResearchArchive(state,config,slackFor([msg],child),now+1800000);assert.equal(readResearchArchive(state.db,id,query()).head_sha256,digest(child));
  }finally{state.close();}
 });
 test('commit failure rolls back original bytes, chain head and acknowledgement together',async()=>{

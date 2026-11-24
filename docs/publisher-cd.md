@@ -26,6 +26,27 @@ root 所有的 `/etc/ai-report-publisher-cd.json` 明确指定 `base`、`control
 
 这套 CD 只部署 Publisher，不发送日报、不改变晨报日程。Pages 使用原有工作流；转发器、控制运行时与校验器由 brief 仓库自己的受限部署入口更新。
 
+## 从 T4 恢复原单研究归档
+
+通常先以普通 CD 安装支持收档的应用和控制程序。若现役服务因缺少父归档而无法通过健康检查，在发布空档执行以下短停升级。核对父件的原票据和等待子件的 Slack 消息、文件 ID 与哈希。原请求负责人暂停提交后，从已有 Slack 记录取该原单最后一条控制写入的时间戳。确认 T4 已完成覆盖该时间戳的扫描，再暂停 CD 定时器，依次取得 `control-entry.lock`、`deployment.lock`，核实无未完成的部署或未知写入，使用已验证候选的 `snapshot(path, settled=True, fingerprint=False)` 检查现役账本是否已结算。若发布作业仍在途中，先让它完成。
+
+若现役版本已支持收档且与已验证的 main 一致，核对已加载的 unit、当前控制程序摘要及版本指针。依照步骤 1 的 SIGTERM 方式排空服务，备份 SQLite，保留现役版本与指针，释放两把部署锁，保持定时器暂停，再执行步骤 3 和 4。旧诊断已能证明父件身份时直接执行步骤 4。
+
+1. 使用 `select_candidate` 选取 main CI 已通过的精确提交。在两把部署锁内核对 `pending.json` 和 `control-pending.json` 均无未完成操作，`blocked.json` 与 `control-blocked.json` 均未封存候选，再用 `stage` 完成隔离验证。在操作目录备份原 unit、控制程序和版本指针。沿用普通 CD 的 `pending.json` 原子记录前后提交、unit 和配置摘要、操作目录及 `drain_intent`。执行 `systemctl kill --kill-who=main --signal=SIGTERM ai-report-publisher.service`，最多观察 300 秒，等主进程自行排空；若未退出，保留记录并核对状态。确认 inactive/dead、MainPID 为 0 后备份 SQLite，在副本上用候选版本检查账本兼容性。
+2. 切换前再用原现役提交执行 `select_candidate`，比对提交、CI run、attempt、暂存证明和配置摘要。再次检查两项封存记录和本次操作身份。在修改任何指针前将阶段写为 `activation_intent`，安装验证过的 release 和配套控制程序，保留原服务账号、配置和状态目录。更新应用及已配置的控制版本指针，执行 `systemctl daemon-reload`。逐项比对已加载 unit、应用指针、控制程序摘要及已有的控制指针与目标版本；将核对结果落盘后清除本次 pending 记录，保持定时器暂停，释放部署锁。遇到中断，按留存的原记录核对各项真实状态后接续。
+3. 若子件的旧 `archive_parent_unavailable` 记录缺少父件哈希，用 `systemctl start ai-report-publisher.service` 启动刚安装的候选。归档 worker 会在原事件的 `next_at` 到期后重新认证同一条 Slack 消息，并校验下载字节。用下列只读查询绑定原子件，观察一个已到期的重试，最多等十分钟。取得匹配的父件哈希后，用步骤 1 的主进程 SIGTERM 和 300 秒上限排空。若重试受限或父件不符，保留原结果与下次可读时间，结束本次维护尝试。整个过程沿用原事件、原文件与原票据。
+
+   ```sql
+   SELECT phase, next_at, coalesce(json_extract(diagnostic,'$.missing_parent_sha256'),
+       json_extract(diagnostic,'$.verified_parent.missing_parent_sha256')) AS parent
+   FROM research_archive_events
+   WHERE kind='save' AND request_id=? AND source_ts=? AND file_id=? AND hash=?;
+   ```
+
+4. 确认服务已停止、发布作业已结算，从当前账本复制演练副本，用候选版本在副本上验收同一父件。随后对正式账本执行下述命令。若同一原单还有待处理的控制写入，启动 Publisher 让它处理原队列，再排空并重试收档。在此次独占维护窗口内由同一位操作员管理服务启停，收到回执后再启动。命令重新取得两把部署锁和账本锁，核对 systemd 服务账号、启动参数、精确版本及原票据，在账本锁内再次核对停止状态。持锁期间，Publisher 的普通 tick 会等待或延后。启动后核对父件回执。若有等待父件的子件，核对子件收档；若原事件已经终态拒绝，核对该拒绝记录。健康检查连续成功两次后恢复 CD 定时器。首次收档后的恢复版本也须支持 T4 收档记录。
+
+研究原件需要在 T4 恢复时，先从原票据回执核对文件 ID、SHA-256、长度及实际上传结果。将精确匹配的字节写入 `/var/lib/report-publisher/host-archive-inbox/<sha256>.json`。目录和文件均由 root 与 Publisher 主组持有，权限分别为 `0750` 和 `0440`。以 root 在现役控制程序目录执行 `python3 publisher_cd.py receive-host-archive <现役提交> <原请求> <原票据操作ID> <Slack文件ID> <sha256> <原单最后控制写入的Slack时间戳>`。成功回执包含 T4 收档时间及原文件身份。交付岗沿用该归档结算取证和提交 checkpoint。首次收档后，部署与回滚均核验目标运行时能识别这类回执。
+
 ## 六篇首发规则的上线顺序
 
 先部署能识别首发拒绝回执的 Publisher 和配套控制程序。从 2026-11-19 报告日起，签发发布许可、接收报告包和更新网页都核验六篇完整专题，后续修订也保留六个入口。核对现役应用提交、控制程序摘要及两个健康周期，再在 relay 启用六篇规则。数据库已有明确拒绝记录时，部署和回滚都要求目标版本能识别该记录。

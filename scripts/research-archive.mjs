@@ -8,7 +8,7 @@ import {acceptDataCommand,acceptReadCommand,canonicalRequestDate,reportDate,requ
 import {handoffScope,scopeDigest} from './handoff-state.mjs';
 import {assertSubmission} from './slack-submission.mjs';
 import {safeDiagnostic,recoveryDelay,isSlackWriteUnexecuted} from './handoff-recovery.mjs';
-import {settleResearchArchiveUpload} from './research-control-publication.mjs';
+import {originalResearchArchiveUpload,settleResearchArchiveUpload} from './research-control-publication.mjs';
 import {assertResearchOutputFiles} from './repository-research-inputs.mjs';
 
 const HASH=/^[a-f0-9]{64}$/, UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
@@ -112,10 +112,19 @@ export function storeResearchArchive(db,event,bytes){
    try{assertResearchOutputFiles(plan,files);}catch{rejectArchive('repository_inputs_must_be_references');}
   }
  }
+ let originalUpload;
+ try{originalUpload=originalResearchArchiveUpload(db,event,bytes.length);}
+ catch(e){if(e.researchPublicationRejection)rejectArchive(e.researchPublicationRejection);throw e;}
  const head=db.prepare('SELECT hash FROM research_archive_heads WHERE report_date=?').get(value.report_date);
  if((head?.hash??null)!==value.previous_sha256){
   const parent=value.previous_sha256?db.prepare('SELECT request_id FROM research_archives WHERE hash=?').get(value.previous_sha256):null;
-  if(value.previous_sha256&&!parent){const error=Error('archive_parent_unavailable');error.researchDeferred={stage:'research_archive',code:'archive_parent_unavailable',outcome:'not_stored',expected_head:head?.hash??null};throw error;}
+  if(value.previous_sha256&&!parent){
+   const error=Error('archive_parent_unavailable');
+   error.researchDeferred={stage:'research_archive',code:'archive_parent_unavailable',outcome:'not_stored',
+    expected_head:head?.hash??null,missing_parent_sha256:value.previous_sha256,
+    request_id:event.request_id,child_sha256:hash,file_id:event.file_id,source_ts:event.source_ts};
+   throw error;
+  }
   if(parent&&parent.request_id!==value.request_id)rejectArchive('archive_parent_scope_conflict');
   rejectArchive('archive_predecessor_conflict',head?.hash??null);
  }
@@ -124,7 +133,7 @@ export function storeResearchArchive(db,event,bytes){
  const manifest=JSON.stringify(files.map(({data,...f})=>f));
  db.prepare('INSERT INTO research_archives VALUES(?,?,?,?,?,?,?,?,?)').run(value.command_id,value.report_date,value.request_id,hash,value.previous_sha256,manifest,bytes,event.source_ts,event.file_id);
  db.prepare('INSERT INTO research_archive_heads VALUES(?,?) ON CONFLICT(report_date) DO UPDATE SET hash=excluded.hash').run(value.report_date,hash);
- try{settleResearchArchiveUpload(db,event,bytes.length);}catch(e){if(e.researchPublicationRejection)rejectArchive(e.researchPublicationRejection);throw e;}
+ settleResearchArchiveUpload(db,event,bytes.length,originalUpload);
  return {hash,command_id:value.command_id,already_stored:false};
 }
 function hostProvenance(row,hash){
@@ -133,7 +142,7 @@ function hostProvenance(row,hash){
  return {transport:'t4_host_archive',host_receipt_id:row.source_ts};
 }
 let receiptGuard;
-function verifiedHostProvenance(db,metadata,hash){
+export function verifiedHostProvenance(db,metadata,hash){
  const provenance=hostProvenance(metadata,hash);
  if(!provenance?.transport)return provenance;
  const row=db.prepare('SELECT * FROM research_archives WHERE hash=?').get(hash);
@@ -290,6 +299,13 @@ export async function advanceResearchArchive(state,c,slack,now=Date.now()){
    return;
   }
   const diagnostic=e.researchDeferred??safeDiagnostic(e,'research_archive');
+  const transportFailure=diagnostic.stage.startsWith('slack.')||diagnostic.retryable||['ECONNRESET','ETIMEDOUT','ENOTFOUND','EAI_AGAIN','EPIPE','ABORT_ERR'].includes(diagnostic.code);
+  if(transportFailure&&!e.researchDeferred&&row.phase==='pending'&&row.kind==='save'&&row.diagnostic){
+   const previous=JSON.parse(row.diagnostic);
+   const parent=previous.code==='archive_parent_unavailable'?previous:previous.verified_parent;
+   if(parent?.missing_parent_sha256&&parent.request_id===row.request_id&&parent.child_sha256===row.hash&&
+      parent.file_id===row.file_id&&parent.source_ts===row.source_ts)diagnostic.verified_parent=parent;
+  }
   // Keep an already-decided storage rejection if its advisory reply is lost.
   db.prepare("UPDATE research_archive_events SET attempts=attempts+1,next_at=?,diagnostic=CASE WHEN json_extract(diagnostic,'$.outcome')='rejected' THEN diagnostic ELSE ? END WHERE source_ts=?").run(Math.max(now+recoveryDelay(row.attempts+1),diagnostic.retry_at??0),JSON.stringify(diagnostic),row.source_ts);
   return {source_ts:row.source_ts,...diagnostic};

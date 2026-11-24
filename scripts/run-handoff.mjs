@@ -22,6 +22,7 @@ import {safeDiagnostic,recordHandoffFailure,attemptDetail,localSlackNotStarted} 
 import {PublisherInbox,validateIntakeConfig} from './publisher-inbox.mjs';
 import {withHandoffLock} from "./handoff-lock.mjs";
 export const REVISION_NOTICES_VERSION=1;
+export const PUBLISHER_LEDGER_LIMIT=10*1024**3;
 export async function privateDirectory(dir){
  requireThat(path.isAbsolute(dir)&&await realpath(dir)===path.resolve(dir),"Private directory must be absolute and not symlinked");
  const s=await lstat(dir);requireThat(s.isDirectory()&&s.uid===process.getuid()&&(s.mode&0o077)===0,"Private directory must be owner-only");
@@ -253,7 +254,7 @@ export async function runHandoff(configFile){
  const slack=await prepareSlack(new SlackHandoff(config,token,fetch,{cooldowns}));
  const filename=path.join(config.state_dir,"handoff.sqlite");
  try{const f=await open(filename,"wx",0o600);await f.close();}catch(e){if(e.code!=="EEXIST")throw e;}
- await privateFile(filename,10*1024*1024*1024,false);
+ await privateFile(filename,PUBLISHER_LEDGER_LIMIT,false);
  const state=new HandoffState(filename,handoffScope(config));
  try{
  for(const scope of PROVIDER_SCOPES){const deadline=state.providerDeadline(scope);if(deadline)cooldowns.defer(scope,deadline);}

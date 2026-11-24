@@ -56,13 +56,17 @@ export function settlePermitSubmission(db,proof,row,byteLength){
  db.prepare("UPDATE research_control_ops SET phase='acknowledged',native_result=? WHERE operation_id=?").run(JSON.stringify(result),proof.op.operation_id);
  db.prepare('UPDATE research_control_runs SET revision=revision+1 WHERE request_id=?').run(proof.run_id);
 }
-export function settleResearchArchiveUpload(db,event,byteLength){
- if(!db.prepare("SELECT 1 FROM sqlite_master WHERE name='research_control_ops'").get())return;
+export function originalResearchArchiveUpload(db,event,byteLength){
+ if(!db.prepare("SELECT 1 FROM sqlite_master WHERE name='research_control_ops'").get())return null;
  const op=db.prepare("SELECT * FROM research_control_ops WHERE request_id=? AND kind='native' AND operation_key=?").get(event.request_id,'archive:'+event.hash+':complete');
- if(!op)return;
+ if(!op)return null;
  const input=JSON.parse(op.input);
  need(input.permit_id===null&&input.file_id===event.file_id&&input.sha256===event.hash&&input.bytes===byteLength,'archive_original_upload');
  if(op.native_result){const result=JSON.parse(op.native_result);need(result.file_id===event.file_id&&result.source_ts===event.source_ts&&result.sha256===event.hash&&result.bytes===byteLength,'archive_original_result');}
- db.prepare("UPDATE research_control_ops SET phase='acknowledged',native_result=? WHERE operation_id=?").run(JSON.stringify({file_id:event.file_id,source_ts:event.source_ts,sha256:event.hash,bytes:byteLength}),op.operation_id);
+ return op.operation_id;
+}
+export function settleResearchArchiveUpload(db,event,byteLength,operation=originalResearchArchiveUpload(db,event,byteLength)){
+ if(!operation)return;
+ db.prepare("UPDATE research_control_ops SET phase='acknowledged',native_result=? WHERE operation_id=?").run(JSON.stringify({file_id:event.file_id,source_ts:event.source_ts,sha256:event.hash,bytes:byteLength}),operation);
  db.prepare('UPDATE research_control_runs SET revision=revision+1 WHERE request_id=?').run(event.request_id);
 }

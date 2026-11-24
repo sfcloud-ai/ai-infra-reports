@@ -315,7 +315,7 @@ def fenced_intake_is_ineligible(database, fence, row):
                 and grant[2] == file_id and (not grant[3] or grant[3] == source))
 
 
-def snapshot(path, settled=True):
+def snapshot(path, settled=True, *, fingerprint=True):
     with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)) as database:
         database.execute("PRAGMA query_only=ON")
         database.execute("BEGIN")
@@ -494,13 +494,16 @@ def snapshot(path, settled=True):
             columns = database.execute("PRAGMA table_info(" + name + ")").fetchall()
             if any(not re.fullmatch(r"[a-z_][a-z0-9_]*", col[1]) for col in columns):
                 raise ValueError("unsupported_ledger_column")
+            if not fingerprint:
+                continue
             keys = [col[1] for col in sorted(columns, key=lambda col: col[5]) if col[5]]
             rows = database.execute("SELECT * FROM " + name + " ORDER BY " + (",".join(keys) if keys else "rowid"))
             result.append([name, sql, [[{"base64": base64.b64encode(value).decode()} if isinstance(value, bytes) else value
                                       for value in row] for row in rows]])
         if settled:
             require_settled_operations(database, {row[0] for row in tables}, fence)
-        return hashlib.sha256(json.dumps(result, separators=(",", ":")).encode()).hexdigest()
+        if fingerprint:
+            return hashlib.sha256(json.dumps(result, separators=(",", ":")).encode()).hexdigest()
 
 
 def require_settled_operations(database, table_names, fence):
@@ -606,8 +609,19 @@ def container(config, work, arguments, network="none", uid=None, extra=(), reado
 
 
 def properties():
-    values = run(["/bin/systemctl", "show", SERVICE, "--property=MainPID,ActiveState,SubState,WorkingDirectory,User,Group,NoNewPrivileges,ProtectSystem,ProtectHome,ReadWritePaths,Restart"])
+    values = run(["/bin/systemctl", "show", SERVICE, "--property=MainPID,ActiveState,SubState,WorkingDirectory,User,Group,NoNewPrivileges,ProtectSystem,ProtectHome,ReadWritePaths,Restart,NeedDaemonReload"])
     return dict(line.split("=", 1) for line in values.splitlines())
+
+
+def verify_unit_binding(config, service, release):
+    import pwd, grp
+    if (pwd.getpwnam(service["User"]).pw_uid != config["uid"]
+            or grp.getgrnam(service["Group"]).gr_gid != config["gid"]):
+        raise ValueError("publisher_service_account_changed")
+    if (service["WorkingDirectory"] != str(release) or service["Restart"] != "no"
+            or service["ReadWritePaths"] != config["state"] or service["NoNewPrivileges"] != "yes"
+            or service["ProtectSystem"] != "strict" or service["ProtectHome"] != "yes"):
+        raise ValueError("publisher_unit_binding_changed")
 
 
 def health(config, commit, after=None, pid=None):
@@ -1003,14 +1017,8 @@ def _tick(config):
     if release.exists() or release.is_symlink():
         raise ValueError("candidate_directory_already_exists")
     old = properties()
-    import pwd, grp
-    if (pwd.getpwnam(old["User"]).pw_uid != config["uid"]
-            or grp.getgrnam(old["Group"]).gr_gid != config["gid"]):
-        raise ValueError("publisher_service_account_changed")
-    if (old["WorkingDirectory"] != str(Path(config["base"]) / "releases" / current)
-            or old["ActiveState"] != "active" or old["Restart"] != "no"
-            or old["ReadWritePaths"] != config["state"] or old["NoNewPrivileges"] != "yes"
-            or old["ProtectSystem"] != "strict" or old["ProtectHome"] != "yes"):
+    verify_unit_binding(config, old, Path(config["base"]) / "releases" / current)
+    if old["ActiveState"] != "active":
         raise ValueError("publisher_unit_binding_changed")
     before = unit.read_bytes()
     atomic(operation / "before.service", before)
@@ -1154,8 +1162,7 @@ def tick(config):
         raise
 
 
-def enable_report_parts(config, commit):
-    """One-time activation under the CD lock after the reviewed release is active."""
+def active_admin_release(config, commit, *, stopped=False):
     control = Path(config["control"])
     if not SHA.fullmatch(commit):
         raise ValueError("report_parts_active_release_required")
@@ -1173,10 +1180,27 @@ def enable_report_parts(config, commit):
             or digest(release / "deployment/publisher_cd.py") != controller):
         raise ValueError("report_parts_active_release_required")
     service = properties()
-    if (service["ActiveState"] != "active" or service["SubState"] != "running"
-            or service["WorkingDirectory"] != str(release) or not health(config, commit, pid=service["MainPID"])):
+    if service["WorkingDirectory"] != str(release):
         raise Deferred("report_parts_healthy_release_required")
-    node = Path(config["node"]) / "bin/node"
+    if stopped:
+        if (service["ActiveState"], service["SubState"], service["MainPID"]) != ("inactive", "dead", "0"):
+            raise Deferred("publisher_must_be_stopped")
+    elif (service["ActiveState"] != "active" or service["SubState"] != "running"
+          or not health(config, commit, pid=service["MainPID"])):
+        raise Deferred("report_parts_healthy_release_required")
+    if stopped:
+        verify_unit_binding(config, service, release)
+        executable = str(Path(config["node"]) / "bin/node")
+        argv = [executable, "scripts/publisher-service.mjs", config["publisher_config"], "--live"]
+        commands = json.loads(run(["/usr/bin/busctl", "--json=short", "get-property", "org.freedesktop.systemd1",
+            "/org/freedesktop/systemd1/unit/ai_2dreport_2dpublisher_2eservice", "org.freedesktop.systemd1.Service", "ExecStart"]))["data"]
+        if service.get("NeedDaemonReload") != "no" or len(commands) != 1 or commands[0][:3] != [executable, argv, False]:
+            raise Deferred("publisher_config_differs")
+    return release
+
+
+def enable_report_parts(config, commit):
+    release = active_admin_release(config, commit)
     script = ("import{readFileSync}from'node:fs';import{withLockedHandoffState}from'./scripts/handoff-state.mjs';"
               "import{installReportParts}from'./scripts/research-control.mjs';"
               "import{isHandoffLockBusy}from'./scripts/handoff-lock.mjs';"
@@ -1184,30 +1208,46 @@ def enable_report_parts(config, commit):
               "try{const installed=await withLockedHandoffState(c,s=>installReportParts(s.db,c));"
               "process.stdout.write(JSON.stringify({installed}));}catch(e){if(!isHandoffLockBusy(e))throw e;"
               "process.stdout.write(JSON.stringify({lock_busy:true}));}")
+    outcome = run_admin(config, release, script, [])
+    if set(outcome) != {"installed"} or type(outcome["installed"]) is not bool:
+        raise ValueError("unexpected_report_parts_activation_result")
+    return {"status": "report_parts_enabled", "commit": commit, **outcome}
+
+
+def receive_host_archive(config, commit, request, operation, file_id, sha256, last_control):
+    release = active_admin_release(config, commit, stopped=True)
+    script = ("import{receiveStagedHostArchive,receiptFailure}from'./deployment/receive-host-research-archive.mjs';"
+              "import{isHandoffLockBusy}from'./scripts/handoff-lock.mjs';"
+              "try{console.log(JSON.stringify(await receiveStagedHostArchive(...process.argv.slice(1))));}"
+              "catch(e){console.log(JSON.stringify(isHandoffLockBusy(e)?{lock_busy:true}:receiptFailure(e)));}")
+    return run_admin(config, release, script, [request, operation, file_id, sha256, last_control, config["state"]], timeout=None)
+
+
+def run_admin(config, release, script, args, *, timeout=60):
+    node = Path(config["node"]) / "bin/node"
     account = ["/usr/bin/setpriv", "--reuid=" + str(config["uid"]), "--regid=" + str(config["gid"]),
                "--clear-groups", "--no-new-privs"]
-    result = subprocess.run(account + [str(node), "--input-type=module", "-e", script, config["publisher_config"]],
+    result = subprocess.run(account + [str(node), "--input-type=module", "-e", script, "--", config["publisher_config"], *args],
                             cwd=release, stdin=subprocess.DEVNULL, capture_output=True, check=True,
-                            timeout=60,
+                            timeout=timeout,
                             env={"PATH": "/usr/bin:/bin", "LANG": "C"})
     outcome = json.loads(result.stdout)
     if outcome == {"lock_busy": True}:
         raise Deferred("publisher_ledger_lock_busy")
-    if set(outcome) != {"installed"} or type(outcome["installed"]) is not bool:
-        raise ValueError("unexpected_report_parts_activation_result")
-    return {"status": "report_parts_enabled", "commit": commit, **outcome}
+    return outcome
 
 
 def main():
     import fcntl
     args = sys.argv[1:]
     activation = len(args) == 2 and args[0] == "enable-report-parts" and SHA.fullmatch(args[1])
-    if sys.platform != "linux" or os.getuid() != 0 or (args != ["tick"] and not activation):
+    receipt = len(args) == 7 and args[0] == 'receive-host-archive' and SHA.fullmatch(args[1])
+    if sys.platform != "linux" or os.getuid() != 0 or (args != ["tick"] and not (activation or receipt)):
         raise ValueError("fixed_linux_cd_entry_required")
     config = load_config()
     # The stable wrapper already holds control-entry.lock while invoking a
     # normal tick. Administrative activation takes the same locks in that order.
-    names = ("control-entry.lock", "deployment.lock") if activation else ("deployment.lock",)
+    names = ("control-entry.lock", "deployment.lock") if activation or receipt else ("deployment.lock",)
     with ExitStack() as locks:
         for name in names:
             lock = os.open(Path(config["control"]) / name, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
@@ -1218,7 +1258,13 @@ def main():
                 print(json.dumps({"status": "deferred", "reason": "deployment_lock_busy"}))
                 return
         try:
-            print(json.dumps(enable_report_parts(config, args[1]) if activation else tick(config)))
+            if receipt:
+                result = receive_host_archive(config, *args[1:])
+            else:
+                result = enable_report_parts(config, args[1]) if activation else tick(config)
+            print(json.dumps(result))
+            if receipt and result.get('status') in ('rejected','unknown'):
+                raise SystemExit(1)
         except Deferred as error:
             print(json.dumps({"status": "deferred", "reason": str(error)}))
 

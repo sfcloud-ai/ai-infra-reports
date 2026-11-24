@@ -15,7 +15,7 @@ import subprocess
 import tarfile
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from deployment import publisher_cd as cd
 from deployment import edition_cutover_preflight
@@ -139,7 +139,9 @@ class ReportPartActivationTests(unittest.TestCase):
     @unittest.skipUnless(os.name == 'posix', 'Linux deployment lock')
     def test_competing_deployment_and_activation_defer_without_mutating(self):
         import fcntl
-        cases = [(['tick'], 'deployment.lock'), (['enable-report-parts', 'a'*40], 'control-entry.lock')]
+        archive = ['receive-host-archive','a'*40,'morning-20261124-r1','operation','FORIGINAL','b'*64,'1795000100.000000']
+        cases = [(['tick'], 'deployment.lock'), (['enable-report-parts', 'a'*40], 'control-entry.lock'),
+                 (archive, 'control-entry.lock'), (archive, 'deployment.lock')]
         with tempfile.TemporaryDirectory() as directory:
             for args, name in cases:
                 with self.subTest(args=args), (Path(directory) / name).open('wb') as owner:
@@ -199,7 +201,57 @@ class ReportPartActivationTests(unittest.TestCase):
                     cd.enable_report_parts(config, commit)
 
 
-class RevisionSettlementTests(unittest.TestCase):
+    def test_offline_archive_requires_stopped_bound_service_and_requests_locked_settlement_check(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            commit = 'a' * 40
+            release = root / 'releases' / commit
+            (release / 'deployment').mkdir(parents=True)
+            (release / 'deployment/publisher_cd.py').write_bytes(Path(cd.__file__).read_bytes())
+            (root / 'active.json').write_text(json.dumps({'commit': commit}))
+            config = {name: directory for name in ('base', 'state', 'control')}
+            config.update(node=directory, publisher_config=str(root / 'publisher.json'), uid=996, gid=997)
+            node = str(root / 'bin/node')
+            argv = [node, 'scripts/publisher-service.mjs', config['publisher_config'], '--live']
+            service = {'ActiveState': 'inactive', 'SubState': 'dead', 'MainPID': '0',
+                       'WorkingDirectory': str(release), 'NeedDaemonReload': 'no', 'User': 'publisher', 'Group': 'publisher',
+                       'Restart': 'no', 'ReadWritePaths': directory, 'NoNewPrivileges': 'yes', 'ProtectSystem': 'strict', 'ProtectHome': 'yes'}
+            with patch.object(cd, 'properties', return_value=service), patch.object(cd, 'run') as bus, \
+                    patch.object(cd, 'run_admin') as admin, patch.dict('sys.modules', pwd=Mock(), grp=Mock()) as modules:
+                modules['pwd'].getpwnam.return_value.pw_uid = config['uid']
+                modules['grp'].getgrnam.return_value.gr_gid = config['gid']
+                command = [node, argv, False]
+                bus.return_value = json.dumps({'data': [command]})
+                with self.assertRaises(cd.Deferred):
+                    cd.active_admin_release(config, commit)
+                self.assertEqual(cd.active_admin_release(config, commit, stopped=True), release)
+                cd.receive_host_archive(config, commit, 'original', 'operation', 'FTEST', 'a'*64, '1795000100.000000')
+                self.assertEqual(admin.call_args.args[3][-1], directory)
+                for account, attribute, expected in ((modules['pwd'].getpwnam, 'pw_uid', config['uid']),
+                                                      (modules['grp'].getgrnam, 'gr_gid', config['gid'])):
+                    setattr(account.return_value, attribute, expected + 1)
+                    with self.assertRaisesRegex(ValueError, 'publisher_service_account_changed'):
+                        cd.active_admin_release(config, commit, stopped=True)
+                    setattr(account.return_value, attribute, expected)
+                with patch.dict(service, ReadWritePaths='other-state'):
+                    with self.assertRaisesRegex(ValueError, 'publisher_unit_binding_changed'):
+                        cd.active_admin_release(config, commit, stopped=True)
+                for commands in ([[node, [*argv[:2], 'other.json', '--live'], False]],
+                                 [['other-node', argv, False]], [command, command]):
+                    bus.return_value = json.dumps({'data': commands})
+                    with self.assertRaisesRegex(cd.Deferred, 'publisher_config_differs'):
+                        cd.active_admin_release(config, commit, stopped=True)
+                bus.return_value = json.dumps({'data': [command]})
+                service['NeedDaemonReload'] = 'yes'
+                with self.assertRaisesRegex(cd.Deferred, 'publisher_config_differs'):
+                    cd.active_admin_release(config, commit, stopped=True)
+                service['MainPID'] = '72'
+                with self.assertRaisesRegex(cd.Deferred, 'publisher_must_be_stopped'):
+                    cd.active_admin_release(config, commit, stopped=True)
+                with patch.dict(service, ActiveState='active', SubState='running', NeedDaemonReload='no'):
+                    with self.assertRaisesRegex(cd.Deferred, 'publisher_must_be_stopped'):
+                        cd.receive_host_archive(config, commit, 'original', 'operation', 'FTEST', 'a'*64, '1795000100.000000')
+
     def test_revision_capability_detects_original_bundle_and_submission(self):
         with closing(sqlite3.connect(':memory:')) as database:
             database.execute('CREATE TABLE jobs(bytes BLOB)')
@@ -349,6 +401,29 @@ class LedgerTests(unittest.TestCase):
             for sql in cd.INTAKE_SCHEMA.values():
                 database.execute(sql)
             database.execute("INSERT INTO publisher_intake_scan VALUES(1,?,?,NULL,NULL)", ("a" * 64, "1793448000.000001"))
+
+    def test_settlement_only_validates_schema_and_jobs_without_encoding_history(self):
+        with connection(self.database) as database:
+            database.execute('UPDATE jobs SET bytes=zeroblob(1048576)')
+        with patch.object(cd.base64, 'b64encode', side_effect=AssertionError('encoded historical bytes')):
+            self.assertIsNone(cd.snapshot(self.database, fingerprint=False))
+            with connection(self.database) as database:
+                database.execute("UPDATE jobs SET phase='received'")
+            with self.assertRaises(cd.Deferred):
+                cd.snapshot(self.database, fingerprint=False)
+            with connection(self.database) as database:
+                database.execute('CREATE TABLE unsupported(value)')
+            with self.assertRaisesRegex(ValueError, 'unsupported_ledger_schema'):
+                cd.snapshot(self.database, fingerprint=False)
+
+    def test_settlement_only_checks_sqlite_integrity(self):
+        with connection(self.database) as database:
+            # Persist an index ordered differently from the reader's standard collation.
+            database.create_collation('NOCASE', lambda left, right: (left < right) - (left > right))
+            database.execute("INSERT INTO jobs VALUES ('extra','receipt_sent','{}')")
+            database.execute('CREATE INDEX job_order ON jobs(id COLLATE NOCASE)')
+        with self.assertRaisesRegex(ValueError, 'ledger_integrity'):
+            cd.snapshot(self.database, fingerprint=False)
 
     def test_old_revision_reader_is_rejected_before_candidate_state_open(self):
         node=shutil.which('node')
