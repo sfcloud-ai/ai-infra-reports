@@ -30,7 +30,8 @@ export class SlackHandoff{
   }
   // No inline write retry. The durable worker decides whether reconciliation
   // or a bounded retry is safe; only allowlisted error identifiers are logged.
-  const data=JSON.parse((await boundedBytes(response,responseLimit)).toString("utf8"));
+  const body=await boundedBytes(response,responseLimit,()=>failure('transport',write?'unknown':'not_started',!write));
+  const data=JSON.parse(body.toString("utf8"));
   if(data.ok!==true){const codes=['ratelimited','invalid_auth','token_revoked','missing_scope','not_authed','account_inactive','channel_not_found','not_in_channel','is_archived','invalid_cursor'];const code=codes.includes(data.error)?data.error:'api_error';const error=failure(code,write&&code==='api_error'?'unknown':'not_started',code==='ratelimited'||!write&&code==='invalid_cursor',undefined,code==='ratelimited'?await limited():undefined);throw write&&code!=='api_error'&&code!=='invalid_cursor'?confirmedSlackRejection(error):error;}
   return {data,scopes:response.headers.get("x-oauth-scopes")};
  }
@@ -79,7 +80,17 @@ export class SlackHandoff{
   requireThat(f.shares?.private?.[this.config.channel_id]?.some(s=>s.ts===event.source_ts),"File is not shared in the command message");
   const url=new URL(f.url_private_download);
   requireThat(url.protocol==="https:"&&url.hostname==="files.slack.com"&&!url.port&&!url.username&&!url.password&&!url.search&&!url.hash&&url.pathname.startsWith(`/files-pri/${this.config.team_id}-${event.file_id}/`),"Unexpected Slack download origin/path");
-  const bytes=await boundedBytes(await this.fetcher(url.href,{headers:{authorization:"Bearer "+this.token},redirect:"error",signal:AbortSignal.timeout(30000)}),limit);
+  let response;
+  const transport=()=>operationError('Slack file download interrupted',{stage:'slack.download',code:'transport',retryable:true});
+  try{response=await this.fetcher(url.href,{headers:{authorization:"Bearer "+this.token},redirect:"error",signal:AbortSignal.timeout(30000)});}
+  catch{throw transport();}
+  if(!response.ok){
+   const retry=response.headers.get('retry-after');
+   const retry_at=response.status===429?this.now()+(/^\d{1,6}$/.test(retry??'')?Number(retry)*1000:60000):undefined;
+   throw operationError('Slack file download failed',{stage:'slack.download',code:'http_error',http_status:response.status,
+    retryable:response.status===408||response.status===429||response.status>=500,retry_at});
+  }
+  const bytes=await boundedBytes(response,limit,transport);
   requireThat(bytes.length===f.size,"Slack file size mismatch");return bytes;
  }
  async receipt(thread,proof){

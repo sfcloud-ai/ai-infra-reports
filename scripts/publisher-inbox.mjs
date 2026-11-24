@@ -25,6 +25,14 @@ export function intakeStatus(db,requestId){
  const row=db.prepare("SELECT source_ts,file_id,hash,phase,attempts,next_at,diagnostic FROM publisher_inbox WHERE request_id=? ORDER BY source_ts LIMIT 1").get(requestId);
  return row?{...row,diagnostic:row.diagnostic?JSON.parse(row.diagnostic):null}:null;
 }
+function intakeScope(config){
+ const boundary=validateIntakeConfig(config.durable_intake).not_before;
+ return scopeDigest({not_before:boundary,team_id:config.team_id,channel_id:config.channel_id,sender_user_id:config.sender_user_id,sender_bot_id:config.sender_bot_id??null,sender_app_id:config.sender_app_id??null,sender_user_app_id:config.sender_user_app_id??null,sender_attribution_text:config.sender_attribution_text??null});
+}
+export function assertIntakeScope(db,config){
+ const stored=db.prepare('SELECT scope FROM publisher_intake_scan WHERE id=1').get();
+ requireThat(stored?.scope===intakeScope(config),'Durable intake scope changed; reconcile first');
+}
 export class PublisherInbox{
  constructor(state,config){
   this.state=state;this.db=state.db;this.config=config;
@@ -34,9 +42,9 @@ export class PublisherInbox{
   assertResearchControl(this.db,config);
   const boundary=validateIntakeConfig(config.durable_intake).not_before;
   installIntakeTables(this.db);
-  const scope=scopeDigest({not_before:boundary,team_id:config.team_id,channel_id:config.channel_id,sender_user_id:config.sender_user_id,sender_bot_id:config.sender_bot_id??null,sender_app_id:config.sender_app_id??null,sender_user_app_id:config.sender_user_app_id??null,sender_attribution_text:config.sender_attribution_text??null});
+  const scope=intakeScope(config);
   this.db.prepare('INSERT OR IGNORE INTO publisher_intake_scan VALUES (1,?,?,NULL,NULL)').run(scope,boundary);
-  requireThat(this.db.prepare('SELECT scope FROM publisher_intake_scan WHERE id=1').get().scope===scope,'Durable intake scope changed; reconcile first');
+  assertIntakeScope(this.db,config);
  }
  async scan(slack,now=Date.now()){
   let scan=this.db.prepare('SELECT * FROM publisher_intake_scan WHERE id=1').get();

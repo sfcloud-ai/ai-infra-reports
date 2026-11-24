@@ -151,12 +151,20 @@ export function acceptProducerDay(message,config,now=Date.now(),window){
  const [,report_date,query_id]=event.match;requireThat(reportDate(report_date),'Day query date invalid');
  return {kind:'day',request_id:`morning-${report_date.replaceAll('-','')}-r1`,report_date,query_id,source_ts:event.source_ts,hash:event.hash};
 }
-export async function boundedBytes(response,limit){
+export async function boundedBytes(response,limit,onReadError){
  requireThat(response.ok,"Remote read failed");
  const length=response.headers.get("content-length");requireThat(length===null||(/^\d+$/.test(length)&&Number(length)<=limit),"Remote byte limit");
  const chunks=[];let size=0;
  requireThat(response.body,"Empty remote body");
- for await(const chunk of response.body){size+=chunk.length;requireThat(size<=limit,"Remote byte limit");chunks.push(chunk);}
+ let overflow=false;
+ try{
+  for await(const chunk of response.body){
+   size+=chunk.length;
+   if(size>limit){overflow=true;break;}
+   chunks.push(chunk);
+  }
+ }catch(error){if(!overflow)throw onReadError?onReadError(error):error;}
+ requireThat(!overflow,"Remote byte limit");
  return Buffer.concat(chunks);
 }
 export async function verifyReportPublication(commit,bundle,fetcher=fetch,sourceCache){
