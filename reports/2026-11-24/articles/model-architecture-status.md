@@ -14,8 +14,14 @@
 
 | 使用方式 | 已核实的范围 |
 | --- | --- |
-| 托管入口 | 公告说明已有指定托管方式可用。ZCode FAQ 列出 Lite、Pro、Max 和 Team，并说明其产品范围内的 1M 上下文。 |
+| 托管入口 | ZCode FAQ 列出 Lite、Pro、Max 和 Team，并说明其产品范围内的 1M 上下文。 |
 | 通用开发者 API | 官方帖子称将在安全评估后开放。现有材料没有给出通用 API 的可用模型 ID、开放时间或额度。 |
 | 本地权重 | 官方表示计划开放权重。本次读取的 zai-org Hugging Face 目录有 154 项，其中没有 GLM‑5.4 同名条目，尚无固定权重修订、分片和许可可供部署核验。 |
 
 在托管入口测试自己的工作负载是当前可做的验证。评估本地超配则仍需取得权重和运行实现，先核正确性，再在明确的硬件、上下文与并发条件下量显存、延迟和吞吐。FAQ 的 1M 说明不能代替这些测量。[ZCode FAQ](https://zcode.z.ai/en/docs/qa) · [官方公告帖](https://x.com/Zai_org/status/2124811995912286352) · [zai-org 模型目录](https://huggingface.co/api/models?author=zai-org&direction=-1&expand=createdAt&expand=lastModified&expand=sha&limit=1000&sort=createdAt)
+
+## 这次查到了哪些发布渠道
+
+智谱的官方账号公告、技术文章和 ZCode FAQ 分别支撑发布时间、循环机制和托管范围。智谱研究时间线、API 发布说明和 ModelScope 入口在取件时连接中断。模型目录的 154 项只能说明这次在 Hugging Face 看到了什么。[官方账号](https://x.com/Zai_org) · [官方模型目录](https://huggingface.co/api/models?author=zai-org&direction=-1&expand=createdAt&expand=lastModified&expand=sha&limit=1000&sort=createdAt)
+
+在 DeepSeek 的 106 项和 Qwen 的 469 项 Hugging Face 目录记录中，未见本次 24 小时窗口内创建或修改的条目。DeepSeek 新闻和 Qwen 英文文章入口连接中断，其他项目发布与权重渠道也未查全，因此这两个目录不足以判断两家当天的全部发布。[DeepSeek 模型目录](https://huggingface.co/api/models?author=deepseek-ai&direction=-1&expand=createdAt&expand=lastModified&expand=sha&limit=1000&sort=createdAt) · [Qwen 模型目录](https://huggingface.co/api/models?author=Qwen&direction=-1&expand=createdAt&expand=lastModified&expand=sha&limit=1000&sort=createdAt)

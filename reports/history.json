@@ -2432,6 +2432,54 @@
       "revision": 1,
       "fingerprint": "e4f5dba302364d48e56a44a6636fe9a3532189f498d3527fb95cfe8c9a538f08",
       "content_sha256": "cbce4b57076caae77bea175ab98e47b7d8c3a79dc10b584de2a4844925d42e43"
+    },
+    {
+      "id": "2026-11-24-lerobot-pr-5483",
+      "event_key": "lerobot-pr-5483",
+      "date": "2026-11-24",
+      "revision": 1,
+      "fingerprint": "f2fe9d68ef19369760e18ac833a1d99364db18e645771e7b232a3f2fb7e18419",
+      "content_sha256": "957f213291983c5b8629bf6a40f6408593d8e46dfd0fd3d25e83ed2604f7f134"
+    },
+    {
+      "id": "2026-11-24-sglang-pr-45196",
+      "event_key": "sglang-pr-45196",
+      "date": "2026-11-24",
+      "revision": 1,
+      "fingerprint": "302acdf3da71ae1cb52a25c369bd4fdd0504e4c1f200021e47edeb5ea3d32468",
+      "content_sha256": "706b2d772ca1d56b68c9803ac8b680204bc82cd57cf7425e2a20be81db694bc9"
+    },
+    {
+      "id": "2026-11-24-vllm-pr-68685",
+      "event_key": "vllm-pr-67539",
+      "date": "2026-11-24",
+      "revision": 1,
+      "fingerprint": "6796d1317c5cca224db14c202d85330d39390e02038217f25192133531c47c07",
+      "content_sha256": "54c3bc348bab9521168793c14e168e57cc522c9caa07298eac130923021a8c3a"
+    },
+    {
+      "id": "2026-11-24-vllm-pr-69226",
+      "event_key": "vllm-pr-69226",
+      "date": "2026-11-24",
+      "revision": 1,
+      "fingerprint": "b288e83060bdfa7094dab0f4b07cd4f4392b8cb189a10534fe724a7fbc252b86",
+      "content_sha256": "7411ad14f2904f85359ea3ff0e4c40a9bc34b80e92b0faff85d785dd1ff38328"
+    },
+    {
+      "id": "2026-11-24-vllm-pr-69446",
+      "event_key": "vllm-pr-69446",
+      "date": "2026-11-24",
+      "revision": 1,
+      "fingerprint": "241ccd10deef95ae1627db201fe25e695203c08cd9b0a0a024c3b5ba32ef8e34",
+      "content_sha256": "0358c1e56f3aa88c85f856b5a17778a03ace1b811690387840f118cf4f6816d1"
+    },
+    {
+      "id": "2026-11-24-zai-glm-54-announcement",
+      "event_key": "zai-glm-54-announcement-20261123",
+      "date": "2026-11-24",
+      "revision": 1,
+      "fingerprint": "df7ac1207c479bfc182fd41ea1b89ff94ae6987426bb46d9b0fa63b1288430d3",
+      "content_sha256": "0904d14cca7dc0db4b08f7fa3d2eeae4fd5c8c8ab451098108db923c1dae6f5f"
     }
   ]
 }

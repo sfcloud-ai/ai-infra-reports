@@ -1861,31 +1861,31 @@
       "path": "reports/2026-11-23/"
     },
     {
-      "schema_version": "1.0",
+      "schema_version": "1.1",
       "date": "2026-11-24",
-      "revision": 1,
+      "revision": 2,
       "title": "AI Infra 晨报 · 2026-11-24",
-      "subtitle": "部分晨报｜智谱部分入口、DeepSeek 新闻、Qwen 文章连接重置；LMSYS 文章正文及引擎发布记录待核。",
+      "subtitle": "部分晨报｜覆盖缺口：架构、引擎。厂商发布渠道、LMSYS 正文及三引擎提交和发布记录未查全。",
       "articles": [
         {
           "id": "model-serving-gpu",
           "title": "模型服务与 GPU 超配：两套预填充引擎如何放下 188.83 GiB 的 Engram 表",
           "summary": "4×GB200 上，两套 TP1/DP2+EP 引擎使用 Grace EGM 后都能启动。16K 输入的单 token 请求 p50/p95 为 553/719 ms，每引擎主机副本为 563/735 ms。",
-          "sha256": "65ded008e4d23e041897fae6552f22a3132832cd84f410a99205447a9236d6f5",
+          "sha256": "86405fd861728e278bac634d4e0ab33d078cee4cd6253e1aa9b7bd1398520ab7",
           "path": "reports/2026-11-24/articles/model-serving-gpu.md"
         },
         {
           "id": "hardware-status",
-          "title": "硬件与算力平台：H100 上的 MXFP8 路径为何影响 DeepSeek‑V4.1 的权重加载",
-          "summary": "H100 TP1 缩减实验使用 8 个专家、关闭 Engram，并将 dummy 权重的 UE8M0 缩放因子固定为 120，使旧版生成 FP8 副本。加载内存从 28.37 降到 17.52 GiB。",
-          "sha256": "51b2b0d7f98f1e66d2e321881b91c6e772ac04204e4457b623b6093c6d95ee6f",
+          "title": "硬件与算力平台：MI355X 如何从本地 NVMe 读回会话 KV",
+          "summary": "16 张 MI355X 分作 TP8 预填充与 TP8 解码。盘上命中的 KV 先经直接 I/O 进入 16 GiB 主机暂存区，再复制到 GPU。",
+          "sha256": "ccb62acdba7ed687b7e870139e4504834403058f5e83ad61ed154a52d46d1d03",
           "path": "reports/2026-11-24/articles/hardware-status.md"
         },
         {
           "id": "model-architecture-status",
           "title": "模型与架构：GLM‑5.4 把已有层再走一遍，KV 缓存要记住什么",
           "summary": "官方于北京时间 11 月 23 日 18:27 宣布 GLM‑5.4。第二遍复用第一遍选中的 KV，并保留自己窗口内的新 KV。通用 API 待安全评估，权重为后续计划。",
-          "sha256": "3cf9ad0e3a8dd70d6af73cba89fa939d9df90504ae47cb312b102367a703f115",
+          "sha256": "1469358c384b9279511f62ebc5a1cb394bda92da5b93579880d3401366c2732c",
           "path": "reports/2026-11-24/articles/model-architecture-status.md"
         },
         {
@@ -1899,18 +1899,22 @@
           "id": "small-model-status",
           "title": "前沿小模型：2.35B 的 Audar 在 RTX 3080 跑通转写，英语片段仍需单独测",
           "summary": "固定 BF16 模型总计 2.35B 参数。RTX 3080 上补丁使原生转写请求成功，指定英语的片段仍输出阿拉伯语；卡中阿语榜单成绩来自另一项评测。",
-          "sha256": "c1f70c715b6b95ae3c8410f7a0657677ba45a4244bdd5ca43ea1c9aa4bf5fa35",
+          "sha256": "24a484a11f1d133850e3ce1b62e1cf9641c43def540dff20cf1c1fd6ac2a5a9b",
           "path": "reports/2026-11-24/articles/small-model-status.md"
         },
         {
           "id": "inference-engines",
           "title": "推理引擎每日变动：MI355X 的稀疏解码如何省去一次 KV 中转",
           "summary": "单张 MI355X 的 TP1 配置中，每个 KV 头对应 12 个查询头。并发 16、两组模拟 MTP 接受长度均为 2.32 时，ITL p50 从 7.85 降至 6.97 ms。",
-          "sha256": "9841de5fe943071237cabf3e99cf17c4ff0d64064469ec190ebef227c37eaa33",
+          "sha256": "df04ac145bbb274c7fe65454243e4b416f20ea6bb63dbad7af5539343412a9b9",
           "path": "reports/2026-11-24/articles/inference-engines.md"
         }
       ],
       "poster": "assets/overview.png",
+      "revision_notice": {
+        "kind": "correction",
+        "summary": "硬件篇改为 16 张 MI355X 上的 MoRI 会话 KV 存储路径，注明主配置用 ext4，另一对节点的无写缓冲复测用 XFS。GB200 两组各 144 个请求是整轮总数，16K 输入、每引擎并发 4 的延迟测点未单列样本数。另补全架构与引擎的覆盖说明，校正各篇来源。"
+      },
       "path": "reports/2026-11-24/"
     }
   ],
@@ -6220,101 +6224,93 @@
       "revision": 1
     },
     {
-      "id": "2026-11-24-vllm-pr-68685",
+      "id": "2026-11-24-vllm-pr-68685-r2",
       "event_key": "vllm-pr-67539",
       "title": "Engram 共享表改用 Grace EGM 承载",
       "summary": "4×GB200 上，两套 TP1/DP2+EP 引擎使用 Grace EGM 后都能启动。16K 输入的单 token 请求 p50/p95 为 553/719 ms，每引擎主机副本为 563/735 ms。",
       "source_urls": [
-        "https://github.com/vllm-project/vllm/pull/67539",
-        "https://github.com/vllm-project/vllm/pull/68685",
-        "https://github.com/vllm-project/vllm/pull/68685/files"
+        "https://api.github.com/search/issues?order=desc&page=1&per_page=100&q=repo%3Avllm-project%2Fvllm+is%3Apr+merged%3A2026-11-22T22%3A20%3A00Z..2026-11-23T22%3A20%3A00Z&sort=updated"
       ],
-      "update_of": "2026-11-21-vllm-pr-67539",
+      "update_of": "2026-11-24-vllm-pr-68685",
       "article_id": "model-serving-gpu",
-      "fingerprint": "6796d1317c5cca224db14c202d85330d39390e02038217f25192133531c47c07",
+      "fingerprint": "9275567559bb94ab13026b93f99a0486128b4448b27b7ab7162ab682a26657dc",
       "date": "2026-11-24",
-      "revision": 1
+      "revision": 2
     },
     {
-      "id": "2026-11-24-vllm-pr-69446",
-      "event_key": "vllm-pr-69446",
-      "title": "vLLM 修正 H100 在 TP1 下的 MXFP8 自动选择",
-      "summary": "H100 TP1 缩减实验使用 8 个专家、关闭 Engram，并将 dummy 权重的 UE8M0 缩放因子固定为 120，使旧版生成 FP8 副本。加载内存从 28.37 降到 17.52 GiB。",
+      "id": "2026-11-24-mori-umbp-storage-path",
+      "event_key": "mi355x-mori-umbp-storage-path-status-20261124",
+      "title": "MI355X 的会话 KV 外存路径如何使用本地 NVMe、DRAM 与 RDMA",
+      "summary": "16 张 MI355X 分作 TP8 预填充与 TP8 解码。盘上命中的 KV 先经直接 I/O 进入 16 GiB 主机暂存区，再复制到 GPU。",
       "source_urls": [
-        "https://github.com/vllm-project/vllm/issues/68647",
-        "https://github.com/vllm-project/vllm/pull/69446",
-        "https://github.com/vllm-project/vllm/pull/69446/files"
+        "https://raw.githubusercontent.com/vllm-project/vllm-project.github.io/main/_posts/2026-11-23-skip-the-dram-tier.md"
       ],
       "update_of": null,
       "article_id": "hardware-status",
-      "fingerprint": "241ccd10deef95ae1627db201fe25e695203c08cd9b0a0a024c3b5ba32ef8e34",
+      "fingerprint": "496f430bd4e7d46276524ce78b087c64607e09fc0056d93099d54a44d354f049",
       "date": "2026-11-24",
-      "revision": 1
+      "revision": 2
     },
     {
-      "id": "2026-11-24-zai-glm-54-announcement",
+      "id": "2026-11-24-zai-glm-54-announcement-r2",
       "event_key": "zai-glm-54-announcement-20261123",
       "title": "Z.ai 介绍 GLM‑5.4 的循环架构和托管使用范围",
       "summary": "官方于北京时间 11 月 23 日 18:27 宣布 GLM‑5.4。第二遍复用第一遍选中的 KV，并保留自己窗口内的新 KV。通用 API 待安全评估，权重为后续计划。",
       "source_urls": [
         "https://huggingface.co/api/models?author=zai-org&direction=-1&expand=createdAt&expand=lastModified&expand=sha&limit=1000&sort=createdAt",
-        "https://x.com/Zai_org/status/2124811995912286352",
-        "https://z.ai/blog/glm-5.4",
-        "https://zcode.z.ai/en/docs/qa"
+        "https://x.com/Zai_org"
       ],
-      "update_of": null,
+      "update_of": "2026-11-24-zai-glm-54-announcement",
       "article_id": "model-architecture-status",
-      "fingerprint": "df7ac1207c479bfc182fd41ea1b89ff94ae6987426bb46d9b0fa63b1288430d3",
+      "fingerprint": "f053422feebca69f7fbf4e7333c8310264cc7ec791896e550342299b890b2950",
       "date": "2026-11-24",
-      "revision": 1
+      "revision": 2
     },
     {
-      "id": "2026-11-24-lerobot-pr-5483",
+      "id": "2026-11-24-lerobot-pr-5483-r2",
       "event_key": "lerobot-pr-5483",
       "title": "LeRobot 同步恢复后的训练采样 epoch",
       "summary": "map-style 训练从 epoch 1 或以后恢复时，轮次起点也受影响。CPU 测试在第 12 步的 epoch 1 起点续跑至第 14 步，核对读取的帧索引。",
       "source_urls": [
-        "https://github.com/huggingface/lerobot/pull/5483",
-        "https://github.com/huggingface/lerobot/pull/5483/files"
+        "https://api.github.com/search/issues?order=desc&page=1&per_page=100&q=repo%3Ahuggingface%2Flerobot+is%3Apr+merged%3A2026-11-22T22%3A20%3A00Z..2026-11-23T22%3A20%3A00Z&sort=updated"
       ],
-      "update_of": null,
+      "update_of": "2026-11-24-lerobot-pr-5483",
       "article_id": "embodied-training",
-      "fingerprint": "f2fe9d68ef19369760e18ac833a1d99364db18e645771e7b232a3f2fb7e18419",
+      "fingerprint": "2e2ebbef2fbc935cc74c47880185d33f5b4376b43aefd5ebd961e8efb451c558",
       "date": "2026-11-24",
-      "revision": 1
+      "revision": 2
     },
     {
-      "id": "2026-11-24-vllm-pr-69226",
+      "id": "2026-11-24-vllm-pr-69226-r2",
       "event_key": "vllm-pr-69226",
       "title": "vLLM 修复 Audar 2.35B 固定快照的原生转写兼容性",
       "summary": "固定 BF16 模型总计 2.35B 参数。RTX 3080 上补丁使原生转写请求成功，指定英语的片段仍输出阿拉伯语；卡中阿语榜单成绩来自另一项评测。",
       "source_urls": [
         "https://github.com/vllm-project/vllm/pull/69226",
-        "https://github.com/vllm-project/vllm/pull/69226/files",
         "https://huggingface.co/api/models/audarai/Audar-ASR-V1-Turbo/revision/371428bea487c7aec82b27dc21f8d4324002e98e?blobs=true",
-        "https://huggingface.co/audarai/Audar-ASR-V1-Turbo/blob/371428bea487c7aec82b27dc21f8d4324002e98e/README.md",
-        "https://huggingface.co/audarai/Audar-ASR-V1-Turbo/raw/371428bea487c7aec82b27dc21f8d4324002e98e/config.json"
+        "https://huggingface.co/audarai/Audar-ASR-V1-Turbo/raw/371428bea487c7aec82b27dc21f8d4324002e98e/README.md",
+        "https://huggingface.co/audarai/Audar-ASR-V1-Turbo/raw/371428bea487c7aec82b27dc21f8d4324002e98e/config.json",
+        "https://patch-diff.githubusercontent.com/raw/vllm-project/vllm/pull/69226.diff"
       ],
-      "update_of": null,
+      "update_of": "2026-11-24-vllm-pr-69226",
       "article_id": "small-model-status",
-      "fingerprint": "b288e83060bdfa7094dab0f4b07cd4f4392b8cb189a10534fe724a7fbc252b86",
+      "fingerprint": "c926b9edef05de86255f7f75cdc07bd2b28a8072b4e6f7080fbf32298e59e913",
       "date": "2026-11-24",
-      "revision": 1
+      "revision": 2
     },
     {
-      "id": "2026-11-24-sglang-pr-45196",
+      "id": "2026-11-24-sglang-pr-45196-r2",
       "event_key": "sglang-pr-45196",
       "title": "SGLang 在符合条件的 gfx950 路径直接读取稀疏 KV",
       "summary": "单张 MI355X 的 TP1 配置中，每个 KV 头对应 12 个查询头。并发 16、两组模拟 MTP 接受长度均为 2.32 时，ITL p50 从 7.85 降至 6.97 ms。",
       "source_urls": [
-        "https://github.com/sgl-project/sglang/pull/45196",
-        "https://github.com/sgl-project/sglang/pull/45196/files"
+        "https://api.github.com/search/issues?order=desc&page=1&per_page=100&q=repo%3Asgl-project%2Fsglang+is%3Apr+merged%3A2026-11-22T22%3A20%3A00Z..2026-11-23T22%3A20%3A00Z&sort=updated"
       ],
-      "update_of": null,
+      "update_of": "2026-11-24-sglang-pr-45196",
       "article_id": "inference-engines",
-      "fingerprint": "302acdf3da71ae1cb52a25c369bd4fdd0504e4c1f200021e47edeb5ea3d32468",
+      "fingerprint": "f53631b56364ba2f2883c47abd6fa1f93b5b9e6de1a0ce647cac0729843a897a",
       "date": "2026-11-24",
-      "revision": 1
+      "revision": 2
     }
   ]
 }
