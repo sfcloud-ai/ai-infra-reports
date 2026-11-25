@@ -22,10 +22,28 @@ export function verifyResearchControlReceipt(scope,bytes,source,invocation,now=D
  const result=invocation.result;requireThat(result&&!result.isError&&result.content?.length===1&&result.content[0].type==='text'&&Buffer.byteLength(result.content[0].text)<=128*1024,'Complete native receipt required');
  const body=JSON.parse(result.content[0].text);requireThat(body&&Object.keys(body).sort().join()==='messages,pagination_info'&&['There are no more messages in this thread.\n','There are no more messages in this thread.\\n'].includes(body.pagination_info),'Complete native receipt required');
  const footers=[...new Set([s.sender_attribution_text,s.sender_attribution_text.replace(/<@(U[A-Z0-9]+)>/g,'<@$1|ChatGPT>')])];
- const pattern='^=== THREAD PARENT MESSAGE ===\\nFrom: [^\\n<>]+ <[^\\n<>]+> \\('+escape(s.sender_user_id)+'\\)\\nTime: [^\\n]+\\nMessage TS: '+escape(source)+'\\n'+escape(text)+'\\n(?:'+footers.map(escape).join('|')+')\\n\\n=== THREAD REPLIES \\(1 total\\) ===\\n\\n--- Reply 1 of 1 ---\\nFrom: [^\\n<>]+ <botuser-'+escape(s.team_id)+'-'+escape(s.publisher_bot_id)+'@slack-bots\\.com> \\('+escape(s.publisher_user_id)+'\\)\\nTime: [^\\n]+\\nMessage TS: (\\d{10}\\.\\d{6})\\n!ai-research control-receipt ([^\\n]+)\\n$';
- const match=new RegExp(pattern).exec(body.messages);requireThat(match&&match[1]>source&&Number(match[1])*1000<=now+30000,'Original native Publisher receipt required');
- const r=JSON.parse(match[2]);requireThat(r.source_ts===source&&r.command_id===c.command_id&&r.command_sha256===digest(bytes)&&r.request_id===c.request_id,'Original control receipt binding differs');
- if(r.dispatch_granted)requireThat(r.run?.owner_id===c.owner_id&&r.run.epoch===c.epoch&&r.run.lease_until>now&&!r.replayed&&!r.grant_expired&&now-Number(match[1])*1000<60000,'Fresh original dispatch grant required');
+ // The detailed Slack view prefixes all three body lines together. Headers stay literal.
+ const pattern=[
+  '^=== THREAD PARENT MESSAGE ===',
+  'From: [^\\n<>]+ <[^\\n<>]+> \\('+escape(s.sender_user_id)+'\\)',
+  'Time: [^\\n]+',
+  'Message TS: '+escape(source),
+  '(?<quote>(?:> )?)'+escape(text),
+  '\\k<quote>(?:'+footers.map(escape).join('|')+')',
+  '',
+  '=== THREAD REPLIES \\(1 total\\) ===',
+  '',
+  '--- Reply 1 of 1 ---',
+  'From: [^\\n<>]+ <botuser-'+escape(s.team_id)+'-'+escape(s.publisher_bot_id)+'@slack-bots\\.com> \\('+escape(s.publisher_user_id)+'\\)',
+  'Time: [^\\n]+',
+  'Message TS: (?<replyTs>\\d{10}\\.\\d{6})',
+  '\\k<quote>!ai-research control-receipt (?<receipt>[^\\n]+)',
+  '$',
+ ].join('\\n');
+ const match=new RegExp(pattern).exec(body.messages);
+ requireThat(match&&match.groups.replyTs>source&&Number(match.groups.replyTs)*1000<=now+30000,'Original native Publisher receipt required');
+ const r=JSON.parse(match.groups.receipt);requireThat(r.source_ts===source&&r.command_id===c.command_id&&r.command_sha256===digest(bytes)&&r.request_id===c.request_id,'Original control receipt binding differs');
+ if(r.dispatch_granted)requireThat(r.run?.owner_id===c.owner_id&&r.run.epoch===c.epoch&&r.run.lease_until>now&&!r.replayed&&!r.grant_expired&&now-Number(match.groups.replyTs)*1000<60000,'Fresh original dispatch grant required');
  return r;
 }
 export function controlCommand(request_id,action,args,owner_id=null,run=null){

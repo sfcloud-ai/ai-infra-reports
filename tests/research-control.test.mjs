@@ -296,12 +296,17 @@ test('native control parser binds the original tool parent and Publisher metadat
  const s=setup();try{
   const run=start(s),c=command('reserve',{operations:[source()]},run),bytes=Buffer.from(JSON.stringify(c)),ts='1793491202.000001';
   const result={source_ts:ts,...execute(s,c)},scope={channel_id:SCOPE.channel_id,team_id:SCOPE.team_id,sender_user_id:SCOPE.sender_user_id,sender_attribution_text:SCOPE.sender_attribution_text,publisher_user_id:'UPUBLISHER',publisher_bot_id:'BPUBLISHER'};
-  const messages=`=== THREAD PARENT MESSAGE ===\nFrom: Sender <sender@example.org> (${scope.sender_user_id})\nTime: now\nMessage TS: ${ts}\n${researchCommandText(bytes)}\n${scope.sender_attribution_text}\n\n=== THREAD REPLIES (1 total) ===\n\n--- Reply 1 of 1 ---\nFrom: Publisher <botuser-${scope.team_id}-${scope.publisher_bot_id}@slack-bots.com> (${scope.publisher_user_id})\nTime: now\nMessage TS: 1793491203.000001\n!ai-research control-receipt ${JSON.stringify(result)}\n`;
-  const invocation={tool:CONTROL_THREAD_TOOL,arguments:{channel_id:scope.channel_id,message_ts:ts,limit:100,response_format:'detailed'},result:{content:[{type:'text',text:JSON.stringify({messages,pagination_info:'There are no more messages in this thread.\n'})}]}};
-  assert.equal(verifyResearchControlReceipt(scope,bytes,ts,invocation,now).dispatch_granted,true);
-  assert.throws(()=>verifyResearchControlReceipt(scope,bytes,ts,{...invocation,arguments:{...invocation.arguments,channel_id:'COTHER'}},now));
-  const forged=structuredClone(invocation);forged.result.content[0].text=forged.result.content[0].text.replace('botuser-'+scope.team_id,'botuser-TOTHER');assert.throws(()=>verifyResearchControlReceipt(scope,bytes,ts,forged,now));
-  assert.throws(()=>verifyResearchControlReceipt(scope,bytes,ts,invocation,now+60001),/Fresh original/);
+  const messagesFor=prefix=>`=== THREAD PARENT MESSAGE ===\nFrom: Sender <sender@example.org> (${scope.sender_user_id})\nTime: now\nMessage TS: ${ts}\n${prefix}${researchCommandText(bytes)}\n${prefix}${scope.sender_attribution_text}\n\n=== THREAD REPLIES (1 total) ===\n\n--- Reply 1 of 1 ---\nFrom: Publisher <botuser-${scope.team_id}-${scope.publisher_bot_id}@slack-bots.com> (${scope.publisher_user_id})\nTime: now\nMessage TS: 1793491203.000001\n${prefix}!ai-research control-receipt ${JSON.stringify(result)}\n`;
+  const invocationFor=messages=>({tool:CONTROL_THREAD_TOOL,arguments:{channel_id:scope.channel_id,message_ts:ts,limit:100,response_format:'detailed'},result:{content:[{type:'text',text:JSON.stringify({messages,pagination_info:'There are no more messages in this thread.\n'})}]}});
+  for(const prefix of ['', '> ']){
+   const invocation=invocationFor(messagesFor(prefix));
+   assert.equal(verifyResearchControlReceipt(scope,bytes,ts,invocation,now).dispatch_granted,true);
+   assert.throws(()=>verifyResearchControlReceipt(scope,bytes,ts,{...invocation,arguments:{...invocation.arguments,channel_id:'COTHER'}},now));
+   const forged=structuredClone(invocation);forged.result.content[0].text=forged.result.content[0].text.replace('botuser-'+scope.team_id,'botuser-TOTHER');assert.throws(()=>verifyResearchControlReceipt(scope,bytes,ts,forged,now));
+   assert.throws(()=>verifyResearchControlReceipt(scope,bytes,ts,invocation,now+60001),/Fresh original/);
+  }
+  const mixed=messagesFor('> ').replace('\n> !ai-research control-receipt ', '\n!ai-research control-receipt ');
+  assert.throws(()=>verifyResearchControlReceipt(scope,bytes,ts,invocationFor(mixed),now),/Original native Publisher receipt/);
  }finally{s.close();}
 });
 test('publication permit requires original plan identity and a nonblocking audit for that date',async()=>{
