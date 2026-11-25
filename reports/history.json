@@ -2480,6 +2480,54 @@
       "revision": 1,
       "fingerprint": "df7ac1207c479bfc182fd41ea1b89ff94ae6987426bb46d9b0fa63b1288430d3",
       "content_sha256": "0904d14cca7dc0db4b08f7fa3d2eeae4fd5c8c8ab451098108db923c1dae6f5f"
+    },
+    {
+      "id": "2026-11-24-lerobot-pr-5483-r2",
+      "event_key": "lerobot-pr-5483",
+      "date": "2026-11-24",
+      "revision": 2,
+      "fingerprint": "2e2ebbef2fbc935cc74c47880185d33f5b4376b43aefd5ebd961e8efb451c558",
+      "content_sha256": "26bb453648186ed394692ae1f0fe4442f5e764691814b6f28a6886692df4e851"
+    },
+    {
+      "id": "2026-11-24-mori-umbp-storage-path",
+      "event_key": "mi355x-mori-umbp-storage-path-status-20261124",
+      "date": "2026-11-24",
+      "revision": 2,
+      "fingerprint": "496f430bd4e7d46276524ce78b087c64607e09fc0056d93099d54a44d354f049",
+      "content_sha256": "350c9cf02c2f1e1d2a9520dc54ff0378009f103b6c26c748876d2e77aebdb97a"
+    },
+    {
+      "id": "2026-11-24-sglang-pr-45196-r2",
+      "event_key": "sglang-pr-45196",
+      "date": "2026-11-24",
+      "revision": 2,
+      "fingerprint": "f53631b56364ba2f2883c47abd6fa1f93b5b9e6de1a0ce647cac0729843a897a",
+      "content_sha256": "0715e21e06f9b84200432e05d460dcf301fcecf6581a944888b669146568e32e"
+    },
+    {
+      "id": "2026-11-24-vllm-pr-68685-r2",
+      "event_key": "vllm-pr-67539",
+      "date": "2026-11-24",
+      "revision": 2,
+      "fingerprint": "9275567559bb94ab13026b93f99a0486128b4448b27b7ab7162ab682a26657dc",
+      "content_sha256": "0915b80897f90bf089be9ca5a3e10a7ba12be6c9cee2d73a850accf178bd65f9"
+    },
+    {
+      "id": "2026-11-24-vllm-pr-69226-r2",
+      "event_key": "vllm-pr-69226",
+      "date": "2026-11-24",
+      "revision": 2,
+      "fingerprint": "c926b9edef05de86255f7f75cdc07bd2b28a8072b4e6f7080fbf32298e59e913",
+      "content_sha256": "483d171317fe09bcbaec0bce061ee18b110ef03510a029557fb5799c4b46c658"
+    },
+    {
+      "id": "2026-11-24-zai-glm-54-announcement-r2",
+      "event_key": "zai-glm-54-announcement-20261123",
+      "date": "2026-11-24",
+      "revision": 2,
+      "fingerprint": "f053422feebca69f7fbf4e7333c8310264cc7ec791896e550342299b890b2950",
+      "content_sha256": "5e45a0bcecbeb8e69102e93a4f0e6489247bb9783b90f1175197f088c83a41e0"
     }
   ]
 }
