@@ -1916,6 +1916,59 @@
         "summary": "硬件篇改为 16 张 MI355X 上的 MoRI 会话 KV 存储路径，注明主配置用 ext4，另一对节点的无写缓冲复测用 XFS。GB200 两组各 144 个请求是整轮总数，16K 输入、每引擎并发 4 的延迟测点未单列样本数。另补全架构与引擎的覆盖说明，校正各篇来源。"
       },
       "path": "reports/2026-11-24/"
+    },
+    {
+      "schema_version": "1.0",
+      "date": "2026-11-25",
+      "revision": 1,
+      "title": "AI Infra 晨报 · 2026-11-25",
+      "subtitle": "部分晨报｜覆盖缺口：架构。DeepSeek 新闻页连接失败，GLM、Qwen 现行技术博客和三家 ModelScope 权重目录未查全。",
+      "articles": [
+        {
+          "id": "model-serving-gpu",
+          "title": "模型服务与 GPU 超配：跨节点跑 HiSparse，每台 B200 服务器只留一份主机 KV 池",
+          "summary": "双机 TP8 中，每台四个 32 GiB 私有池改为一个 32 GiB 共享区。吞吐对照来自单台四卡拆分的 TP4 实验。",
+          "sha256": "0da355f8285c0ccf2f3b8eddcd419cec06b714d464f3fdbcbbc169679f8497c0",
+          "path": "reports/2026-11-25/articles/model-serving-gpu.md"
+        },
+        {
+          "id": "hardware-status",
+          "title": "硬件与算力平台：B200 上的 Gemma 3 如何省掉两张图文注意力掩码",
+          "summary": "8,192 token 的单条输入原需两张合计 128 MiB 的布尔掩码。在 B200 的 512 token 强制对照中，稠密路径更快。",
+          "sha256": "5ec1cae7288e54ebe612130a5c9ea4e508cf28dd8b914af67dd24c0033eac195",
+          "path": "reports/2026-11-25/articles/hardware-status.md"
+        },
+        {
+          "id": "model-architecture-status",
+          "title": "模型与架构：ERNIE 5.5 Flash Preview 每步激活 14B，部署仍要算哪些显存",
+          "summary": "Preview 权重已开放，模型共 280B 参数，每个 token 激活 14B。模型配置上限为 1,048,576 token，插件的 FP8 八卡示例给出 262,144 token。",
+          "sha256": "81da24779ad0405682f5454f392152d13c1fc5789599009c4410aaec6a18d203",
+          "path": "reports/2026-11-25/articles/model-architecture-status.md"
+        },
+        {
+          "id": "embodied-training",
+          "title": "制造业具身智能训练：LeRobot 怎样避免把动作损失和文本损失记成同一个数",
+          "summary": "当两个 worker 分别报告值为 2 的动作损失和值为 8 的文本损失，旧日志可能把两项都记成 5。修复按指标名和实际观测数归并。",
+          "sha256": "311b53331ac602f61a022879cea1ff4c9e87acc2460d541ca4036cb851105d75",
+          "path": "reports/2026-11-25/articles/embodied-training.md"
+        },
+        {
+          "id": "small-model-status",
+          "title": "前沿小模型：约 16 亿参数的 OmniASR 接入 vLLM，单张 T4 跑通转写",
+          "summary": "模型卡给出约 16.3 亿参数。单张 T4 用 half 精度和开发版 Transformers 跑通一次转写，响应中的 6 秒是输入音频时长。",
+          "sha256": "053de0618e59b34f5fadfcc7fff61f1a80e3152a2e5651bb1df32f9e582b128e",
+          "path": "reports/2026-11-25/articles/small-model-status.md"
+        },
+        {
+          "id": "inference-engines",
+          "title": "推理引擎每日变动：vLLM 保住可复用前缀，SGLang 批量分配分片 KV 页",
+          "summary": "HiSparse 优先回收干净副本以保住索引块。SGLang 在单张 B300 的 batch 128 微基准中，分配从 20.59 降至 2.63 ms，释放从 1.58 降至 1.52 ms。",
+          "sha256": "2ed308dcb23929b6835588222b53257f3c9b0167d3c8e9440fb07462a5c1303d",
+          "path": "reports/2026-11-25/articles/inference-engines.md"
+        }
+      ],
+      "poster": "assets/overview.png",
+      "path": "reports/2026-11-25/"
     }
   ],
   "entries": [
@@ -6311,6 +6364,120 @@
       "fingerprint": "f53631b56364ba2f2883c47abd6fa1f93b5b9e6de1a0ce647cac0729843a897a",
       "date": "2026-11-24",
       "revision": 2
+    },
+    {
+      "id": "2026-11-25-vllm-pr-68747",
+      "event_key": "vllm-pr-68747",
+      "title": "HiSparse 让跨节点 TP 在每台主机共享一个卸载池",
+      "summary": "双机 TP8 中，每台四个 32 GiB 私有池改为一个 32 GiB 共享区。吞吐对照来自单台四卡拆分的 TP4 实验。",
+      "source_urls": [
+        "https://api.github.com/repos/vllm-project/vllm/pulls/68747",
+        "https://patch-diff.githubusercontent.com/raw/vllm-project/vllm/pull/68747.diff"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "39a9d145d12ea03e1feb7d6c5bbd47d5db5e57b127729122e2875820c65b4566",
+      "date": "2026-11-25",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-25-tensorrt-llm-pr-22463",
+      "event_key": "tensorrt-llm-pr-22463",
+      "title": "TensorRT-LLM 为 Gemma 3 的图文预填充压缩掩码",
+      "summary": "8,192 token 的单条输入原需两张合计 128 MiB 的布尔掩码。在 B200 的 512 token 强制对照中，稠密路径更快。",
+      "source_urls": [
+        "https://api.github.com/repos/NVIDIA/TensorRT-LLM/pulls/22463",
+        "https://patch-diff.githubusercontent.com/raw/NVIDIA/TensorRT-LLM/pull/22463.diff"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status",
+      "fingerprint": "28c04b2d97ad405c339659695b80d618a736dfd689aa83602d343844e754f385",
+      "date": "2026-11-25",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-25-ernie-55-flash-preview-20261124",
+      "event_key": "ernie-55-flash-preview-20261124",
+      "title": "ERNIE 5.5 Flash Preview 开放权重并提供 vLLM 插件",
+      "summary": "Preview 权重已开放，模型共 280B 参数，每个 token 激活 14B。模型配置上限为 1,048,576 token，插件的 FP8 八卡示例给出 262,144 token。",
+      "source_urls": [
+        "https://api.github.com/repos/milesangelo/vllm-ernie55-sm120/commits/eeeff15e659d656174e166237b7bbf14f7db8f74",
+        "https://huggingface.co/baidu/ERNIE-5.5-Flash-Preview/raw/ace1100dcde7bf4eb06add6ae11ce4f43a11ddfe/LICENSE",
+        "https://huggingface.co/baidu/ERNIE-5.5-Flash-Preview/raw/ace1100dcde7bf4eb06add6ae11ce4f43a11ddfe/README.md",
+        "https://huggingface.co/baidu/ERNIE-5.5-Flash-Preview/raw/ace1100dcde7bf4eb06add6ae11ce4f43a11ddfe/config.json",
+        "https://raw.githubusercontent.com/baidu/vLLM-ERNIE/ba322a5634f91d3e6f96ae711df72ddaf3c38b6e/README.md",
+        "https://raw.githubusercontent.com/baidu/vLLM-ERNIE/ba322a5634f91d3e6f96ae711df72ddaf3c38b6e/pyproject.toml",
+        "https://raw.githubusercontent.com/milesangelo/vllm-ernie55-sm120/5dda9c0bebf05019faae3c576553d547f4de0a8f/README.md",
+        "https://raw.githubusercontent.com/vllm-project/vllm-project.github.io/main/_posts/2026-11-24-ernie-5-5-flash-preview.md"
+      ],
+      "update_of": null,
+      "article_id": "model-architecture-status",
+      "fingerprint": "2be51935f453b48d565c89c3b16f2ede4a694731926fe981860f492ff01b1445",
+      "date": "2026-11-25",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-25-lerobot-pr-5460",
+      "event_key": "lerobot-pr-5460",
+      "title": "LeRobot 按指标名和观测数汇总自动注册的策略日志",
+      "summary": "当两个 worker 分别报告值为 2 的动作损失和值为 8 的文本损失，旧日志可能把两项都记成 5。修复按指标名和实际观测数归并。",
+      "source_urls": [
+        "https://api.github.com/repos/huggingface/lerobot/pulls/5460",
+        "https://patch-diff.githubusercontent.com/raw/huggingface/lerobot/pull/5460.diff"
+      ],
+      "update_of": null,
+      "article_id": "embodied-training",
+      "fingerprint": "5a6216e7242ed254d6918dc32bb8baea5c593a3f242c2b74c17c415a858fecaf",
+      "date": "2026-11-25",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-25-vllm-pr-69683",
+      "event_key": "vllm-pr-69683",
+      "title": "vLLM 接入约 16 亿参数的 OmniASR 转写模型",
+      "summary": "模型卡给出约 16.3 亿参数。单张 T4 用 half 精度和开发版 Transformers 跑通一次转写，响应中的 6 秒是输入音频时长。",
+      "source_urls": [
+        "https://api.github.com/repos/vllm-project/vllm/pulls/69683",
+        "https://huggingface.co/api/models/hf-audio/omniasr-llm-300m-v2?blobs=true",
+        "https://huggingface.co/hf-audio/omniasr-llm-300m-v2/raw/5f8ae505a4872fdea051017b8d15ba35adefe353/README.md",
+        "https://huggingface.co/hf-audio/omniasr-llm-300m-v2/raw/5f8ae505a4872fdea051017b8d15ba35adefe353/config.json",
+        "https://patch-diff.githubusercontent.com/raw/vllm-project/vllm/pull/69683.diff"
+      ],
+      "update_of": null,
+      "article_id": "small-model-status",
+      "fingerprint": "5fec20d579cd7c49d55430508458ecf04e0133d1cb528c5f31587b70ba6bdf8c",
+      "date": "2026-11-25",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-25-vllm-pr-68820",
+      "event_key": "vllm-pr-68820",
+      "title": "vLLM 优先回收 HiSparse 已结束请求的干净 GPU 副本",
+      "summary": "单机 8 张 B200、TP8、DSpark k=3 且无卸载，填充后重发前缀命中由 0/61,511 变为 61,504/61,511 token。",
+      "source_urls": [
+        "https://api.github.com/repos/vllm-project/vllm/pulls/68820",
+        "https://patch-diff.githubusercontent.com/raw/vllm-project/vllm/pull/68820.diff"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "19742102798f633a682111827545d97dd4d558bae3449117dc1cd5281af1c1c2",
+      "date": "2026-11-25",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-25-sglang-pr-47578",
+      "event_key": "sglang-pr-47578",
+      "title": "SGLang 为分片 KV 池按批分配和释放页",
+      "summary": "B300 单卡分配器微基准中，batch 128 分配从 20.59 降至 2.63 ms，分组释放从 1.58 降至 1.52 ms。",
+      "source_urls": [
+        "https://api.github.com/repos/sgl-project/sglang/pulls/47578",
+        "https://patch-diff.githubusercontent.com/raw/sgl-project/sglang/pull/47578.diff"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "35155e42c4adf612f5b52a02db883dc1219e3adc712553b252eb745fa212e00c",
+      "date": "2026-11-25",
+      "revision": 1
     }
   ]
 }
