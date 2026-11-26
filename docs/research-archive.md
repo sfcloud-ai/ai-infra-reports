@@ -45,6 +45,29 @@ Wait for the host's `stored` confirmation before creating its successor. A
 temporarily unavailable parent remains pending with `archive_parent_unavailable`;
 an already superseded parent produces a terminal predecessor conflict.
 
+### Uncited supplemental PDFs
+
+Keep the GET in the original ledger, including its successful outcome and actual elapsed time. Use `prepare` for a supplemental PDF that supplies no candidate, check, discovery result, status entry or published citation. It writes the original GET receipt and the separate archival obligation to a new private directory.
+
+```sh
+node scripts/archive-reserve-pdf.mjs prepare result.json response.body.bin receipt-directory
+```
+
+Store both files from that directory in one normal checkpoint under their relative paths. After the Publisher returns `stored`, settle the original source operation against the exact `result.json` hash. The followup descriptor in `archive_followups/<operation_id>.json` is also the source's `archive_followup` field in the private Brief audit. The audit needs the original GET receipt in `stage_artifacts/<result_sha256>.json`. Retain the local binary until verified host readback. The audit summary retains the immutable handoff in `archive_followups`. Subsequent custody receipts establish the current copy status. The publication permit checks that the declaration matches the original settlement. Required coverage, selected evidence, the ordinary accounting and the six-page gate still apply.
+
+The custodian uses `split` to prepare the copy independently of publication and `verify` after host readback.
+
+```sh
+node scripts/archive-reserve-pdf.mjs split result.json response.body.bin parts-directory
+node scripts/archive-reserve-pdf.mjs verify result.json host-readback-directory
+```
+
+Send the parts and manifest under their generated relative paths, using the existing checkpoint chain and normal per-file and per-checkpoint transport limits. Reconcile each existing host receipt before sending its successor. Populate the readback directory from the authenticated host file reads. Record completion separately with the stored checkpoint hashes after the command verifies part order, lengths, hashes and the original whole-file digest. Copying the local files alone supplies no host receipt.
+
+For new editions install the matching Reports runtime and CD controller through the ordinary release procedure, then release Brief before freezing the new prompt. The first followup settlement records its capability version. Subsequent CD probes, including rollback, require a target that understands the recorded obligation. Keep that controller installed while any such receipts exist. An existing run binds its original plan and immutable prompt commit. The current verifier routes a frozen `whole_edition_32mb_v1` prompt back to its pinned verifier. Adopting the successor on an existing edition requires a separately released same-request migration binding the old plan, successor verifier and policy, original receipts and audit output. Until such a migration exists, the new policy applies to newly pinned editions.
+
+### Uploading a checkpoint
+
 Upload through the existing one-shot bridge:
 
 ```text

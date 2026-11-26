@@ -870,6 +870,20 @@ def cancellation_page_runtime_required(database):
     return required
 
 
+def archive_followup_runtime_required(database):
+    if database.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='research_control_commands'").fetchone() is None:
+        return False
+    required = False
+    for raw, saved in database.execute("SELECT bytes,result FROM research_control_commands WHERE json_type(result,'$.archive_followup_version') IS NOT NULL"):
+        command, result = json.loads(raw), json.loads(saved)
+        if (type(result.get('archive_followup_version')) is not int or result['archive_followup_version'] != 1
+                or result.get('status') != 'committed' or command.get('action') != 'settle'
+                or command.get('args', {}).get('outcome') != 'acknowledged'):
+            raise ValueError('archive_followup_settlement_version_invalid')
+        required = True
+    return required
+
+
 def cancellation_settlement_runtime_required(database):
     # Only new layered settlements declare this quota contract. Do not rewrite history.
     if database.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='research_control_commands'").fetchone() is None:
@@ -916,6 +930,7 @@ def compatibility(config, release, operation, expected):
         needs_first_notice_rejection = first_notice_rejection_runtime_required(isolated)
         needs_cancellation_pages = cancellation_page_runtime_required(isolated)
         needs_cancellation_settlements = cancellation_settlement_runtime_required(isolated)
+        needs_archive_followups = archive_followup_runtime_required(isolated)
         needs_pages = page_runtime_required(isolated)
         needs_revision = revision_runtime_required(isolated)
         needs_repository_inputs = repository_inputs_runtime_required(isolated)
@@ -944,6 +959,8 @@ def compatibility(config, release, operation, expected):
         script += "const continuation=await import('./scripts/research-control.mjs');if(continuation.MODEL_CONTINUATION_VERSION!==1)throw Error('model_continuation_requires_compatible_release');"
     if needs_first_notice_rejection:
         script += "const scheduled=await import('./scripts/scheduled-delivery-state.mjs');if(scheduled.FIRST_NOTICE_REJECTION_VERSION!==1)throw Error('first_notice_rejection_requires_compatible_release');"
+    if needs_archive_followups:
+        script += "const followup=await import('./scripts/research-control.mjs');if(followup.ARCHIVE_FOLLOWUP_VERSION!==1)throw Error('archive_followups_require_compatible_release');"
     if needs_cancellation_settlements:
         script += "const settlements=await import('./scripts/research-control.mjs');if(settlements.CANCELLATION_SETTLEMENT_VERSION!==1)throw Error('cancellation_settlements_require_compatible_release');"
     if needs_cancellation_pages:

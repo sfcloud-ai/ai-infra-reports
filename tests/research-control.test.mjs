@@ -1977,6 +1977,46 @@ test('no-dispatch ordering preserves microsecond precision after a late receipt'
 });
 
 
+test('settled supplemental PDF keeps its real GET charge and durable followup while a report can publish',async()=>{
+ const s=setup();
+ try {
+  let run=start(s,layeredPlan());
+  const op=source('https://arxiv.org/pdf/1234.56789v1');
+  run=execute(s,command('reserve',{operations:[op]},run)).run;
+  const body=digest(Buffer.from('%PDF-1.7'));
+  const original=Buffer.from(JSON.stringify({request_id:id,source_id:'reserve-pdf',operation_id:op.operation_id,
+   url:op.input.url,input_sha256:op.input_sha256,status:'ok',error:'',curl_exit_code:0,http_status:200,response_complete:true,
+   dispatch_started:true,attempts_in_this_operation:1,coverage_status:'not_assessed',transfer:{content_type:'application/pdf'},
+   reserved_seconds:180,elapsed_seconds:7,artifacts:{'response.body.bin':{bytes:18384956,sha256:body}},content_sha256:body}));
+  const followup={operation_id:op.operation_id,result_sha256:digest(original),body_sha256:body,bytes:18384956};
+  const name=`archive_followups/${op.operation_id}.json`;
+  for(const valid of [false,true]){
+   const marker=valid?followup:{...followup,bytes:10};
+   const h=archive(s,{'result.json':original,[name]:Buffer.from(JSON.stringify(marker))});
+   const answer=execute(s,command('settle',{operation_id:op.operation_id,outcome:'acknowledged',elapsed_seconds:7,
+    archive_sha256:h,file_sha256:digest(original),native_result:null},run));
+   if(!valid)assert.equal(answer.code,'source_archive_followup_binding');
+   else {assert.equal(answer.status,'committed');assert.equal(answer.archive_followup_version,1);run=answer.run;}
+  }
+  const bundle=await encodeBundle(FILES,id,'b'.repeat(40),'a'.repeat(40));
+  for(const scenario of ['omitted','wrong_hash','used','missing_attestation','valid']){
+   const src={id:'reserve-pdf',url:op.input.url,status:'ok',attempts:1,content_sha256:body,archive_followup:{...followup}};
+   if(scenario==='wrong_hash')src.archive_followup.result_sha256='1'.repeat(64);
+   const metadata=Buffer.from(JSON.stringify({sources:scenario==='omitted'?[]:[src],
+    checks:scenario==='used'?{hardware:{source_ids:[src.id]}}:{}}));
+   const audit=Buffer.from(JSON.stringify(auditSummary({schema_version:'1.4',budget_policy:LAYERED_BUDGET_POLICY,
+    archive_followups:scenario==='missing_attestation'?undefined:[{source_id:src.id,...src.archive_followup}],
+    evidence_metadata_sha256:digest(metadata),limits:{source_attempts:2,model_attempts:2,source_attempt_seconds:180,model_stage_seconds:1200,run_seconds:3600},
+    budget_accounting:{successful_attempts:{source:1,model:0},failed_attempts:{source:0,model:0},unknown_attempts:{source:0,model:0},
+    successful_seconds:7,failed_seconds:0,reserved_unknown_seconds:0,charged_seconds:7}})));
+   const h=archive(s,{'bundle.json':bundle,'metadata.json':metadata,'audit.json':audit});
+   const answer=await issuePermit(s,command('permit',{archive_sha256:h,bundle_sha256:digest(bundle),audit_sha256:digest(audit)},run));
+   if(scenario==='valid')assert.equal(answer.status,'committed',JSON.stringify(answer));
+   else {assert.equal(answer.code,'publication_archive_followup_binding',scenario);assert.equal(answer.run.permit,null);}
+  }
+ } finally {s.close();}
+});
+
 test('actual permit rejects omitted batch cancellations and records a compatible versioned receipt',async()=>{
  const s=setup();try{
   let run=start(s,layeredPlan());const ops=Array.from({length:8},(_,i)=>({...source('https://example.org/batch-'+i),max_seconds:30}));

@@ -1211,6 +1211,19 @@ class ResearchRecoveryCdTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'cancellation_settlement_version_invalid'):
                 cd.cancellation_settlement_runtime_required(db)
 
+    def test_followup_receipt_requires_compatible_runtime_only_after_settlement(self):
+        self.install()
+        with connection(self.database) as db:
+            self.assertFalse(cd.archive_followup_runtime_required(db))
+            command = b'{"action":"settle","args":{"outcome":"acknowledged"}}'
+            db.execute('INSERT INTO research_control_commands VALUES(?,?,?,?,?)',
+                       ('new','request','b'*64,command,json.dumps({'status':'committed','archive_followup_version':1})))
+            self.assertTrue(cd.archive_followup_runtime_required(db))
+            db.execute('UPDATE research_control_commands SET result=?',
+                       (json.dumps({'status':'committed','archive_followup_version':2}),))
+            with self.assertRaisesRegex(ValueError,'archive_followup_settlement_version_invalid'):
+                cd.archive_followup_runtime_required(db)
+
     def test_only_new_versioned_permit_receipts_fence_rollback(self):
         self.install(); self.cancelled_permit(marked=False)
         before = cd.snapshot(self.database)

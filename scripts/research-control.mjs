@@ -16,6 +16,7 @@ import {assertResearchArchive,decodeResearchArchive} from './research-archive.mj
 import {handoffScope,scopeDigest} from './handoff-state.mjs';
 import {repositoryResearchInputs,repositoryResearchInputsHash,REPOSITORY_RESEARCH_INPUTS_VERSION} from './repository-research-inputs.mjs';
 import {requiredCoverageValid} from './research-coverage.mjs';
+import {archivedFollowup,followupPath,publicationFollowupsMatch} from './research-pdf-followup.mjs';
 import {resumablePageMetadataValid} from './research-page-coverage.mjs';
 import {completeEditionSnapshot,WHOLE_EDITION_FROM} from './page-delivery.mjs';
 export {REPOSITORY_RESEARCH_INPUTS_VERSION};
@@ -23,6 +24,7 @@ export const LAYERED_RESEARCH_BUDGET_VERSION=1;
 export const MODEL_CONTINUATION_VERSION=1;
 export const CANCELLATION_PAGE_VERSION=1;
 export const CANCELLATION_SETTLEMENT_VERSION=1;
+export const ARCHIVE_FOLLOWUP_VERSION=1;
 export const HOST_ARCHIVE_RECEIPT_VERSION=1;
 
 const HASH=/^[a-f0-9]{64}$/,SHA=/^[a-f0-9]{40}$/,UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
@@ -217,6 +219,8 @@ function publicationEvidence(db,run,plan,args,now,cache,page=false){
   need(audit.budget_policy===LAYERED_BUDGET_POLICY,'publication_budget_policy');
   // Every research intent must have an authenticated known outcome before release.
   need(budget.operations.filter(op=>op.kind!=='native').every(op=>{const result=classifiedResult(db,run,op,cache);return result&&(op.kind!=='model'||!JSON.parse(op.input)?.continuation_archive_sha256||op.elapsed_seconds!==null);}),'publication_research_result_unknown');
+  const followups=budget.operations.filter(op=>op.kind==='source').map(op=>classifiedResult(db,run,op,cache)?.archive_followup).filter(Boolean);
+  need(publicationFollowupsMatch(metadata,bundle,followups,audit.archive_followups),'publication_archive_followup_binding');
   need(researchSecondsWithin(budget.accounting.success_seconds+budget.accounting.reserved_seconds,budget.limits.total_budget_seconds),'publication_success_budget');
   const modelSeconds=new Map();
   for(const op of budget.operations.filter(op=>op.kind!=='native')){
@@ -381,6 +385,11 @@ function classifyStoredResult(db,run,op,cache){
    if(!string(result.grant_receipt_sha256,HASH)||decoded.byHash.get(result.grant_receipt_sha256)?.data.toString('utf8')!==event.reply_text)return null;
   }
   return {authenticated:true,outcome:'not_dispatched',archive_sha256:op.result_archive,file_sha256:op.result_file};
+ }
+ if(op.kind==='source' && decoded.files.some(f=>f.path===followupPath(op.operation_id))){
+  const followup=archivedFollowup(decoded.files,result,file.data,op);
+  if(!followup)return null;
+  return {authenticated:true,outcome:'success',archive_sha256:op.result_archive,file_sha256:op.result_file,archive_followup:followup};
  }
  const status=result.stage_status??result.status;
  const outcome=['failed','timeout'].includes(status)?'failed':['ok','success','partial'].includes(status)?'success':null;
@@ -733,6 +742,10 @@ function apply(db,c,now,config,commandHash){
     need(c.args.native_result===null,'research_result_kind');need(archive(db,c.request_id,c.args.archive_sha256).some(f=>f.sha256===c.args.file_sha256),'result_bytes_missing');
     const stored=commandArchive(db,run.request_id,c.args.archive_sha256,cache),file=stored?.byHash.get(c.args.file_sha256);
     let candidate;try{candidate=JSON.parse(file.data);}catch{}
+    if(stored.files.some(f=>f.path===followupPath(op.operation_id))){
+     need(budget&&op.kind==='source'&&candidate&&archivedFollowup(stored.files,candidate,file.data,{...op,elapsed_seconds:elapsed}),'source_archive_followup_binding');
+     settlementCapabilities={archive_followup_version:ARCHIVE_FOLLOWUP_VERSION};
+    }
     if(op.kind==='model'&&JSON.parse(op.input)?.continuation_archive_sha256){
      const preview={...op,phase:'acknowledged',elapsed_seconds:elapsed,result_archive:c.args.archive_sha256,result_file:c.args.file_sha256};
      need(candidate?.stage===op.operation_key&&candidate?.input_sha256===op.input_hash&&['success','failed'].includes(classifiedResult(db,run,preview,cache)?.outcome),'model_continuation_result_binding');
