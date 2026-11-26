@@ -1677,6 +1677,54 @@ function continuationFixture(status='partial',earlySource=false,oldBody=false,or
  }
  return {s,run,first,added,manifest,next,originalInput,content};
 }
+test('research resumes from immutable nested GET receipts with separate failed context',()=>{
+ const s=setup();
+ try{
+  const plan=JSON.parse(layeredPlan());plan.model_stages=['research','editor'];
+  let run=start(s,Buffer.from(JSON.stringify(plan)));
+  const commit=(action,args)=>{
+   const c=command(action,args,run),answer=execute(s,c);
+   assert.equal(answer.status,'committed',JSON.stringify(answer));run=answer.run;
+   return Buffer.from(JSON.stringify(c));
+  };
+  const ref=bytes=>({bytes:bytes.length,sha256:digest(bytes)});
+  const fetch=(name,failed=false)=>{
+   const op=source('https://example.org/'+name);commit('reserve',{operations:[op]});
+   const body=failed?Buffer.alloc(0):Buffer.from(name);
+   const row={operation_id:op.operation_id,input_sha256:op.input_sha256,source_id:name,url:op.input.url,
+    status:failed?'failed':'ok',elapsed_seconds:2,artifacts:{'response.body.bin':ref(body)}};
+   const raw=Buffer.from(JSON.stringify({...row,request_id:id,content_sha256:digest(body),http_status:failed?0:200,
+    curl_exit_code:failed?35:0,dispatch_started:true,attempts_in_this_operation:1,response_complete:!failed,error:failed?'TLS':''}));
+   const binding={operation_id:op.operation_id,archive_sha256:archive(s,{'result.json':raw,'body.bin':body}),file_sha256:digest(raw)};
+   const settled=commit('settle',{...binding,elapsed_seconds:2,outcome:'acknowledged',native_result:null});
+   return {binding,row:{...row,raw_result:ref(raw),settlement:{original_command:ref(settled),archive_sha256:binding.archive_sha256,result_sha256:digest(raw)}},
+    input:{operation_id:op.operation_id,result_sha256:digest(raw),body_sha256:digest(body),status:row.status},raw,settled};
+  };
+  const old=fetch('old'),original=Buffer.from(JSON.stringify({request_id:id,stage:'research',sources:[old.row]}));
+  const first={...source('research','model'),input_sha256:digest(original)};
+  commit('reserve',{operations:[first]});
+  const partial=Buffer.from(JSON.stringify({request_id:id,operation_id:first.operation_id,stage:'research',input_sha256:digest(original),status:'partial',elapsed_seconds:10}));
+  const checkpoint=archive(s,{'result.json':partial});
+  commit('settle',{operation_id:first.operation_id,outcome:'acknowledged',elapsed_seconds:10,archive_sha256:checkpoint,file_sha256:digest(partial),native_result:null});
+  const good=fetch('new'),failure=fetch('failed',true);
+  const reserve=(items,withOriginal=true)=>{
+   const binding={previous_operation_id:first.operation_id,checkpoint_archive_sha256:checkpoint,checkpoint_file_sha256:digest(partial)};
+   const continuation={...binding,added_evidence:items.map(x=>x.binding)};
+   const payload=Buffer.from(JSON.stringify({request_id:id,stage:'research',sources:items.map(x=>x.input),continuation}));
+   const manifest=Buffer.from(JSON.stringify({schema_version:'model_prepublication_continuation_v1',request_id:id,stage:'research',...continuation,payload_sha256:digest(payload)}));
+   const next=archive(s,{'manifest.json':manifest,'payload.json':payload,'original.json':original,'settlement.json':old.settled,...(withOriginal?{'receipt.json':old.raw}:{})});
+   const op={...source('research','model'),input_sha256:digest(manifest),input:{...binding,continuation_archive_sha256:next}};
+   return execute(s,command('reserve',{operations:[op]},run));
+  };
+  assert.equal(reserve([good],false).code,'model_continuation_original_settled_source');
+  assert.equal(reserve([failure]).code,'model_continuation_no_new_content');
+  assert.equal(reserve([good,{...failure,input:{...failure.input,status:'ok'}}]).code,'model_continuation_failed_context');
+  const accepted=reserve([good,failure]);
+  assert.equal(accepted.status,'committed');
+  assert.equal(accepted.settled_research_input_version,1);
+ }finally{s.close();}
+});
+
 test('editor continuation reads a bound findings inventory before classifying new content',()=>{
  for(const repeated of [false,true]){
   const common={request_id:id,operation_id:randomUUID(),stage:'research',input_sha256:'a'.repeat(64)};

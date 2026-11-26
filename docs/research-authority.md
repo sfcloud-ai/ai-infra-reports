@@ -443,3 +443,22 @@ stage_status）及真实 elapsed_seconds。二者须与原操作和归档一致�
 匹配原 operation_id 与正文 SHA 的元数据时分类。还须核实原 key/input SHA、
 URL identity、预留额度、单次尝试数、正文长度、真实耗时及 HTTP/退出码；
 缺失、不一致或无法判定仍是 unknown。新 v4 不使用此历史格式兼容路径。
+
+## Continuing research from a settled source inventory
+
+A frozen research input may record each successful or failed GET under
+`sources[].raw_result`, `artifacts["response.body.bin"]` and `settlement`.
+For this predecessor, put the byte-exact original input, each referenced raw
+result, and each original settle command in the ordinary continuation checkpoint.
+Both validators resolve these files by SHA-256. Publisher also matches each
+operation and committed command against the same run. For the private Brief
+audit keep the result and command bytes at `stage_artifacts/<sha256>.json`.
+Keep the original research stage result, timing, control proof and candidates.
+
+The new payload may be a delta. List the genuinely added settled GETs with their
+original operation IDs, result and body hashes and status. A later executed
+transport or HTTP failure may accompany new successful evidence as coverage
+context; its result, error, elapsed time and actual body hash remain bound.
+An empty error body is permitted. At least one new successful response is
+required to reserve the second stage. All ordinary attempt and time limits apply.
+Normal deployment does not adopt an audit policy or issue a research grant.

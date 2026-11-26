@@ -845,6 +845,21 @@ def model_continuation_runtime_required(database):
     return database.execute("SELECT 1 FROM research_control_ops WHERE kind='model' AND json_type(input,'$.continuation_archive_sha256') IS NOT NULL LIMIT 1").fetchone() is not None
 
 
+def settled_research_input_required(database):
+    if not database.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='research_control_commands'").fetchone():
+        return False
+    required = False
+    for raw, saved in database.execute("SELECT bytes,result FROM research_control_commands WHERE json_type(result,'$.settled_research_input_version') IS NOT NULL"):
+        command, result = json.loads(raw), json.loads(saved)
+        if (type(result['settled_research_input_version']) is not int or result['settled_research_input_version'] != 1
+                or result.get('status') != 'committed' or command.get('action') != 'reserve'
+                or not any(op.get('kind') == 'model' and op.get('key') == 'research'
+                           and (op.get('input') or {}).get('continuation_archive_sha256') for op in command['args']['operations'])):
+            raise ValueError('invalid_settled_research_input_version')
+        required = True
+    return required
+
+
 def settled_edition_intake(row):
     diagnostic = json.loads(row[5]) if row[5] else None
     return diagnostic == dict(request_id=row[0], hash=row[1], file_id=row[2], source_ts=row[3],
@@ -932,6 +947,7 @@ def compatibility(config, release, operation, expected):
         needs_archive_recovery = archive_recovery_runtime_required(isolated)
         needs_host_archive = isolated.execute("SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='host_archive_native_guard'").fetchone()
         needs_model_continuation = model_continuation_runtime_required(isolated)
+        needs_settled_input = settled_research_input_required(isolated)
         needs_first_notice_rejection = first_notice_rejection_runtime_required(isolated)
         needs_cancellation_pages = cancellation_page_runtime_required(isolated)
         needs_cancellation_settlements = cancellation_settlement_runtime_required(isolated)
@@ -962,6 +978,8 @@ def compatibility(config, release, operation, expected):
         script += "const inputs=await import('./scripts/research-control.mjs');if(inputs.REPOSITORY_RESEARCH_INPUTS_VERSION!==1)throw Error('repository_inputs_require_compatible_release');"
     if needs_model_continuation:
         script += "const continuation=await import('./scripts/research-control.mjs');if(continuation.MODEL_CONTINUATION_VERSION!==1)throw Error('model_continuation_requires_compatible_release');"
+    if needs_settled_input:
+        script += "const settled=await import('./scripts/research-control.mjs');if(settled.SETTLED_RESEARCH_INPUT_VERSION!==1)throw Error('settled_research_input_requires_compatible_release');"
     if needs_first_notice_rejection:
         script += "const scheduled=await import('./scripts/scheduled-delivery-state.mjs');if(scheduled.FIRST_NOTICE_REJECTION_VERSION!==1)throw Error('first_notice_rejection_requires_compatible_release');"
     if needs_archive_followups:

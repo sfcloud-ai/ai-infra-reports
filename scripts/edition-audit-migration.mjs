@@ -7,7 +7,7 @@ import {repositoryResearchInputsHash} from './repository-research-inputs.mjs';
 
 export const MIGRATION_TABLE='research_control_edition_migrations';
 export const MIGRATION_SCHEMA='CREATE TABLE research_control_edition_migrations(request_id TEXT PRIMARY KEY,receipt TEXT NOT NULL)';
-export const VERIFIER_COMMIT='42a2aee0a5d37632cd0bca2046c549d9e506fc6c';
+export const VERIFIER_COMMIT='aca68ebf953bbf1fcdb912943ee5e286605b9396';
 const predecessor='dba8eadebbdcd284a17db7f4f732bf7d7bda157f509f3842f70cf9bfbd7a8ba7';
 const successor='e754920ee1850c145a9484c105570c05eebf84e3928c2ef291aa9bc2d739a615';
 const hasTable=(db,name)=>Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name));

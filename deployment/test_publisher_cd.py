@@ -1111,6 +1111,20 @@ class ResearchRecoveryCdTests(unittest.TestCase):
                               json.dumps({'continuation_archive_sha256': 'f'*64}), 'owner', 1,
                               800, 'intent', None, None, None, None))
 
+    def test_settled_research_input_requires_the_matching_reservation(self):
+        self.install()
+        with connection(self.database) as db:
+            self.assertFalse(cd.settled_research_input_required(db))
+            command = {'action':'reserve','args':{'operations':[{'kind':'model','key':'research',
+                       'input':{'continuation_archive_sha256':'a'*64}}]}}
+            result = {'status':'committed','settled_research_input_version':1}
+            db.execute('INSERT INTO research_control_commands VALUES(?,?,?,?,?)',
+                       ('nested','request','b'*64,json.dumps(command).encode(),json.dumps(result)))
+            self.assertTrue(cd.settled_research_input_required(db))
+            db.execute('UPDATE research_control_commands SET result=?',(json.dumps(dict(result,status='rejected')),))
+            with self.assertRaisesRegex(ValueError,'invalid_settled_research_input_version'):
+                cd.settled_research_input_required(db)
+
     def test_continuation_runtime_requirement_uses_existing_immutable_input(self):
         with connection(self.database) as database:
             self.assertFalse(cd.model_continuation_runtime_required(database))
