@@ -2047,6 +2047,9 @@ test('frozen PDF text can be retained in an earlier archive or across a split UT
    const name=pdfPartName(i);archive(s,{[prefix+name]:buf});return {name,sha256:digest(buf),bytes:buf.length};
   });
   const manifest={request_id:id,...pdf,part_bytes:PDF_PART_BYTES,parts};
+  const missing={...manifest,parts:[parts[0],{...parts[1],sha256:'f'.repeat(64)}]};
+  archive(s,{[prefix+'manifest.json']:Buffer.from(JSON.stringify(missing))});
+  assert.equal(frozenPdfEvidenceAvailable(s.db,id,{...pdf,bytes:20_000_001},()=>assert.fail('oversized evidence read')),false);
   assert.equal(frozenPdfEvidenceAvailable(s.db,id,pdf,read),false);
   archive(s,{[prefix+'manifest.json']:Buffer.from(JSON.stringify(manifest))});
   assert.equal(frozenPdfEvidenceAvailable(s.db,id,pdf,read),true);

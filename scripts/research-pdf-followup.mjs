@@ -42,10 +42,13 @@ export function archivedFollowup(files, receipt, resultBytes, op) {
 // The frozen verifier consumes the original UTF-8 text. Locate already retained
 // bytes in the same run; a part boundary may split a UTF-8 code point.
 export function frozenPdfEvidenceAvailable(db,requestId,pdf,readArchive){
-  const lookup=db.prepare(`SELECT a.hash AS archive, json_extract(f.value,'$.sha256') AS sha
+  // The original verifier reads at most 20,000,000 bytes per evidence file.
+  if(pdf.bytes>20_000_000)return false;
+  const query=`SELECT a.hash AS archive, json_extract(f.value,'$.sha256') AS sha
     FROM research_archives a, json_each(a.manifest) f WHERE a.request_id=?
     AND (? IS NULL OR json_extract(f.value,'$.path')=?)
-    AND (? IS NULL OR json_extract(f.value,'$.sha256')=?)`);
+    AND (? IS NULL OR json_extract(f.value,'$.sha256')=?)`;
+  const lookup=db.prepare(query),partLookup=db.prepare(query);
   const find=(path,sha)=>lookup.iterate(requestId,path,path,sha,sha);
   function validText(chunks){
     const hash=createHash('sha256'),decoder=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true});
@@ -69,7 +72,7 @@ export function frozenPdfEvidenceAvailable(db,requestId,pdf,readArchive){
     for(const [i,part] of manifest.parts.entries()){
       const name=pdfPartName(i),size=Math.min(PDF_PART_BYTES,pdf.bytes-i*PDF_PART_BYTES);
       if(part?.name!==name||part.bytes!==size||typeof part.sha256!=='string'||!/^[a-f0-9]{64}$/.test(part.sha256)){yield null;return;}
-      const row=lookup.get(requestId,prefix+name,prefix+name,part.sha256,part.sha256);
+      const row=partLookup.get(requestId,prefix+name,prefix+name,part.sha256,part.sha256);
       const bytes=row&&readArchive(row.archive).byHash.get(row.sha)?.data;
       yield bytes?.length===size?bytes:null;
     }
