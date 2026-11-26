@@ -1,4 +1,5 @@
 import {producerInspection} from '../scripts/producer-inspect.mjs';
+import {applyEditionMigration,prepareEditionMigration,receiptText,storedEditionMigration} from '../scripts/edition-audit-migration.mjs';
 import {replyScheduledStatus} from '../scripts/scheduled-delivery-bridge.mjs';
 import {inspectDay} from '../scripts/producer-day.mjs';
 import {installResearchRecovery,approveResearchRecoveryGrant,nextResearchContinuationAt} from '../scripts/research-recovery.mjs';
@@ -1977,10 +1978,13 @@ test('no-dispatch ordering preserves microsecond precision after a late receipt'
 });
 
 
-test('settled supplemental PDF keeps its real GET charge and durable followup while a report can publish',async()=>{
+for(const migrated of [false,true])test('settled supplemental PDF keeps its real GET charge through permit; migrated='+migrated,async()=>{
  const s=setup();
  try {
-  let run=start(s,layeredPlan());
+  const frozen=JSON.parse(layeredPlan());
+  const auditPath='ai_brief/resources/prompts/audit.md';
+  if(migrated)frozen.files[auditPath]='dba8eadebbdcd284a17db7f4f732bf7d7bda157f509f3842f70cf9bfbd7a8ba7';
+  let run=start(s,Buffer.from(JSON.stringify(frozen)));
   const op=source('https://arxiv.org/pdf/1234.56789v1');
   run=execute(s,command('reserve',{operations:[op]},run)).run;
   const body=digest(Buffer.from('%PDF-1.7'));
@@ -1990,6 +1994,24 @@ test('settled supplemental PDF keeps its real GET charge and durable followup wh
    reserved_seconds:180,elapsed_seconds:7,artifacts:{'response.body.bin':{bytes:18384956,sha256:body}},content_sha256:body}));
   const followup={operation_id:op.operation_id,result_sha256:digest(original),body_sha256:body,bytes:18384956};
   const name=`archive_followups/${op.operation_id}.json`;
+  let adoption;
+  if(migrated){
+   const checkpoint=archive(s,{'selection.json':Buffer.from('{}')});
+   run=execute(s,command('checkpoint',{archive_sha256:checkpoint},run)).run;
+   const prepared=receiptText(prepareEditionMigration(s.db,id,original));
+   assert.throws(()=>applyEditionMigration(s.db,id,original,prepared+' '),/snapshot changed/);
+   assert.equal(storedEditionMigration(s.db,id),null);
+   s.db.exec("CREATE TEMP TRIGGER fail_revision BEFORE UPDATE OF revision ON research_control_runs BEGIN SELECT RAISE(ABORT,'after_insert'); END");
+   assert.throws(()=>applyEditionMigration(s.db,id,original,prepared),/after_insert/);
+   assert.equal(storedEditionMigration(s.db,id),null);
+   s.db.exec('DROP TRIGGER fail_revision');
+   adoption=digest(applyEditionMigration(s.db,id,original,prepared));
+   assert.equal(applyEditionMigration(s.db,id,original,prepared),prepared);
+   assert.equal(execute(s,command('renew',{},run)).code,'revision_conflict');
+   run={...run,revision:run.revision+1};
+   assert.equal(execute(s,command('resume',{operation_id:op.operation_id},run)).code,'edition_migration_pdf_already_fetched');
+   assert.equal(execute(s,command('settle',unknown(op.operation_id),run)).code,'edition_migration_pdf_settlement');
+  }
   for(const valid of [false,true]){
    const marker=valid?followup:{...followup,bytes:10};
    const h=archive(s,{'result.json':original,[name]:Buffer.from(JSON.stringify(marker))});
@@ -1999,12 +2021,15 @@ test('settled supplemental PDF keeps its real GET charge and durable followup wh
    else {assert.equal(answer.status,'committed');assert.equal(answer.archive_followup_version,1);run=answer.run;}
   }
   const bundle=await encodeBundle(FILES,id,'b'.repeat(40),'a'.repeat(40));
-  for(const scenario of ['omitted','wrong_hash','used','missing_attestation','valid']){
+  for(const scenario of ['omitted','wrong_hash','used','missing_attestation','wrong_migration','valid']){
    const src={id:'reserve-pdf',url:op.input.url,status:'ok',attempts:1,content_sha256:body,archive_followup:{...followup}};
    if(scenario==='wrong_hash')src.archive_followup.result_sha256='1'.repeat(64);
    const metadata=Buffer.from(JSON.stringify({sources:scenario==='omitted'?[]:[src],
     checks:scenario==='used'?{hardware:{source_ids:[src.id]}}:{}}));
-   const audit=Buffer.from(JSON.stringify(auditSummary({schema_version:'1.4',budget_policy:LAYERED_BUDGET_POLICY,
+   const inputs=auditSummary().inputs;
+   inputs.prompt_hashes['audit.md']=frozen.files[auditPath];
+   const audit=Buffer.from(JSON.stringify(auditSummary({schema_version:'1.4',budget_policy:LAYERED_BUDGET_POLICY,inputs,
+    edition_migration_sha256:scenario==='wrong_migration'?'0'.repeat(64):adoption,
     archive_followups:scenario==='missing_attestation'?undefined:[{source_id:src.id,...src.archive_followup}],
     evidence_metadata_sha256:digest(metadata),limits:{source_attempts:2,model_attempts:2,source_attempt_seconds:180,model_stage_seconds:1200,run_seconds:3600},
     budget_accounting:{successful_attempts:{source:1,model:0},failed_attempts:{source:0,model:0},unknown_attempts:{source:0,model:0},
@@ -2012,7 +2037,7 @@ test('settled supplemental PDF keeps its real GET charge and durable followup wh
    const h=archive(s,{'bundle.json':bundle,'metadata.json':metadata,'audit.json':audit});
    const answer=await issuePermit(s,command('permit',{archive_sha256:h,bundle_sha256:digest(bundle),audit_sha256:digest(audit)},run));
    if(scenario==='valid')assert.equal(answer.status,'committed',JSON.stringify(answer));
-   else {assert.equal(answer.code,'publication_archive_followup_binding',scenario);assert.equal(answer.run.permit,null);}
+   else {assert.equal(answer.code,scenario==='wrong_migration'?'publication_edition_migration_binding':'publication_archive_followup_binding',scenario);assert.equal(answer.run.permit,null);}
   }
  } finally {s.close();}
 });

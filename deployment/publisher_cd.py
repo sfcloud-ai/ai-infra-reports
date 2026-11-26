@@ -89,6 +89,8 @@ RESEARCH_CONTROL_SCHEMA = {
 TABLES.update(RESEARCH_CONTROL_SCHEMA)
 REPORT_PART_SCHEMA = 'CREATE TABLE research_control_report_parts(permit_id TEXT NOT NULL,part INTEGER NOT NULL,source_ts TEXT UNIQUE NOT NULL,file_id TEXT NOT NULL,sha256 TEXT NOT NULL,bytes BLOB NOT NULL,PRIMARY KEY(permit_id,part))'
 TABLES.update({'research_control_archive_recovery', 'research_control_report_parts'})
+EDITION_MIGRATION_SCHEMA = 'CREATE TABLE research_control_edition_migrations(request_id TEXT PRIMARY KEY,receipt TEXT NOT NULL)'
+TABLES.add('research_control_edition_migrations')
 
 
 # Authorized pre-publication corrections retain the complete original payload.
@@ -407,6 +409,9 @@ def snapshot(path, settled=True, *, fingerprint=True):
                 expected.update({('table', 'research_control_report_parts', REPORT_PART_SCHEMA),
                                  ('index', 'sqlite_autoindex_research_control_report_parts_1', None),
                                  ('index', 'sqlite_autoindex_research_control_report_parts_2', None)})
+            if any(row[1] == 'research_control_edition_migrations' for row in authority):
+                expected.update({('table', 'research_control_edition_migrations', EDITION_MIGRATION_SCHEMA),
+                                 ('index', 'sqlite_autoindex_research_control_edition_migrations_1', None)})
             if any(row[1] == 'research_control_archive_recovery' for row in authority):
                 expected.add(('table', 'research_control_archive_recovery', ARCHIVE_RECOVERY_SCHEMA))
                 # Exact schema is checked before querying its version row.

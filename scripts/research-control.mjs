@@ -17,6 +17,7 @@ import {handoffScope,scopeDigest} from './handoff-state.mjs';
 import {repositoryResearchInputs,repositoryResearchInputsHash,REPOSITORY_RESEARCH_INPUTS_VERSION} from './repository-research-inputs.mjs';
 import {requiredCoverageValid} from './research-coverage.mjs';
 import {archivedFollowup,followupPath,publicationFollowupsMatch} from './research-pdf-followup.mjs';
+import {MIGRATION_TABLE,MIGRATION_SCHEMA,migrationAuditValid,migratedPdf} from './edition-audit-migration.mjs';
 import {resumablePageMetadataValid} from './research-page-coverage.mjs';
 import {completeEditionSnapshot,WHOLE_EDITION_FROM} from './page-delivery.mjs';
 export {REPOSITORY_RESEARCH_INPUTS_VERSION};
@@ -87,6 +88,7 @@ export function assertResearchControl(db,c){
  assertResearchArchive(db,c);assertResearchRecovery(db);const pages=pageAuthorityInstalled(db),binding=policy(c);
  const parts=rows.some(r=>r.name==='research_control_report_parts');
  const fenced=assertArchiveRecoveryFence(db),schema={...RESEARCH_CONTROL_SCHEMA,...(parts?{research_control_report_parts:REPORT_PART_SCHEMA}:{}),...(fenced?{research_control_archive_recovery:ARCHIVE_RECOVERY_SCHEMA}:{})};
+ if(rows.some(r=>r.name===MIGRATION_TABLE))schema[MIGRATION_TABLE]=MIGRATION_SCHEMA;
  requireThat(rows.length===Object.keys(schema).length&&rows.every(r=>r.sql===schema[r.name]),'Original research authority schema required');
  const installed=db.prepare('SELECT * FROM research_control_policy').all();requireThat(installed.length===1&&installed[0].id===1&&installed[0].binding===binding,'Original research authority binding required');
  checkOutstandingEditionPermits(db,pages);return true;
@@ -198,6 +200,7 @@ function publicationEvidence(db,run,plan,args,now,cache,page=false){
  // This is the existing trusted researcher's declaration, not a replacement
  // fact-checking engine. Keep its original bytes and explicit selected binding.
  need(audit&&audit.date===run.report_date&&audit.audit_valid===true&&Array.isArray(audit.blockers)&&audit.blockers.length===0&&['ready','partial','zero_items'].includes(audit.readiness),'publication_audit_blocked');
+ need(migrationAuditValid(db,run,audit),'publication_edition_migration_binding');
  const budget=effectiveResearchBudget(db,run,plan,now,cache);
  const coveragePlan=budget?{...plan,schema_version:'research_plan_v4',limits:budget.limits}:plan;
  need(requiredCoverageValid(audit,coveragePlan,bundle,pageBinding?.previous,metadata),'publication_coverage_contract');
@@ -707,6 +710,7 @@ function apply(db,c,now,config,commandHash){
   need(exact(c.args,'operation_id')&&string(c.args.operation_id,UUID),'resume_fields');
   const op=db.prepare('SELECT * FROM research_control_ops WHERE request_id=? AND operation_id=?').get(c.request_id,c.args.operation_id);
   need(op&&op.phase==='intent','resume_original_intent');
+  need(!migratedPdf(db,c.request_id,op.operation_id),'edition_migration_pdf_already_fetched');
   need(!recoveryForOperation(db,c.request_id,op.operation_id),'archive_recovery_preserves_original_unknown');
   if(!budget)need(researchOperationDispatchValid(db,run,op,now),'research_deadline');
   const events=[];
@@ -730,6 +734,8 @@ function apply(db,c,now,config,commandHash){
   const op=db.prepare('SELECT * FROM research_control_ops WHERE request_id=? AND operation_id=?').get(c.request_id,c.args.operation_id);need(op&&op.phase!=='acknowledged','operation_unsettled');
   need(!recoveryForOperation(db,c.request_id,op.operation_id),'archive_recovery_preserves_original_unknown');
   const elapsed=c.args.elapsed_seconds;need(elapsed===null||typeof elapsed==='number'&&Number.isFinite(elapsed)&&elapsed>=0&&elapsed<=86400,'elapsed_evidence');
+  const boundPdf=migratedPdf(db,c.request_id,op.operation_id);
+  if(boundPdf)need(c.args.outcome==='acknowledged'&&c.args.file_sha256===boundPdf.result_sha256,'edition_migration_pdf_settlement');
   if(c.args.outcome==='acknowledged'){
    need(op.kind!=='model'||!JSON.parse(op.input)?.continuation_archive_sha256||elapsed!==null,'model_continuation_timing_required');
    if(op.kind==='native'){
@@ -742,6 +748,7 @@ function apply(db,c,now,config,commandHash){
     need(c.args.native_result===null,'research_result_kind');need(archive(db,c.request_id,c.args.archive_sha256).some(f=>f.sha256===c.args.file_sha256),'result_bytes_missing');
     const stored=commandArchive(db,run.request_id,c.args.archive_sha256,cache),file=stored?.byHash.get(c.args.file_sha256);
     let candidate;try{candidate=JSON.parse(file.data);}catch{}
+    if(boundPdf)need(stored.files.some(f=>f.path===followupPath(op.operation_id)),'edition_migration_pdf_settlement');
     if(stored.files.some(f=>f.path===followupPath(op.operation_id))){
      need(budget&&op.kind==='source'&&candidate&&archivedFollowup(stored.files,candidate,file.data,{...op,elapsed_seconds:elapsed}),'source_archive_followup_binding');
      settlementCapabilities={archive_followup_version:ARCHIVE_FOLLOWUP_VERSION};
