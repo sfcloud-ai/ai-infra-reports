@@ -1111,6 +1111,18 @@ class ResearchRecoveryCdTests(unittest.TestCase):
                               json.dumps({'continuation_archive_sha256': 'f'*64}), 'owner', 1,
                               800, 'intent', None, None, None, None))
 
+    def test_edition_migration_version_on_rollback(self):
+        with connection(self.database) as db:
+            self.assertFalse(cd.edition_migration_v2_required(db))
+            db.execute(cd.EDITION_MIGRATION_SCHEMA)
+            for version, required in (("v1", False), ("v2", True)):
+                db.execute("INSERT INTO research_control_edition_migrations VALUES(?,?)",
+                           (version, json.dumps({"schema_version": "edition_audit_migration_" + version})))
+                self.assertEqual(cd.edition_migration_v2_required(db), required)
+            db.execute("INSERT INTO research_control_edition_migrations VALUES('bad','{}')")
+            with self.assertRaisesRegex(ValueError, "unknown_edition_migration_receipt"):
+                cd.edition_migration_v2_required(db)
+
     def test_settled_research_input_requires_the_matching_reservation(self):
         self.install()
         with connection(self.database) as db:

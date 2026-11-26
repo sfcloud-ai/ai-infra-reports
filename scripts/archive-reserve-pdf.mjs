@@ -5,11 +5,9 @@ import {mkdir, mkdtemp, open, rename, rm, writeFile} from 'node:fs/promises';
 import {basename, dirname, join, resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {isDeepStrictEqual} from 'node:util';
-import {followupPath, pdfFollowup} from './research-pdf-followup.mjs';
+import {followupPath, pdfFollowup, PDF_PART_BYTES as PART_BYTES, pdfPartName as partName} from './research-pdf-followup.mjs';
 
-const PART_BYTES = 8 * 1024 * 1024;
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
-const partName = index => `part-${String(index).padStart(6,'0')}.bin`;
 const writeJson = (name, value) => writeFile(name, JSON.stringify(value)+'\n', {flag:'wx', mode:0o600});
 
 async function readBounded(name, limit) {

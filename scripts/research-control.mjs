@@ -4,7 +4,7 @@ import {applyArchiveRecovery,readArchiveRecovery,recoveryForOperation,ARCHIVE_RE
 import {statusPart,storedStatusBytes,STATUS_PART_BYTES,STATUS_RESULT_BYTES} from './research-status-pages.mjs';
 import {activePageResearch,pageModelKeyAllowed} from './research-page-budget.mjs';
 import {beginPageRound,currentPageRound,publicationPermit,pagePublicationBinding,appendPagePermit,pageAuthorityInstalled} from './research-page-authority.mjs';
-import {readResearchRecoveryHead,researchRecoveryWindow,researchRecoveryAccounting,recordResearchRecoveryOperation,appendResearchRecoveryGrant,assertResearchRecovery} from './research-recovery.mjs';
+import {recoveryHeadForRun,researchRecoveryWindow,researchRecoveryAccounting,recordResearchRecoveryOperation,appendResearchRecoveryGrant,assertResearchRecovery} from './research-recovery.mjs';
 import {isRepositoryResearchPlan,isLayeredResearchPlan,operationBudget,continuationWindow,LAYERED_BUDGET_POLICY,researchSecondsWithin,RESEARCH_SECONDS_EPSILON} from './research-budget.mjs';
 // Host authority for a disposable research client. Replies are observations;
 // only a newly committed operation intent can grant one external dispatch.
@@ -16,8 +16,8 @@ import {assertResearchArchive,decodeResearchArchive} from './research-archive.mj
 import {handoffScope,scopeDigest} from './handoff-state.mjs';
 import {repositoryResearchInputs,repositoryResearchInputsHash,REPOSITORY_RESEARCH_INPUTS_VERSION} from './repository-research-inputs.mjs';
 import {requiredCoverageValid} from './research-coverage.mjs';
-import {archivedFollowup,followupPath,publicationFollowupsMatch} from './research-pdf-followup.mjs';
-import {MIGRATION_TABLE,MIGRATION_SCHEMA,migrationAuditValid,migratedPdf} from './edition-audit-migration.mjs';
+import {archivedFollowup,followupPath,pdfFollowup,frozenPdfEvidenceAvailable,publicationFollowupsMatch} from './research-pdf-followup.mjs';
+import {MIGRATION_TABLE,MIGRATION_SCHEMA,migrationAuditValid,migratedPdf,requiresEditionMigration} from './edition-audit-migration.mjs';
 import {resumablePageMetadataValid} from './research-page-coverage.mjs';
 import {completeEditionSnapshot,WHOLE_EDITION_FROM} from './page-delivery.mjs';
 export {REPOSITORY_RESEARCH_INPUTS_VERSION};
@@ -581,8 +581,7 @@ function prepublicationModelContinuation(db,run,op,prior,cache){
 }
 function researchContinuationAuthority(db,run,plan,now){
  const installed=!!db.prepare("SELECT 1 FROM sqlite_master WHERE name='research_recovery_grants'").get();
- const head=installed?readResearchRecoveryHead(db,run.request_id):null;
- if(head){const binding=JSON.parse(db.prepare('SELECT binding FROM research_control_policy WHERE id=1').get().binding);need(head.grant.plan_hash===run.plan_hash&&head.grant.request_id===run.request_id&&head.grant.generation===binding.generation,'recovery_binding');}
+ const head=installed?recoveryHeadForRun(db,run):null;
  if(!isLayeredResearchPlan(plan)&&!head)return null;
  need(installed,'layered_budget_not_installed');
  const limits=isLayeredResearchPlan(plan)?plan.limits:{max_attempts_per_source:plan.limits.max_attempts_per_source,max_attempts_per_model:plan.limits.max_attempts_per_model,source_attempt_timeout_seconds:plan.limits.operation_timeout_seconds,model_stage_timeout_seconds:plan.limits.total_budget_seconds,total_budget_seconds:plan.limits.total_budget_seconds};
@@ -804,7 +803,14 @@ function apply(db,c,now,config,commandHash){
     const stored=commandArchive(db,run.request_id,c.args.archive_sha256,cache),file=stored?.byHash.get(c.args.file_sha256);
     let candidate;try{candidate=JSON.parse(file.data);}catch{}
     if(boundPdf)need(stored.files.some(f=>f.path===followupPath(op.operation_id)),'edition_migration_pdf_settlement');
-    if(stored.files.some(f=>f.path===followupPath(op.operation_id))){
+    const hasFollowup=stored.files.some(f=>f.path===followupPath(op.operation_id));
+    if(op.kind==='source'&&!boundPdf&&requiresEditionMigration(plan)){
+     // A regular settlement must preserve the frozen verifier's ability to read the response.
+     const pdf=pdfFollowup(candidate,file.data);
+     need(!hasFollowup&&(!pdf||frozenPdfEvidenceAvailable(db,c.request_id,pdf,hash=>commandArchive(db,c.request_id,hash,cache))),
+      'edition_migration_required_before_pdf_settlement');
+    }
+    if(hasFollowup){
      need(budget&&op.kind==='source'&&candidate&&archivedFollowup(stored.files,candidate,file.data,{...op,elapsed_seconds:elapsed}),'source_archive_followup_binding');
      settlementCapabilities={archive_followup_version:ARCHIVE_FOLLOWUP_VERSION};
     }

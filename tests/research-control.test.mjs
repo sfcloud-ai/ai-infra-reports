@@ -1,5 +1,6 @@
 import {producerInspection} from '../scripts/producer-inspect.mjs';
 import {applyEditionMigration,prepareEditionMigration,receiptText,storedEditionMigration} from '../scripts/edition-audit-migration.mjs';
+import {frozenPdfEvidenceAvailable,PDF_PART_BYTES,pdfPartName,followupPath} from '../scripts/research-pdf-followup.mjs';
 import {replyScheduledStatus} from '../scripts/scheduled-delivery-bridge.mjs';
 import {inspectDay} from '../scripts/producer-day.mjs';
 import {installResearchRecovery,approveResearchRecoveryGrant,nextResearchContinuationAt} from '../scripts/research-recovery.mjs';
@@ -2026,6 +2027,45 @@ test('no-dispatch ordering preserves microsecond precision after a late receipt'
 });
 
 
+test('frozen PDF text can be retained in an earlier archive or across a split UTF-8 sequence',()=>{
+ const s=setup();
+ try{
+  start(s,layeredPlan());
+  const read=h=>{
+   const bytes=s.db.prepare('SELECT bytes FROM research_archives WHERE hash=?').get(h).bytes;
+   const files=JSON.parse(Buffer.from(bytes)).files;
+   return {byHash:new Map(files.map(f=>[f.sha256,{data:Buffer.from(f.content_base64,'base64')}]))};
+  };
+  const descriptor=bytes=>({operation_id:randomUUID(),result_sha256:'a'.repeat(64),body_sha256:digest(bytes),bytes:bytes.length});
+  const text=Buffer.from('%PDF-1.7 text'),binary=Buffer.from([37,80,68,70,45,255]);
+  archive(s,{'old.txt':text,'binary.pdf':binary});
+  assert.equal(frozenPdfEvidenceAvailable(s.db,id,descriptor(text),read),true);
+  assert.equal(frozenPdfEvidenceAvailable(s.db,id,descriptor(binary),read),false);
+  const full=Buffer.concat([Buffer.alloc(PDF_PART_BYTES-1,32),Buffer.from('文')]),pdf=descriptor(full);
+  const prefix='archive_followups/'+pdf.operation_id+'/';
+  const parts=[full.subarray(0,PDF_PART_BYTES),full.subarray(PDF_PART_BYTES)].map((buf,i)=>{
+   const name=pdfPartName(i);archive(s,{[prefix+name]:buf});return {name,sha256:digest(buf),bytes:buf.length};
+  });
+  const manifest={request_id:id,...pdf,part_bytes:PDF_PART_BYTES,parts};
+  assert.equal(frozenPdfEvidenceAvailable(s.db,id,pdf,read),false);
+  archive(s,{[prefix+'manifest.json']:Buffer.from(JSON.stringify(manifest))});
+  assert.equal(frozenPdfEvidenceAvailable(s.db,id,pdf,read),true);
+ }finally{s.close();}
+});
+
+test('frozen PDF migration needs an existing layered budget',()=>{
+ const s=setup();
+ try{
+  const original=JSON.parse(plan);
+  original.files['ai_brief/resources/prompts/audit.md']='dba8eadebbdcd284a17db7f4f732bf7d7bda157f509f3842f70cf9bfbd7a8ba7';
+  const run=start(s,Buffer.from(JSON.stringify(original)));
+  const hash=archive(s,{'selection.json':Buffer.from('{}')});
+  assert.equal(execute(s,command('checkpoint',{archive_sha256:hash},run)).status,'committed');
+  assert.throws(()=>prepareEditionMigration(s.db,id,Buffer.from('{}')),/layered budget required/);
+  assert.equal(storedEditionMigration(s.db,id),null);
+ }finally{s.close();}
+});
+
 for(const migrated of [false,true])test('settled supplemental PDF keeps its real GET charge through permit; migrated='+migrated,async()=>{
  const s=setup();
  try {
@@ -2046,6 +2086,27 @@ for(const migrated of [false,true])test('settled supplemental PDF keeps its real
   if(migrated){
    const checkpoint=archive(s,{'selection.json':Buffer.from('{}')});
    run=execute(s,command('checkpoint',{archive_sha256:checkpoint},run)).run;
+   const h=archive(s,{'result.json':original,[name]:Buffer.from(JSON.stringify(followup))});
+   const settlement={operation_id:op.operation_id,outcome:'acknowledged',elapsed_seconds:7,archive_sha256:h,file_sha256:digest(original),native_result:null};
+   assert.equal(execute(s,command('settle',settlement,run)).code,'edition_migration_required_before_pdf_settlement');
+   const bare=archive(s,{'result.json':original});
+   assert.equal(execute(s,command('settle',{...settlement,archive_sha256:bare},run)).code,'edition_migration_required_before_pdf_settlement');
+   assert.equal(s.db.prepare('SELECT phase FROM research_control_ops WHERE operation_id=?').get(op.operation_id).phase,'intent');
+   const missingId=JSON.parse(original);delete missingId.source_id;
+   assert.throws(()=>prepareEditionMigration(s.db,id,Buffer.from(JSON.stringify(missingId))),/valid source ID/);
+   const ts=queue(s,command('status',{offset:0}));
+   assert.throws(()=>prepareEditionMigration(s.db,id,original),/unreconciled control/);
+   s.db.prepare("UPDATE research_control_events SET phase='superseded' WHERE source_ts=?").run(ts);
+   const priorId=randomUUID();
+   const previousArchive=archive(s,{[followupPath(priorId)]:Buffer.from('{}')});
+   s.db.exec('SAVEPOINT historical_settlement');
+   const retain=s.db.prepare(`INSERT INTO research_control_ops SELECT ?,request_id,kind,operation_key,?,input,
+     owner_id,epoch,reserved_seconds,'acknowledged',7,?,result_file,native_result FROM research_control_ops WHERE operation_id=?`);
+   retain.run(priorId,op.input_sha256,previousArchive,op.operation_id);
+   assert.throws(()=>prepareEditionMigration(s.db,id,original),/single original PDF source attempt/);
+   s.db.prepare('UPDATE research_control_ops SET input_hash=? WHERE operation_id=?').run('e'.repeat(64),priorId);
+   assert.throws(()=>prepareEditionMigration(s.db,id,original),/another PDF followup/);
+   s.db.exec('ROLLBACK TO historical_settlement; RELEASE historical_settlement');
    const prepared=receiptText(prepareEditionMigration(s.db,id,original));
    assert.throws(()=>applyEditionMigration(s.db,id,original,prepared+' '),/snapshot changed/);
    assert.equal(storedEditionMigration(s.db,id),null);
@@ -2085,7 +2146,7 @@ for(const migrated of [false,true])test('settled supplemental PDF keeps its real
    const h=archive(s,{'bundle.json':bundle,'metadata.json':metadata,'audit.json':audit});
    const answer=await issuePermit(s,command('permit',{archive_sha256:h,bundle_sha256:digest(bundle),audit_sha256:digest(audit)},run));
    if(scenario==='valid')assert.equal(answer.status,'committed',JSON.stringify(answer));
-   else {assert.equal(answer.code,scenario==='wrong_migration'?'publication_edition_migration_binding':'publication_archive_followup_binding',scenario);assert.equal(answer.run.permit,null);}
+   else {assert.equal(answer.code,scenario==='wrong_migration'||migrated&&['wrong_hash','missing_attestation'].includes(scenario)?'publication_edition_migration_binding':'publication_archive_followup_binding',scenario);assert.equal(answer.run.permit,null);}
   }
  } finally {s.close();}
 });

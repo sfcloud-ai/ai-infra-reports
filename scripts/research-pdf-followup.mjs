@@ -6,6 +6,8 @@ import {fromMarkdown} from 'mdast-util-from-markdown';
 import {gfm} from 'micromark-extension-gfm';
 import {gfmFromMarkdown} from 'mdast-util-gfm';
 
+export const PDF_PART_BYTES=8*1024*1024;
+export const pdfPartName=index=>`part-${String(index).padStart(6,'0')}.bin`;
 export const followupPath = id => `archive_followups/${id}.json`;
 
 export function pdfFollowup(receipt, resultBytes) {
@@ -35,6 +37,54 @@ export function archivedFollowup(files, receipt, resultBytes, op) {
       receipt.elapsed_seconds !== op.elapsed_seconds || receipt.reserved_seconds !== op.reserved_seconds)
     return null;
   return {descriptor:expected, source_id:receipt.source_id, url:receipt.url};
+}
+
+// The frozen verifier consumes the original UTF-8 text. Locate already retained
+// bytes in the same run; a part boundary may split a UTF-8 code point.
+export function frozenPdfEvidenceAvailable(db,requestId,pdf,readArchive){
+  const lookup=db.prepare(`SELECT a.hash AS archive, json_extract(f.value,'$.sha256') AS sha
+    FROM research_archives a, json_each(a.manifest) f WHERE a.request_id=?
+    AND (? IS NULL OR json_extract(f.value,'$.path')=?)
+    AND (? IS NULL OR json_extract(f.value,'$.sha256')=?)`);
+  const find=(path,sha)=>lookup.iterate(requestId,path,path,sha,sha);
+  function validText(chunks){
+    const hash=createHash('sha256'),decoder=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true});
+    let size=0,nonblank=false;
+    try{
+      for(const chunk of chunks){
+        if(!chunk||size+chunk.length>pdf.bytes)return false;
+        size+=chunk.length;hash.update(chunk);
+        const text=decoder.decode(chunk,{stream:true});
+        nonblank ||= /[^\p{White_Space}\u001c-\u001f]/u.test(text);
+      }
+      decoder.decode();
+    }catch(error){if(error.code==='ERR_ENCODING_INVALID_ENCODED_DATA')return false;throw error;}
+    return nonblank&&size===pdf.bytes&&hash.digest('hex')===pdf.body_sha256;
+  }
+  for(const row of find(null,pdf.body_sha256)){
+    if(validText([readArchive(row.archive).byHash.get(row.sha)?.data]))return true;
+  }
+  const prefix=`archive_followups/${pdf.operation_id}/`;
+  function* parts(manifest){
+    for(const [i,part] of manifest.parts.entries()){
+      const name=pdfPartName(i),size=Math.min(PDF_PART_BYTES,pdf.bytes-i*PDF_PART_BYTES);
+      if(part?.name!==name||part.bytes!==size||typeof part.sha256!=='string'||!/^[a-f0-9]{64}$/.test(part.sha256)){yield null;return;}
+      const row=lookup.get(requestId,prefix+name,prefix+name,part.sha256,part.sha256);
+      const bytes=row&&readArchive(row.archive).byHash.get(row.sha)?.data;
+      yield bytes?.length===size?bytes:null;
+    }
+  }
+  for(const row of find(prefix+'manifest.json',null)){
+    let manifest;
+    const bytes=readArchive(row.archive).byHash.get(row.sha)?.data;
+    if(!bytes)continue;
+    try{manifest=JSON.parse(bytes);}catch{continue;}
+    if(manifest?.request_id!==requestId||manifest.part_bytes!==PDF_PART_BYTES||!Array.isArray(manifest.parts)||
+      manifest.parts.length!==Math.ceil(pdf.bytes/PDF_PART_BYTES))continue;
+    const {request_id,part_bytes,parts:listed,...binding}=manifest;
+    if(isDeepStrictEqual(binding,pdf)&&validText(parts(manifest)))return true;
+  }
+  return false;
 }
 
 function sameUrl(candidate, expected) {
