@@ -45,6 +45,54 @@ Wait for the host's `stored` confirmation before creating its successor. A
 temporarily unavailable parent remains pending with `archive_parent_unavailable`;
 an already superseded parent produces a terminal predecessor conflict.
 
+### Uncited supplemental PDFs
+
+Keep the GET in the original ledger, including its successful outcome and actual elapsed time. Use `prepare` for a supplemental PDF that supplies no candidate, check, discovery result, status entry or published citation. It writes the original GET receipt and the separate archival obligation to a new private directory.
+
+```sh
+node scripts/archive-reserve-pdf.mjs prepare result.json response.body.bin receipt-directory
+```
+
+Store both files from that directory in one normal checkpoint under their relative paths. After the Publisher returns `stored`, settle the original source operation against the exact `result.json` hash. The followup descriptor in `archive_followups/<operation_id>.json` is also the source's `archive_followup` field in the private Brief audit. The audit needs the original GET receipt in `stage_artifacts/<result_sha256>.json`. Retain the local binary until verified host readback. The audit summary retains the immutable handoff in `archive_followups`. Subsequent custody receipts establish the current copy status. The publication permit checks that the declaration matches the original settlement. Required coverage, selected evidence, the ordinary accounting and the six-page gate still apply.
+
+The custodian uses `split` to prepare the copy independently of publication and `verify` after host readback.
+
+```sh
+node scripts/archive-reserve-pdf.mjs split result.json response.body.bin parts-directory
+node scripts/archive-reserve-pdf.mjs verify result.json host-readback-directory
+```
+
+Send the parts and manifest under their generated relative paths, using the existing checkpoint chain and normal per-file and per-checkpoint transport limits. Reconcile each existing host receipt before sending its successor. Populate the readback directory from the authenticated host file reads. Record completion separately with the stored checkpoint hashes after the command verifies part order, lengths, hashes and the original whole-file digest. Copying the local files alone supplies no host receipt.
+
+For new editions install the matching Reports runtime and CD controller through the ordinary release procedure, then release Brief before freezing the new prompt. The first followup settlement records its capability version. Subsequent CD probes, including rollback, require a target that understands the recorded obligation. Keep that controller installed while any such receipts exist.
+
+### Migrating an unpublished frozen edition
+
+Deployment and migration are separate operations. Release the matching Reports runtime and CD controller normally. The Publisher runtime and CD compatibility probe must support edition migration receipt v2. Brief CD builds the separate relay wheel (the `ai_brief_relay` package). The audit command imports `ai_brief` from a clean Git checkout. Run the audit from the checkout named by the receipt, with the locked Python dependencies. For a new migration, `VERIFIER_COMMIT` in `scripts/edition-audit-migration.mjs` sets the verifier. For an applied migration, read the committed receipt and use its `verifier_commit`, including when resuming a v1 receipt. Keep the original five prompts, history, plan and bundle prompt commit. This migration supports the specified frozen policy, a complete checkpoint chain and one outstanding, already fetched supplemental PDF with its original result. The registered checkpoint may precede the immutable archive head.
+
+Rehearse with a consistent SQLite backup, an owner-only directory, and a private copy of the Publisher config whose `state_dir` points to that backup directory. Use the existing Publisher account and runtime. Set `CONFIG`, `REQUEST`, `RESULT`, `EPOCH`, `REV` and `PRIVATE` to the paths and values for the intended copy. Verify the original PDF against its saved digest and use its exact GET result bytes for `RESULT`. With a private empty output directory, run:
+
+```sh
+set -eu
+umask 077
+node scripts/edition-audit-admin.mjs "$CONFIG" prepare "$REQUEST" "$RESULT" "$EPOCH" "$REV" > "$PRIVATE/prepared.json"
+node scripts/edition-audit-admin.mjs "$CONFIG" apply "$REQUEST" "$RESULT" "$PRIVATE/prepared.json" > "$PRIVATE/applied.json"
+node scripts/edition-audit-admin.mjs "$CONFIG" receipt "$REQUEST" > "$PRIVATE/readback.json"
+cmp "$PRIVATE/prepared.json" "$PRIVATE/readback.json"
+```
+
+In a separately authorized live migration, use the same prepared bytes verified on the copy. The host takes the existing Publisher lock, rechecks the full proposal inside one SQLite write transaction, appends its receipt and advances the revision once. A changed snapshot requires a fresh rehearsal. After an ambiguous interruption, use `receipt` first. Repeating the identical `apply` returns the committed bytes. Owner, epoch, lease, source and model outcomes, budgets, checkpoints and publication state retain their prior values. Rollback to a runtime or controller that cannot read the migration table is fenced by the strict authority schema.
+
+After activation, use the original owner and the normal control protocol at its current revision. Archive the existing PDF result and followup descriptor and settle that original operation with its recorded elapsed time. The binary copy follows its independent custody procedure above. Run the private audit from the pinned clean Brief checkout on a separate working package with the original inputs:
+
+```sh
+python -B -m ai_brief audit-research "$PRIVATE_PACKAGE" --edition-migration "$PRIVATE/readback.json"
+```
+
+The audit summary identifies the exact readback bytes. Normal content review, six-page checks, archive, permit and delivery use their existing entry points. A migrated Publisher requires that binding on the formal audit before it can issue a permit for the actual bundle and audit hashes.
+
+### Uploading a checkpoint
+
 Upload through the existing one-shot bridge:
 
 ```text

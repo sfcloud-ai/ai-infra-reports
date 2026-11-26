@@ -4,7 +4,7 @@ import {applyArchiveRecovery,readArchiveRecovery,recoveryForOperation,ARCHIVE_RE
 import {statusPart,storedStatusBytes,STATUS_PART_BYTES,STATUS_RESULT_BYTES} from './research-status-pages.mjs';
 import {activePageResearch,pageModelKeyAllowed} from './research-page-budget.mjs';
 import {beginPageRound,currentPageRound,publicationPermit,pagePublicationBinding,appendPagePermit,pageAuthorityInstalled} from './research-page-authority.mjs';
-import {readResearchRecoveryHead,researchRecoveryWindow,researchRecoveryAccounting,recordResearchRecoveryOperation,appendResearchRecoveryGrant,assertResearchRecovery} from './research-recovery.mjs';
+import {recoveryHeadForRun,researchRecoveryWindow,researchRecoveryAccounting,recordResearchRecoveryOperation,appendResearchRecoveryGrant,assertResearchRecovery} from './research-recovery.mjs';
 import {isRepositoryResearchPlan,isLayeredResearchPlan,operationBudget,continuationWindow,LAYERED_BUDGET_POLICY,researchSecondsWithin,RESEARCH_SECONDS_EPSILON} from './research-budget.mjs';
 // Host authority for a disposable research client. Replies are observations;
 // only a newly committed operation intent can grant one external dispatch.
@@ -16,13 +16,17 @@ import {assertResearchArchive,decodeResearchArchive} from './research-archive.mj
 import {handoffScope,scopeDigest} from './handoff-state.mjs';
 import {repositoryResearchInputs,repositoryResearchInputsHash,REPOSITORY_RESEARCH_INPUTS_VERSION} from './repository-research-inputs.mjs';
 import {requiredCoverageValid} from './research-coverage.mjs';
+import {archivedFollowup,followupPath,pdfFollowup,frozenPdfEvidenceAvailable,publicationFollowupsMatch} from './research-pdf-followup.mjs';
+import {MIGRATION_TABLE,MIGRATION_SCHEMA,migrationAuditValid,migratedPdf,requiresEditionMigration} from './edition-audit-migration.mjs';
 import {resumablePageMetadataValid} from './research-page-coverage.mjs';
 import {completeEditionSnapshot,WHOLE_EDITION_FROM} from './page-delivery.mjs';
 export {REPOSITORY_RESEARCH_INPUTS_VERSION};
 export const LAYERED_RESEARCH_BUDGET_VERSION=1;
 export const MODEL_CONTINUATION_VERSION=1;
+export const SETTLED_RESEARCH_INPUT_VERSION=1;
 export const CANCELLATION_PAGE_VERSION=1;
 export const CANCELLATION_SETTLEMENT_VERSION=1;
+export const ARCHIVE_FOLLOWUP_VERSION=1;
 export const HOST_ARCHIVE_RECEIPT_VERSION=1;
 
 const HASH=/^[a-f0-9]{64}$/,SHA=/^[a-f0-9]{40}$/,UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
@@ -85,6 +89,7 @@ export function assertResearchControl(db,c){
  assertResearchArchive(db,c);assertResearchRecovery(db);const pages=pageAuthorityInstalled(db),binding=policy(c);
  const parts=rows.some(r=>r.name==='research_control_report_parts');
  const fenced=assertArchiveRecoveryFence(db),schema={...RESEARCH_CONTROL_SCHEMA,...(parts?{research_control_report_parts:REPORT_PART_SCHEMA}:{}),...(fenced?{research_control_archive_recovery:ARCHIVE_RECOVERY_SCHEMA}:{})};
+ if(rows.some(r=>r.name===MIGRATION_TABLE))schema[MIGRATION_TABLE]=MIGRATION_SCHEMA;
  requireThat(rows.length===Object.keys(schema).length&&rows.every(r=>r.sql===schema[r.name]),'Original research authority schema required');
  const installed=db.prepare('SELECT * FROM research_control_policy').all();requireThat(installed.length===1&&installed[0].id===1&&installed[0].binding===binding,'Original research authority binding required');
  checkOutstandingEditionPermits(db,pages);return true;
@@ -196,6 +201,7 @@ function publicationEvidence(db,run,plan,args,now,cache,page=false){
  // This is the existing trusted researcher's declaration, not a replacement
  // fact-checking engine. Keep its original bytes and explicit selected binding.
  need(audit&&audit.date===run.report_date&&audit.audit_valid===true&&Array.isArray(audit.blockers)&&audit.blockers.length===0&&['ready','partial','zero_items'].includes(audit.readiness),'publication_audit_blocked');
+ need(migrationAuditValid(db,run,audit),'publication_edition_migration_binding');
  const budget=effectiveResearchBudget(db,run,plan,now,cache);
  const coveragePlan=budget?{...plan,schema_version:'research_plan_v4',limits:budget.limits}:plan;
  need(requiredCoverageValid(audit,coveragePlan,bundle,pageBinding?.previous,metadata),'publication_coverage_contract');
@@ -217,6 +223,8 @@ function publicationEvidence(db,run,plan,args,now,cache,page=false){
   need(audit.budget_policy===LAYERED_BUDGET_POLICY,'publication_budget_policy');
   // Every research intent must have an authenticated known outcome before release.
   need(budget.operations.filter(op=>op.kind!=='native').every(op=>{const result=classifiedResult(db,run,op,cache);return result&&(op.kind!=='model'||!JSON.parse(op.input)?.continuation_archive_sha256||op.elapsed_seconds!==null);}),'publication_research_result_unknown');
+  const followups=budget.operations.filter(op=>op.kind==='source').map(op=>classifiedResult(db,run,op,cache)?.archive_followup).filter(Boolean);
+  need(publicationFollowupsMatch(metadata,bundle,followups,audit.archive_followups),'publication_archive_followup_binding');
   need(researchSecondsWithin(budget.accounting.success_seconds+budget.accounting.reserved_seconds,budget.limits.total_budget_seconds),'publication_success_budget');
   const modelSeconds=new Map();
   for(const op of budget.operations.filter(op=>op.kind!=='native')){
@@ -382,6 +390,11 @@ function classifyStoredResult(db,run,op,cache){
   }
   return {authenticated:true,outcome:'not_dispatched',archive_sha256:op.result_archive,file_sha256:op.result_file};
  }
+ if(op.kind==='source' && decoded.files.some(f=>f.path===followupPath(op.operation_id))){
+  const followup=archivedFollowup(decoded.files,result,file.data,op);
+  if(!followup)return null;
+  return {authenticated:true,outcome:'success',archive_sha256:op.result_archive,file_sha256:op.result_file,archive_followup:followup};
+ }
  const status=result.stage_status??result.status;
  const outcome=['failed','timeout'].includes(status)?'failed':['ok','success','partial'].includes(status)?'success':null;
  if(!outcome||result.elapsed_seconds!==op.elapsed_seconds)return null;
@@ -399,6 +412,44 @@ function stageInputContents(value,run,key){
  const outputs=value.research===undefined?[]:value.research.outputs;
  need(Array.isArray(outputs)&&outputs.every(output=>output&&typeof output==='object'&&!Array.isArray(output)&&Object.keys(output).every(field=>outputFields.has(field))&&string(output.sha256,HASH)),'model_continuation_stage_input');
  return new Set([...value.sources.map(source=>source.body_sha256),...outputs.map(output=>output.sha256)].filter(hash=>string(hash,HASH)));
+}
+function settledResearchInput(db,document,run,prior,stored){
+ const rows=document?.sources;
+ if(!Array.isArray(rows)||!rows.some(row=>row&&Object.hasOwn(row,'raw_result')))return document;
+ const check=ok=>need(ok,'model_continuation_original_settled_source');
+ const original=ref=>{
+  check(ref&&string(ref.sha256,HASH)&&Number.isSafeInteger(ref.bytes)&&ref.bytes>0);
+  const bytes=stored.byHash.get(ref.sha256)?.data;
+  check(bytes&&bytes.length===ref.bytes&&digest(bytes)===ref.sha256);
+  let value;try{value=JSON.parse(bytes);}catch{}
+  check(value&&typeof value==='object'&&!Array.isArray(value));return value;
+ };
+ const seen=new Set();
+ const sources=rows.map(row=>{
+  check(row?.settlement&&row.artifacts);
+  const result=original(row.raw_result),binding=row.settlement,command=original(binding.original_command),args=command.args;
+  check(string(row.operation_id,UUID)&&string(command.command_id,UUID));
+  const recorded=db.prepare("SELECT rowid,input_hash,elapsed_seconds,result_archive,result_file FROM research_control_ops WHERE request_id=? AND operation_id=? AND kind='source' AND phase='acknowledged'").get(run.request_id,row.operation_id);
+  const committed=db.prepare('SELECT hash,result FROM research_control_commands WHERE request_id=? AND command_id=?').get(run.request_id,command.command_id);
+  const body=row.artifacts['response.body.bin'],rawBody=result.artifacts?.['response.body.bin'];
+  let identity;try{identity=researchSourceIdentity({method:'GET',url:row.url}).hash;}catch{}
+  check(!seen.has(row.operation_id)&&result.request_id===run.request_id&&
+   ['operation_id','source_id','url','input_sha256','status','elapsed_seconds'].every(key=>Object.hasOwn(row,key)&&row[key]===result[key])&&
+   ['ok','failed'].includes(row.status)&&Number.isFinite(row.elapsed_seconds)&&row.elapsed_seconds>=0&&
+   typeof row.source_id==='string'&&row.source_id.length>0&&string(row.input_sha256,HASH)&&row.input_sha256===identity&&
+   body&&rawBody&&string(body.sha256,HASH)&&body.sha256===rawBody.sha256&&body.sha256===result.content_sha256&&
+   Number.isSafeInteger(body.bytes)&&body.bytes>=(row.status==='ok'?1:0)&&body.bytes===rawBody.bytes&&
+   command.action==='settle'&&command.request_id===run.request_id&&args?.operation_id===row.operation_id&&
+   args.outcome==='acknowledged'&&args.elapsed_seconds===row.elapsed_seconds&&string(binding.archive_sha256,HASH)&&
+   args.archive_sha256===binding.archive_sha256&&args.file_sha256===binding.result_sha256&&args.file_sha256===row.raw_result.sha256&&
+   recorded&&recorded.rowid<prior.rowid&&recorded.input_hash===row.input_sha256&&recorded.elapsed_seconds===row.elapsed_seconds&&
+   recorded.result_archive===args.archive_sha256&&recorded.result_file===args.file_sha256&&
+   committed?.hash===binding.original_command.sha256&&JSON.parse(committed.result).status==='committed');
+  seen.add(row.operation_id);
+  return {operation_id:row.operation_id,input_sha256:row.input_sha256,result_sha256:args.file_sha256,url:row.url,
+   status:row.status,elapsed_seconds:row.elapsed_seconds,body_sha256:body.sha256};
+ });
+ return {...document,sources};
 }
 function referencedEditorInput(document,run,previousId,stored){
  const check=value=>need(value,'model_continuation_original_source_reference');
@@ -448,6 +499,7 @@ function prepublicationModelContinuation(db,run,op,prior,cache){
  let payload,originalInput;
  try{payload=JSON.parse(stored.byHash.get(manifest.payload_sha256).data);originalInput=JSON.parse(stored.byHash.get(prior.input_hash)?.data);}catch{refuse('model_continuation_input_bytes');}
  const rawOriginal=originalInput;
+ if(op.key==='research')originalInput=settledResearchInput(db,rawOriginal,run,prior,stored);
  if(op.key==='editor'&&originalInput?.source_records_location==='findings.json#/source_records'&&!Object.hasOwn(originalInput,'sources')){
   originalInput=referencedEditorInput(rawOriginal,run,prior.operation_id,stored);
   if(isDeepStrictEqual(payload?.research,rawOriginal.research))payload={...payload,research:originalInput.research};
@@ -458,7 +510,7 @@ function prepublicationModelContinuation(db,run,op,prior,cache){
  stageInputContents(payload,run,op.key);const binding=payload.continuation;
  need(exact(binding,'previous_operation_id,checkpoint_archive_sha256,checkpoint_file_sha256,added_evidence')&&binding.previous_operation_id===prior.operation_id&&binding.checkpoint_archive_sha256===prior.result_archive&&binding.checkpoint_file_sha256===prior.result_file&&Array.isArray(binding.added_evidence)&&binding.added_evidence.length===manifest.added_evidence.length,'model_continuation_payload_binding');
 
- const seen=new Set(),addedSources=new Set();let addedResearchContinuation=false,addedResearch=false;
+ const seen=new Set(),addedSources=new Set();let addedResearchContinuation=false,addedResearch=false,newSuccess=false;
  for(const ref of manifest.added_evidence){
   need(exact(ref,'operation_id,archive_sha256,file_sha256')&&string(ref.operation_id,UUID)&&string(ref.archive_sha256,HASH)&&string(ref.file_sha256,HASH)&&!seen.has(ref.operation_id),'model_continuation_evidence');seen.add(ref.operation_id);
   const bound=binding.added_evidence[seen.size-1];need(exact(bound,'operation_id,archive_sha256,file_sha256')&&bound.operation_id===ref.operation_id&&bound.archive_sha256===ref.archive_sha256&&bound.file_sha256===ref.file_sha256,'model_continuation_payload_binding');
@@ -466,7 +518,10 @@ function prepublicationModelContinuation(db,run,op,prior,cache){
  // The command cache holds one archive: keep shared checkpoints adjacent.
  for(const ref of [...manifest.added_evidence].sort((a,b)=>a.archive_sha256.localeCompare(b.archive_sha256))){
   const evidence=db.prepare('SELECT rowid,* FROM research_control_ops WHERE request_id=? AND operation_id=?').get(run.request_id,ref.operation_id);
-  need(evidence&&evidence.rowid>prior.rowid&&(evidence.kind==='source'||op.key==='editor'&&evidence.kind==='model'&&evidence.operation_key==='research')&&evidence.result_archive===ref.archive_sha256&&evidence.result_file===ref.file_sha256&&evidence.elapsed_seconds!==null&&classifiedResult(db,run,evidence,cache)?.outcome==='success','model_continuation_new_evidence');
+  need(evidence&&evidence.rowid>prior.rowid&&(evidence.kind==='source'||op.key==='editor'&&evidence.kind==='model'&&evidence.operation_key==='research')&&evidence.result_archive===ref.archive_sha256&&evidence.result_file===ref.file_sha256&&evidence.elapsed_seconds!==null,'model_continuation_new_evidence');
+  const outcome=classifiedResult(db,run,evidence,cache)?.outcome;
+  const failedContext=op.key==='research'&&originalInput!==rawOriginal&&evidence.kind==='source'&&outcome==='failed';
+  need(failedContext||outcome==='success','model_continuation_new_evidence');
   if(evidence.kind==='model'){
    let predecessor=evidence;
    while(predecessor){
@@ -481,7 +536,13 @@ function prepublicationModelContinuation(db,run,op,prior,cache){
   const evidenceArchive=commandArchive(db,run.request_id,evidence.result_archive,cache);
   let result;try{result=JSON.parse(evidenceArchive.byHash.get(evidence.result_file).data);}catch{refuse('model_continuation_evidence_json');}
   need(result.input_sha256===evidence.input_hash&&(evidence.kind==='source'||result.stage==='research'),'model_continuation_evidence_binding');
-  if(evidence.kind==='source')need(['ok','success'].includes(result.status)&&result.response_complete===true&&result.curl_exit_code===0&&result.error===''&&integer(result.http_status,200,299)&&string(result.content_sha256,HASH)&&nonblank(evidenceArchive.byHash.get(result.content_sha256)?.data),'model_continuation_source_content');
+  if(failedContext){
+   const body=evidenceArchive.byHash.get(result.content_sha256)?.data;
+   need(result.status==='failed'&&result.dispatch_started===true&&result.attempts_in_this_operation===1&&
+    typeof result.error==='string'&&result.error.trim()&&Number.isInteger(result.curl_exit_code)&&
+    (result.curl_exit_code!==0||Number.isInteger(result.http_status)&&!integer(result.http_status,200,299))&&
+    string(result.content_sha256,HASH)&&(body||result.content_sha256===digest(Buffer.alloc(0))),'model_continuation_failed_context');
+  }else if(evidence.kind==='source')need(['ok','success'].includes(result.status)&&result.response_complete===true&&result.curl_exit_code===0&&result.error===''&&integer(result.http_status,200,299)&&string(result.content_sha256,HASH)&&nonblank(evidenceArchive.byHash.get(result.content_sha256)?.data),'model_continuation_source_content');
   const contents=[];
   if(evidence.kind==='source')contents.push(result.content_sha256);
   else {
@@ -494,6 +555,7 @@ function prepublicationModelContinuation(db,run,op,prior,cache){
    const matches=payload.sources.filter(source=>source.operation_id===evidence.operation_id);
    need(matches.length===1&&matches[0].result_sha256===evidence.result_file&&matches[0].body_sha256===result.content_sha256,'model_continuation_payload_source');
    const match=matches[0];let identity=null;
+   need(!failedContext||match.status==='failed','model_continuation_failed_context');
    if(match.url!==undefined){try{identity=researchSourceIdentity({method:'GET',url:match.url}).hash;}catch{refuse('model_continuation_payload_source');}}
    need((match.url===undefined||identity===evidence.input_hash)&&(match.input_sha256===undefined||match.input_sha256===evidence.input_hash)&&(match.status===undefined||match.status===result.status)&&(match.elapsed_seconds===undefined||match.elapsed_seconds===result.elapsed_seconds),'model_continuation_payload_source');
   }else {
@@ -501,8 +563,10 @@ function prepublicationModelContinuation(db,run,op,prior,cache){
    const claimed=new Set(payload.research?.outputs?.map(output=>output.sha256));
    need(payload.research?.operation_id===evidence.operation_id&&payload.research?.result_sha256===evidence.result_file&&claimed.size===new Set(contents).size&&contents.every(hash=>claimed.has(hash))&&(payload.research.input_sha256===undefined||payload.research.input_sha256===evidence.input_hash)&&(payload.research.status===undefined||payload.research.status===(result.stage_status??result.status))&&(payload.research.elapsed_seconds===undefined||payload.research.elapsed_seconds===result.elapsed_seconds),'model_continuation_payload_research');
   }
-  need(contents.some(hash=>!oldContents.has(hash)),'model_continuation_no_new_content');
+  need(failedContext||contents.some(hash=>!oldContents.has(hash)),'model_continuation_no_new_content');
+  if(!failedContext)newSuccess=true;
  }
+ need(newSuccess,'model_continuation_no_new_content');
  // New references must be authenticated in both directions; old context is retained verbatim in meaning.
  const canonical=value=>Array.isArray(value)?value.map(canonical):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(key=>[key,canonical(value[key])])):value;
  const fingerprint=value=>JSON.stringify(canonical(value));
@@ -513,11 +577,11 @@ function prepublicationModelContinuation(db,run,op,prior,cache){
  // Editor-only work can refine coverage, not authorize unrelated candidates.
  // The auditor compares retained candidate items through this exact old input.
  if(op.key==='editor'&&!addedResearchContinuation)need(string(originalInput.research?.result_sha256,HASH)&&originalInput.research.outputs.length>0,'model_continuation_prior_research');
+ return op.key==='research'&&originalInput!==rawOriginal;
 }
 function researchContinuationAuthority(db,run,plan,now){
  const installed=!!db.prepare("SELECT 1 FROM sqlite_master WHERE name='research_recovery_grants'").get();
- const head=installed?readResearchRecoveryHead(db,run.request_id):null;
- if(head){const binding=JSON.parse(db.prepare('SELECT binding FROM research_control_policy WHERE id=1').get().binding);need(head.grant.plan_hash===run.plan_hash&&head.grant.request_id===run.request_id&&head.grant.generation===binding.generation,'recovery_binding');}
+ const head=installed?recoveryHeadForRun(db,run):null;
  if(!isLayeredResearchPlan(plan)&&!head)return null;
  need(installed,'layered_budget_not_installed');
  const limits=isLayeredResearchPlan(plan)?plan.limits:{max_attempts_per_source:plan.limits.max_attempts_per_source,max_attempts_per_model:plan.limits.max_attempts_per_model,source_attempt_timeout_seconds:plan.limits.operation_timeout_seconds,model_stage_timeout_seconds:plan.limits.total_budget_seconds,total_budget_seconds:plan.limits.total_budget_seconds};
@@ -661,7 +725,9 @@ function apply(db,c,now,config,commandHash){
      need((continuation||exact(op.input,'previous_operation_id,checkpoint_archive_sha256,checkpoint_file_sha256'))&&string(op.input.previous_operation_id,UUID)&&string(op.input.checkpoint_archive_sha256,HASH)&&string(op.input.checkpoint_file_sha256,HASH),'model_recovery_checkpoint');
      const prior=db.prepare("SELECT rowid,* FROM research_control_ops WHERE request_id=? AND kind='model' AND operation_key=? ORDER BY rowid DESC LIMIT 1").get(c.request_id,op.key);
      need(prior&&prior.operation_id===op.input.previous_operation_id&&prior.phase==='acknowledged'&&prior.elapsed_seconds!==null&&prior.result_archive===op.input.checkpoint_archive_sha256&&prior.result_file===op.input.checkpoint_file_sha256,'model_recovery_original');
-     if(continuation)prepublicationModelContinuation(db,run,op,prior,cache);
+     if(continuation){
+      if(prepublicationModelContinuation(db,run,op,prior,cache))settlementCapabilities.settled_research_input_version=SETTLED_RESEARCH_INPUT_VERSION;
+     }
      else need(classifiedResult(db,run,prior,cache)?.outcome==='failed','model_recovery_not_failed');
      const succeeded=budget.operations.filter(item=>item.kind==='model'&&item.operation_key===op.key&&classifiedResult(db,run,item,cache)?.outcome!=='failed').reduce((n,item)=>n+(item.elapsed_seconds??item.reserved_seconds),0);
      need(researchSecondsWithin(succeeded+op.max_seconds,budget.limits.model_stage_timeout_seconds),'model_stage_budget');
@@ -698,6 +764,7 @@ function apply(db,c,now,config,commandHash){
   need(exact(c.args,'operation_id')&&string(c.args.operation_id,UUID),'resume_fields');
   const op=db.prepare('SELECT * FROM research_control_ops WHERE request_id=? AND operation_id=?').get(c.request_id,c.args.operation_id);
   need(op&&op.phase==='intent','resume_original_intent');
+  need(!migratedPdf(db,c.request_id,op.operation_id),'edition_migration_pdf_already_fetched');
   need(!recoveryForOperation(db,c.request_id,op.operation_id),'archive_recovery_preserves_original_unknown');
   if(!budget)need(researchOperationDispatchValid(db,run,op,now),'research_deadline');
   const events=[];
@@ -721,6 +788,8 @@ function apply(db,c,now,config,commandHash){
   const op=db.prepare('SELECT * FROM research_control_ops WHERE request_id=? AND operation_id=?').get(c.request_id,c.args.operation_id);need(op&&op.phase!=='acknowledged','operation_unsettled');
   need(!recoveryForOperation(db,c.request_id,op.operation_id),'archive_recovery_preserves_original_unknown');
   const elapsed=c.args.elapsed_seconds;need(elapsed===null||typeof elapsed==='number'&&Number.isFinite(elapsed)&&elapsed>=0&&elapsed<=86400,'elapsed_evidence');
+  const boundPdf=migratedPdf(db,c.request_id,op.operation_id);
+  if(boundPdf)need(c.args.outcome==='acknowledged'&&c.args.file_sha256===boundPdf.result_sha256,'edition_migration_pdf_settlement');
   if(c.args.outcome==='acknowledged'){
    need(op.kind!=='model'||!JSON.parse(op.input)?.continuation_archive_sha256||elapsed!==null,'model_continuation_timing_required');
    if(op.kind==='native'){
@@ -733,6 +802,18 @@ function apply(db,c,now,config,commandHash){
     need(c.args.native_result===null,'research_result_kind');need(archive(db,c.request_id,c.args.archive_sha256).some(f=>f.sha256===c.args.file_sha256),'result_bytes_missing');
     const stored=commandArchive(db,run.request_id,c.args.archive_sha256,cache),file=stored?.byHash.get(c.args.file_sha256);
     let candidate;try{candidate=JSON.parse(file.data);}catch{}
+    if(boundPdf)need(stored.files.some(f=>f.path===followupPath(op.operation_id)),'edition_migration_pdf_settlement');
+    const hasFollowup=stored.files.some(f=>f.path===followupPath(op.operation_id));
+    if(op.kind==='source'&&!boundPdf&&requiresEditionMigration(plan)){
+     // A regular settlement must preserve the frozen verifier's ability to read the response.
+     const pdf=pdfFollowup(candidate,file.data);
+     need(!hasFollowup&&(!pdf||frozenPdfEvidenceAvailable(db,c.request_id,pdf,hash=>commandArchive(db,c.request_id,hash,cache))),
+      'edition_migration_required_before_pdf_settlement');
+    }
+    if(hasFollowup){
+     need(budget&&op.kind==='source'&&candidate&&archivedFollowup(stored.files,candidate,file.data,{...op,elapsed_seconds:elapsed}),'source_archive_followup_binding');
+     settlementCapabilities={archive_followup_version:ARCHIVE_FOLLOWUP_VERSION};
+    }
     if(op.kind==='model'&&JSON.parse(op.input)?.continuation_archive_sha256){
      const preview={...op,phase:'acknowledged',elapsed_seconds:elapsed,result_archive:c.args.archive_sha256,result_file:c.args.file_sha256};
      need(candidate?.stage===op.operation_key&&candidate?.input_sha256===op.input_hash&&['success','failed'].includes(classifiedResult(db,run,preview,cache)?.outcome),'model_continuation_result_binding');

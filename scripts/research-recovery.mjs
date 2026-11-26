@@ -39,6 +39,14 @@ export function readResearchRecoveryHead(db,request_id){
  }
  return head;
 }
+export function recoveryHeadForRun(db,run){
+ const head=readResearchRecoveryHead(db,run.request_id);
+ if(head){
+  const binding=JSON.parse(db.prepare('SELECT binding FROM research_control_policy WHERE id=1').get().binding);
+  need(head.grant.plan_hash===run.plan_hash&&head.grant.generation===binding.generation,'recovery_binding');
+ }
+ return head;
+}
 // Caller must authenticate owner approval, hold the original host lock and
 // wrap this insert in its command transaction. A text reference alone is NOT approval.
 function parseGrant(bytes){

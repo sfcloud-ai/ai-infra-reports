@@ -1111,6 +1111,32 @@ class ResearchRecoveryCdTests(unittest.TestCase):
                               json.dumps({'continuation_archive_sha256': 'f'*64}), 'owner', 1,
                               800, 'intent', None, None, None, None))
 
+    def test_edition_migration_version_on_rollback(self):
+        with connection(self.database) as db:
+            self.assertFalse(cd.edition_migration_v2_required(db))
+            db.execute(cd.EDITION_MIGRATION_SCHEMA)
+            for version, required in (("v1", False), ("v2", True)):
+                db.execute("INSERT INTO research_control_edition_migrations VALUES(?,?)",
+                           (version, json.dumps({"schema_version": "edition_audit_migration_" + version})))
+                self.assertEqual(cd.edition_migration_v2_required(db), required)
+            db.execute("INSERT INTO research_control_edition_migrations VALUES('bad','{}')")
+            with self.assertRaisesRegex(ValueError, "unknown_edition_migration_receipt"):
+                cd.edition_migration_v2_required(db)
+
+    def test_settled_research_input_requires_the_matching_reservation(self):
+        self.install()
+        with connection(self.database) as db:
+            self.assertFalse(cd.settled_research_input_required(db))
+            command = {'action':'reserve','args':{'operations':[{'kind':'model','key':'research',
+                       'input':{'continuation_archive_sha256':'a'*64}}]}}
+            result = {'status':'committed','settled_research_input_version':1}
+            db.execute('INSERT INTO research_control_commands VALUES(?,?,?,?,?)',
+                       ('nested','request','b'*64,json.dumps(command).encode(),json.dumps(result)))
+            self.assertTrue(cd.settled_research_input_required(db))
+            db.execute('UPDATE research_control_commands SET result=?',(json.dumps(dict(result,status='rejected')),))
+            with self.assertRaisesRegex(ValueError,'invalid_settled_research_input_version'):
+                cd.settled_research_input_required(db)
+
     def test_continuation_runtime_requirement_uses_existing_immutable_input(self):
         with connection(self.database) as database:
             self.assertFalse(cd.model_continuation_runtime_required(database))
@@ -1210,6 +1236,19 @@ class ResearchRecoveryCdTests(unittest.TestCase):
             db.execute('UPDATE research_control_commands SET result=? WHERE command_id=?',(json.dumps({'status':'committed','cancellation_settlement_version':2}),'new'))
             with self.assertRaisesRegex(ValueError,'cancellation_settlement_version_invalid'):
                 cd.cancellation_settlement_runtime_required(db)
+
+    def test_followup_receipt_requires_compatible_runtime_only_after_settlement(self):
+        self.install()
+        with connection(self.database) as db:
+            self.assertFalse(cd.archive_followup_runtime_required(db))
+            command = b'{"action":"settle","args":{"outcome":"acknowledged"}}'
+            db.execute('INSERT INTO research_control_commands VALUES(?,?,?,?,?)',
+                       ('new','request','b'*64,command,json.dumps({'status':'committed','archive_followup_version':1})))
+            self.assertTrue(cd.archive_followup_runtime_required(db))
+            db.execute('UPDATE research_control_commands SET result=?',
+                       (json.dumps({'status':'committed','archive_followup_version':2}),))
+            with self.assertRaisesRegex(ValueError,'archive_followup_settlement_version_invalid'):
+                cd.archive_followup_runtime_required(db)
 
     def test_only_new_versioned_permit_receipts_fence_rollback(self):
         self.install(); self.cancelled_permit(marked=False)
