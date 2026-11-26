@@ -2528,6 +2528,62 @@
       "revision": 2,
       "fingerprint": "f053422feebca69f7fbf4e7333c8310264cc7ec791896e550342299b890b2950",
       "content_sha256": "5e45a0bcecbeb8e69102e93a4f0e6489247bb9783b90f1175197f088c83a41e0"
+    },
+    {
+      "id": "2026-11-25-ernie-55-flash-preview-20261124",
+      "event_key": "ernie-55-flash-preview-20261124",
+      "date": "2026-11-25",
+      "revision": 1,
+      "fingerprint": "2be51935f453b48d565c89c3b16f2ede4a694731926fe981860f492ff01b1445",
+      "content_sha256": "c91b9dc216857d1197ba2f3b40ac571ac7537cafa6310fdbb2ad536c736343cf"
+    },
+    {
+      "id": "2026-11-25-lerobot-pr-5460",
+      "event_key": "lerobot-pr-5460",
+      "date": "2026-11-25",
+      "revision": 1,
+      "fingerprint": "5a6216e7242ed254d6918dc32bb8baea5c593a3f242c2b74c17c415a858fecaf",
+      "content_sha256": "485f81b280e0a5543218e0ff7328dc8409684ecb00b83aa3da7ff6c13f9b6181"
+    },
+    {
+      "id": "2026-11-25-sglang-pr-47578",
+      "event_key": "sglang-pr-47578",
+      "date": "2026-11-25",
+      "revision": 1,
+      "fingerprint": "35155e42c4adf612f5b52a02db883dc1219e3adc712553b252eb745fa212e00c",
+      "content_sha256": "be22035b85fb882ec91b50353fd997c168830f63bbf214ded0f9c630d2fdf191"
+    },
+    {
+      "id": "2026-11-25-tensorrt-llm-pr-22463",
+      "event_key": "tensorrt-llm-pr-22463",
+      "date": "2026-11-25",
+      "revision": 1,
+      "fingerprint": "28c04b2d97ad405c339659695b80d618a736dfd689aa83602d343844e754f385",
+      "content_sha256": "e4a3fe2ab113fa45076b68533148db58dcd4653b2da138a363331e1f849386e6"
+    },
+    {
+      "id": "2026-11-25-vllm-pr-68747",
+      "event_key": "vllm-pr-68747",
+      "date": "2026-11-25",
+      "revision": 1,
+      "fingerprint": "39a9d145d12ea03e1feb7d6c5bbd47d5db5e57b127729122e2875820c65b4566",
+      "content_sha256": "78440632687d12b45980c5362b6ddb7a629e17f4ba050e1cfc2d7cf1d9800d7e"
+    },
+    {
+      "id": "2026-11-25-vllm-pr-68820",
+      "event_key": "vllm-pr-68820",
+      "date": "2026-11-25",
+      "revision": 1,
+      "fingerprint": "19742102798f633a682111827545d97dd4d558bae3449117dc1cd5281af1c1c2",
+      "content_sha256": "e6fb830dde4eeb1c29cdf8a677c317196f927fb656808ee395a52b74c47b7f0b"
+    },
+    {
+      "id": "2026-11-25-vllm-pr-69683",
+      "event_key": "vllm-pr-69683",
+      "date": "2026-11-25",
+      "revision": 1,
+      "fingerprint": "5fec20d579cd7c49d55430508458ecf04e0133d1cb528c5f31587b70ba6bdf8c",
+      "content_sha256": "7e4ec3d75ce26eb3ebcb952f2446beeccdccc9736dc62d3a44aeb3acf8d93540"
     }
   ]
 }

@@ -1969,6 +1969,59 @@
       ],
       "poster": "assets/overview.png",
       "path": "reports/2026-11-25/"
+    },
+    {
+      "schema_version": "1.0",
+      "date": "2026-11-26",
+      "revision": 1,
+      "title": "AI Infra 晨报 · 2026-11-26",
+      "subtitle": "部分晨报｜覆盖缺口：架构、引擎。模型文章连接失败，两引擎72小时分页和部分正文未查全。四类跨仓各读首屏20条。",
+      "articles": [
+        {
+          "id": "model-serving-gpu",
+          "title": "模型服务与 GPU 超配：双机卸载 MLA 缓存，16 MiB 从 256 块增至 512 块",
+          "summary": "在两机各两卡的 H100 测试中，同样的 16 MiB 主机预算从容纳 256 块增至 512 块。LMCache 的另一项变更让服务能按键预取单个中间块。",
+          "sha256": "2f81bea917b26e9a6b0a5a189fb5d23f2ad657e901e46c5beb58cd42a3d05fd6",
+          "path": "reports/2026-11-26/articles/model-serving-gpu.md"
+        },
+        {
+          "id": "hardware-status",
+          "title": "硬件与算力平台：RTX PRO 6000 的注意力内核快了 1.64 倍，整模省了多少时间",
+          "summary": "同一张 96 GB RTX PRO 6000 上，合成因果注意力由 0.76466 降至 0.46659 ms。视频整模使用 BF16 基线，两项指定负载的延迟分别下降 6.70% 和 15.34%。",
+          "sha256": "f59d519bf92804dfaf292fb16ba5ea49193e82fbc2ec90ecd7cf6da4a3c90453",
+          "path": "reports/2026-11-26/articles/hardware-status.md"
+        },
+        {
+          "id": "model-architecture-status",
+          "title": "模型与架构：GLM-5.3-Flash 的长提示何时走新的 KDA 卷积",
+          "summary": "在 GB300 上，GLM-5.3-Flash 的新 KDA 路径让 4K、8K 提示的平均首 token 时延在 TP1 降低 2.5% 至 4.5%，TP4 相差在 1% 内。GLM、Qwen 和 DeepSeek 的文章入口连接失败。",
+          "sha256": "6094f06e4a984da407514a256708dc119be97db402b5413382de66db0e684095",
+          "path": "reports/2026-11-26/articles/model-architecture-status.md"
+        },
+        {
+          "id": "embodied-training",
+          "title": "制造业具身智能训练：LeRobot 修复双 GPU 训练中样本权重器读不到配置的问题",
+          "summary": "72 小时回看。作者用两张 GPU 运行 pi05 和 RA-BC 样本加权时遇到配置读取错误。改动只调整构造权重器时传入的策略对象。",
+          "sha256": "2a857cf903c6e6186145ae9dba343e1422e7bfed89018c5b8d4a9c34689384ed",
+          "path": "reports/2026-11-26/articles/embodied-training.md"
+        },
+        {
+          "id": "small-model-status",
+          "title": "前沿小模型：四个官方目录均未见本期修改的模型记录",
+          "summary": "Smol、Phi、Gemma 和 Qwen 的已查目录页均按修改时间倒序，最新记录都早于 11 月 25 日 06:20。这个结果限定在对应作者和检索条件内。",
+          "sha256": "41099fe221b8a0c0f52e5c1eb1f2e0290d8bb87e8c54698726a58001eede3e3d",
+          "path": "reports/2026-11-26/articles/small-model-status.md"
+        },
+        {
+          "id": "inference-engines",
+          "title": "推理引擎每日变动：SGLang 怎样保住已完成的 KV 传输",
+          "summary": "SGLang 修复 KV 已交付后收到取消请求时的状态判断。vLLM 两项合入另见服务和架构页。两家引擎的 PR 分页未到 72 小时下界，部分官方文章缺正文，DeepInfer 索引也缺本窗日期。",
+          "sha256": "04fced6f171d6c8f93b4c669da7b05cf1240a971c9c411888050dfe70bcb3301",
+          "path": "reports/2026-11-26/articles/inference-engines.md"
+        }
+      ],
+      "poster": "assets/overview.png",
+      "path": "reports/2026-11-26/"
     }
   ],
   "entries": [
@@ -6477,6 +6530,143 @@
       "article_id": "inference-engines",
       "fingerprint": "35155e42c4adf612f5b52a02db883dc1219e3adc712553b252eb745fa212e00c",
       "date": "2026-11-25",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-26-vllm-pr-69677",
+      "event_key": "vllm-pr-69677",
+      "title": "跨机 CPU 卸载按主机保存复制的 MLA KV",
+      "summary": "两机各两张 H100 时，同样 16 MiB 的 CPU 总预算能容纳 512 块，原先为 256 块。四个 TP 进程均可逐字节恢复。",
+      "source_urls": [
+        "https://api.github.com/repos/vllm-project/vllm/pulls/69677/files?page=1&per_page=100",
+        "https://api.github.com/repos/vllm-project/vllm/pulls?direction=desc&page=1&per_page=100&sort=updated&state=closed"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "a75366a696056e2eacdb7917b32024941025d2aa306dd44f992396b985998504",
+      "date": "2026-11-26",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-26-lmcache-pr-6877",
+      "event_key": "lmcache-pr-6877",
+      "title": "LMCache 协调器可按块键预取及删除 KV",
+      "summary": "协调器可以按已知逻辑块键预取中间块或分批删除其副本。token_ids 仍按提示前缀计算。",
+      "source_urls": [
+        "https://api.github.com/repos/LMCache/LMCache/pulls/6877/files?page=1&per_page=100",
+        "https://api.github.com/repos/LMCache/LMCache/pulls?direction=desc&page=1&per_page=100&sort=updated&state=closed"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "6e0bb80dac146bea8027eb7051d46f96c4a918bb6c660a5a223ae3385addcf32",
+      "date": "2026-11-26",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-26-nvidia-rtx-blackwell-nvfp4-attention-register-recycling",
+      "event_key": "nvidia-rtx-blackwell-nvfp4-attention-register-recycling",
+      "title": "RTX PRO 6000 用寄存器复用缩短 NVFP4 attention 内核延迟",
+      "summary": "同一张 96 GB RTX PRO 6000 上，合成因果注意力由 0.76466 降至 0.46659 ms。视频整模使用 BF16 基线，两项指定负载的延迟分别下降 6.70% 和 15.34%。",
+      "source_urls": [
+        "https://developer.nvidia.com/blog/",
+        "https://developer.nvidia.com/blog/how-to-optimize-nvfp4-attention-on-nvidia-rtx-blackwell-through-register-recycling/"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status",
+      "fingerprint": "ba7f78d7dd3e41246e666d77e85aa7119e5d31cc9305d73df6575d0d6157599b",
+      "date": "2026-11-26",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-26-vllm-pr-66884",
+      "event_key": "vllm-pr-66884",
+      "title": "GLM-5.3-Flash 在 SM10x 改用分平面的 KDA 预填充卷积",
+      "summary": "vLLM 在 SM10x 上为长预填充增加分平面短卷积。GB300 上，4K 和 8K 提示的平均首 token 时延在 TP1 降低 2.5% 至 4.5%，TP4 与原路径相差在 1% 内。",
+      "source_urls": [
+        "https://api.github.com/repos/vllm-project/vllm/pulls?direction=desc&page=1&per_page=100&sort=updated&state=closed",
+        "https://patch-diff.githubusercontent.com/raw/vllm-project/vllm/pull/66884.diff"
+      ],
+      "update_of": null,
+      "article_id": "model-architecture-status",
+      "fingerprint": "86d834b8a6a4d54b599b8712730f11c787f6fb67c60308681062b5bc800f8e8a",
+      "date": "2026-11-26",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-26-model-hf-directories-20261126",
+      "event_key": "model-hf-directories-20261126",
+      "title": "GLM、DeepSeek、Qwen 的官方目录状态",
+      "summary": "三个 Hugging Face 作者目录各读取首页 100 项，最新修改时间均早于主窗。官方文章另有连接失败。",
+      "source_urls": [
+        "https://huggingface.co/api/models?author=Qwen&direction=-1&expand=createdAt&expand=lastModified&expand=sha&limit=100&sort=lastModified",
+        "https://huggingface.co/api/models?author=deepseek-ai&direction=-1&expand=createdAt&expand=lastModified&expand=sha&limit=100&sort=lastModified",
+        "https://huggingface.co/api/models?author=zai-org&direction=-1&expand=createdAt&expand=lastModified&expand=sha&limit=100&sort=lastModified"
+      ],
+      "update_of": null,
+      "article_id": "model-architecture-status",
+      "fingerprint": "56474fa2f585005188b9c92cde5ce262d51a03bee61b998a6adf612f5bfc8caa",
+      "date": "2026-11-26",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-26-lerobot-pr-5499",
+      "event_key": "lerobot-pr-5499",
+      "title": "LeRobot 在构造样本权重器前解包分布式训练策略",
+      "summary": "72 小时回看。作者用两张 GPU 运行 pi05 和 RA-BC 样本加权时遇到配置读取错误。改动只调整构造权重器时传入的策略对象。",
+      "source_urls": [
+        "https://api.github.com/repos/huggingface/lerobot/pulls/5499/files?page=1&per_page=100",
+        "https://api.github.com/repos/huggingface/lerobot/pulls?direction=desc&page=1&per_page=100&sort=updated&state=closed"
+      ],
+      "update_of": null,
+      "article_id": "embodied-training",
+      "fingerprint": "b111c9d16d9e2fa34909b85f43d594ff0f7072841adcaedf0795be2a7830c41e",
+      "date": "2026-11-26",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-26-small-model-official-hf-window-20261126",
+      "event_key": "small-model-official-hf-window-20261126",
+      "title": "四个官方目录在本期窗口均无修改记录",
+      "summary": "四页按最后修改时间倒序，均已到达 24 小时窗口下界或列表末尾。覆盖范围限于已查作者和系列。",
+      "source_urls": [
+        "https://huggingface.co/api/models?author=HuggingFaceTB&direction=-1&expand=createdAt&expand=lastModified&expand=sha&limit=100&sort=lastModified",
+        "https://huggingface.co/api/models?author=Qwen&direction=-1&expand=createdAt&expand=lastModified&expand=sha&limit=100&sort=lastModified",
+        "https://huggingface.co/api/models?author=google&direction=-1&expand=createdAt&expand=lastModified&expand=sha&limit=100&search=gemma&sort=lastModified",
+        "https://huggingface.co/api/models?author=microsoft&direction=-1&expand=createdAt&expand=lastModified&expand=sha&limit=100&search=Phi&sort=lastModified"
+      ],
+      "update_of": null,
+      "article_id": "small-model-status",
+      "fingerprint": "a40504400d1599e44d620523fbeb3db70fc619104e5208166cc19b4aaaa48170",
+      "date": "2026-11-26",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-26-sglang-pr-52654",
+      "event_key": "sglang-pr-52654",
+      "title": "SGLang 保留已传完 KV 的成功状态",
+      "summary": "SGLang 修正分离式预填充与解码的一处传输状态判断。vLLM 两项变更已分别收录在服务和架构页；DeepInfer 的已查默认分支最新提交为 11 月 3 日。",
+      "source_urls": [
+        "https://api.github.com/repos/sgl-project/sglang/pulls/52654/files?page=1&per_page=100",
+        "https://api.github.com/repos/sgl-project/sglang/pulls?direction=desc&page=1&per_page=100&sort=updated&state=closed"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "4cdcb41c6468760551907a97babad56c17210a38e2682445a08fefd24b1fefc9",
+      "date": "2026-11-26",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-26-deepinfer-default-commit-window-20261126",
+      "event_key": "deepinfer-default-commit-window-20261126",
+      "title": "DeepInfer 默认分支与官方项目索引",
+      "summary": "默认分支查询返回六条提交，最新为 11 月 3 日。其他分支、PR 和 release 的全量范围仍缺。",
+      "source_urls": [
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/commits?page=1&per_page=100"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "396a353efb39f78354d38162f2c025640047647b3dd1017c90204e9b27d5329d",
+      "date": "2026-11-26",
       "revision": 1
     }
   ]
