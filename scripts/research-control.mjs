@@ -28,6 +28,7 @@ export const CANCELLATION_PAGE_VERSION=1;
 export const CANCELLATION_SETTLEMENT_VERSION=1;
 export const ARCHIVE_FOLLOWUP_VERSION=1;
 export const HOST_ARCHIVE_RECEIPT_VERSION=1;
+export const HOST_ARCHIVE_UNKNOWN_POST_VERSION=1;
 
 const HASH=/^[a-f0-9]{64}$/,SHA=/^[a-f0-9]{40}$/,UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const keyName=/^[a-zA-Z0-9_.-]{1,80}$/,LEASE_MS=15*60000;
@@ -766,6 +767,10 @@ function apply(db,c,now,config,commandHash){
   need(op&&op.phase==='intent','resume_original_intent');
   need(!migratedPdf(db,c.request_id,op.operation_id),'edition_migration_pdf_already_fetched');
   need(!recoveryForOperation(db,c.request_id,op.operation_id),'archive_recovery_preserves_original_unknown');
+  if(op.kind==='native'&&op.operation_key.startsWith('archive:')&&op.operation_key.endsWith(':post')){
+   const hash=JSON.parse(op.input).archive_sha256;
+   need(!db.prepare("SELECT 1 FROM research_archives WHERE request_id=? AND hash=? AND file_id='t4-sha256:'||hash").get(c.request_id,hash),'archive_already_received_on_host');
+  }
   if(!budget)need(researchOperationDispatchValid(db,run,op,now),'research_deadline');
   const events=[];
   for(const event of db.prepare('SELECT source_ts,phase,reply_text FROM research_control_events WHERE reply_text IS NOT NULL').iterate()){
@@ -787,6 +792,10 @@ function apply(db,c,now,config,commandHash){
   need(exact(c.args,'operation_id,outcome,elapsed_seconds,archive_sha256,file_sha256,native_result')&&string(c.args.operation_id,UUID)&&['acknowledged','unknown'].includes(c.args.outcome),'settle_fields');
   const op=db.prepare('SELECT * FROM research_control_ops WHERE request_id=? AND operation_id=?').get(c.request_id,c.args.operation_id);need(op&&op.phase!=='acknowledged','operation_unsettled');
   need(!recoveryForOperation(db,c.request_id,op.operation_id),'archive_recovery_preserves_original_unknown');
+  if(op.kind==='native'&&op.operation_key.startsWith('archive:')&&op.operation_key.endsWith(':post')){
+   const hash=JSON.parse(op.input).archive_sha256;
+   need(!db.prepare("SELECT 1 FROM research_archives WHERE request_id=? AND hash=? AND file_id='t4-sha256:'||hash").get(c.request_id,hash),'archive_already_received_on_host');
+  }
   const elapsed=c.args.elapsed_seconds;need(elapsed===null||typeof elapsed==='number'&&Number.isFinite(elapsed)&&elapsed>=0&&elapsed<=86400,'elapsed_evidence');
   const boundPdf=migratedPdf(db,c.request_id,op.operation_id);
   if(boundPdf)need(c.args.outcome==='acknowledged'&&c.args.file_sha256===boundPdf.result_sha256,'edition_migration_pdf_settlement');

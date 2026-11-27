@@ -232,3 +232,7 @@ rollback to a runtime without this fence is prohibited: both CD's isolated
 compatibility probe and the older runtime's strict authority schema check reject
 it. Never remove the marker or recovery history to force a rollback. This is an
 explicit begin-time activation, not an automatic startup/CD ledger migration.
+
+### Operator recovery for an unconfirmed archive upload
+
+For an archive that already has an original Slack POST intent but has no confirmed result or completion intent, T4 can now record custody of the exact original bytes through the existing `receive-host-archive` command. The operator must use the acknowledged ticket, Slack file ID, exact hash, byte count, and the original last mutation timestamp. This path still requires a quiesced Publisher, a caught-up intake scan and no competing mutation, recovery or upload. It makes no Slack call. The returned host receipt includes `original_post_operation_id` and `original_post_outcome: "unknown"`; the original POST stays unchanged and cannot be resumed or settled after custody. This does not grant publication. Use a compatible runtime and controller before invoking the command; previous versions cannot read the new receipt and are not eligible rollback targets after it has been stored.

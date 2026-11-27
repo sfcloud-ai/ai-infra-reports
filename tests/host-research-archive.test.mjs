@@ -40,7 +40,7 @@ test('stopped receipt checks settlement after the preceding writer and keeps its
  await assert.rejects(receiveStagedHostArchive(configFile,'original','operation','FTEST','a'.repeat(64),'1795000100.000000',dir),/Publisher state directory differs/);
 });
 
-for(const terminal of [false,true])test('original host receipt after '+(terminal?'terminal metadata rejection':'verified missing parent'),t=>{
+for(const [terminal,uncertain] of [[false,false],[true,false],[false,true]])test('original host receipt after '+(uncertain?'an unknown POST':terminal?'terminal metadata rejection':'verified missing parent'),t=>{
  const db=new DatabaseSync(':memory:');t.after(()=>db.close());
  for(const sql of Object.values(ARCHIVE_SCHEMA))db.exec(sql);
  db.exec('CREATE TABLE research_control_runs(request_id,report_date,permit,plan)');
@@ -50,7 +50,7 @@ for(const terminal of [false,true])test('original host receipt after '+(terminal
  db.exec(RESEARCH_CONTROL_SCHEMA.research_control_commands);
  db.prepare('INSERT INTO research_control_policy VALUES(1,?)').run(JSON.stringify({protocol:'repository_inputs_v1'}));
  const request='morning-20261124-r1',day='2026-11-24',file='FORIGINAL',operation=randomUUID();
- const payload=Buffer.from('original evidence');
+ const payload=uncertain?Buffer.alloc(725000,0x61):Buffer.from('original evidence');
  const bytes=Buffer.from(JSON.stringify({schema_version:'research_archive_v1',command_id:randomUUID(),request_id:request,report_date:day,previous_sha256:null,
    files:[{path:'audit/evidence.json',sha256:digest(payload),content_base64:payload.toString('base64')}]}));
  const lastControl='1795000100.000000';
@@ -154,6 +154,19 @@ for(const terminal of [false,true])test('original host receipt after '+(terminal
   db.prepare("UPDATE research_archive_events SET phase='sent',diagnostic=? WHERE source_ts=?")
    .run(JSON.stringify({code:'invalid_file_metadata',outcome:'rejected'}),childEvent.source_ts);
  }
+ const retainedPost=randomUUID();
+ if(uncertain){
+  assert.ok(bytes.length>65536);
+  const post={...input,step:'post',file_id:file};
+  add(request,retainedPost,'native',key+'post',JSON.stringify({...post,bytes:bytes.length-1}),'intent',null);
+  assert.throws(()=>receiveHostArchive(db,args,bytes),/POST/);
+  db.prepare('DELETE FROM research_control_ops WHERE operation_id=?').run(retainedPost);
+  add(request,retainedPost,'native',key+'post',JSON.stringify(post),'intent',null);
+  const competingCompletion=randomUUID();
+  add(request,competingCompletion,'native',key+'complete',JSON.stringify({...post,step:'complete'}),'intent',null);
+  assert.throws(()=>receiveHostArchive(db,args,bytes),/POST/);
+  db.prepare('DELETE FROM research_control_ops WHERE operation_id=?').run(competingCompletion);
+ }
  const before=db.prepare('SELECT * FROM research_control_ops').all();
  const first=receiveHostArchive(db,args,bytes);
  assert.deepEqual(receiveHostArchive(db,args,bytes),first);
@@ -167,6 +180,13 @@ for(const terminal of [false,true])test('original host receipt after '+(terminal
  const read=readResearchArchive(db,request,{query_id:randomUUID(),action:'receipt',offset:0,hash});
  assert.equal(read.stored.transport,'t4_host_archive');
  assert.equal(read.stored.host_receipt_id,first.receipt_id);
+ if(uncertain){
+  assert.equal(read.stored.original_post_outcome,'unknown');
+  assert.equal(read.stored.original_post_operation_id,retainedPost);
+  const saved=db.prepare('SELECT phase,native_result FROM research_control_ops WHERE operation_id=?').get(retainedPost);
+  assert.equal(saved.phase,'intent');
+  assert.equal(saved.native_result,null);
+ }
  assert.equal(read.stored.file_id,undefined);
  const manifest=readResearchArchive(db,request,{query_id:randomUUID(),action:'manifest',offset:0,hash});
  assert.equal(manifest.transport,'t4_host_archive');assert.equal(manifest.host_receipt_id,first.receipt_id);
