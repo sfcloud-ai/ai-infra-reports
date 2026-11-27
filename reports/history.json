@@ -2656,6 +2656,78 @@
       "revision": 1,
       "fingerprint": "a75366a696056e2eacdb7917b32024941025d2aa306dd44f992396b985998504",
       "content_sha256": "66c284cc136883498b74114fa51780e25dd707c55e49822c26b76eca042710b4"
+    },
+    {
+      "id": "2026-11-27-deepinfer-closed-pr-scope-20261127",
+      "event_key": "deepinfer-closed-pr-scope-20261127",
+      "date": "2026-11-27",
+      "revision": 1,
+      "fingerprint": "8a0ec94a9d415e0cca9b47a6690c8ff748b9436d5b451d0f52bbe6f716938474",
+      "content_sha256": "66e52d50e1b48bb789935b3ba8056d81c7da96a098d141dff0c715645e03d8c6"
+    },
+    {
+      "id": "2026-11-27-embodied-source-scope-20261127",
+      "event_key": "embodied-source-scope-20261127",
+      "date": "2026-11-27",
+      "revision": 1,
+      "fingerprint": "48e756fef00245b9ad89cf68b5fdabcdb252796c7f3433ad87cf5746ecda16f7",
+      "content_sha256": "b8db75d6d52d09e7c2ab140120b6e56c6095be10187cff8d63481855181ea8a4"
+    },
+    {
+      "id": "2026-11-27-hardware-source-scope-20261127",
+      "event_key": "hardware-source-scope-20261127",
+      "date": "2026-11-27",
+      "revision": 1,
+      "fingerprint": "28c9208bfb0f92a1a4967743c7c23db335190a5e88d7b81dd9ca6a3ba1c7e55d",
+      "content_sha256": "eae05d1241863da7bdb7ccfd175ca37b258e44750c76fa4b986240e9f1b4e4ce"
+    },
+    {
+      "id": "2026-11-27-model-hf-directories-20261127",
+      "event_key": "model-hf-directories-20261127",
+      "date": "2026-11-27",
+      "revision": 1,
+      "fingerprint": "8a0831f3dcc86edf2137ff5cb70655f9e51a6e63d16f0adc192973952d4d0b39",
+      "content_sha256": "185d1492c37f07e1d5b0f3e3301cbdd990e98d0c7cd8420f8a2c41949b0c95fe"
+    },
+    {
+      "id": "2026-11-27-sglang-pr-51234",
+      "event_key": "sglang-pr-51234",
+      "date": "2026-11-27",
+      "revision": 1,
+      "fingerprint": "271206f31e9c339f86710370578c8d24d6822ea9ee07a4b915af6f0d333279d9",
+      "content_sha256": "0a7f85064a39946186b1b533ebfdcae301729149771d460500984e1f1898e6e0"
+    },
+    {
+      "id": "2026-11-27-small-model-source-scope-20261127",
+      "event_key": "small-model-source-scope-20261127",
+      "date": "2026-11-27",
+      "revision": 1,
+      "fingerprint": "ee4eb6a93e29baa542687e51ee817dea14caa82e0bc04dbb3ea42abb8c0925ee",
+      "content_sha256": "dd54e739d00f7064363d2b5358363de6134d7489d11ef381fff0958a11c07a48"
+    },
+    {
+      "id": "2026-11-27-vllm-pr-66805",
+      "event_key": "vllm-pr-66805",
+      "date": "2026-11-27",
+      "revision": 1,
+      "fingerprint": "f6e0566997c6f9c576bb4c5e2ccd5bf88ccd5a32a018b98666a2edc844a32e5c",
+      "content_sha256": "52cb07ebca947543c5ed2b9e704f49b7a5acb494c4cef8afd33f61c4e4b7dca2"
+    },
+    {
+      "id": "2026-11-27-vllm-pr-69882",
+      "event_key": "vllm-pr-69882",
+      "date": "2026-11-27",
+      "revision": 1,
+      "fingerprint": "3ed809ca8d6d319559a30b987611cdb523d2cf54290b97b71dfa8b00c4927bfe",
+      "content_sha256": "478d2246c2b0fc7f17ced00402f37628ae1ab72978753dcde97e2f7fc8f270c6"
+    },
+    {
+      "id": "2026-11-27-vllm-pr-70178",
+      "event_key": "vllm-pr-70178",
+      "date": "2026-11-27",
+      "revision": 1,
+      "fingerprint": "0b6ed420902cf430775cc285393bf0438fd72b2d4465b59e1c93476512690675",
+      "content_sha256": "7da8bda28a7c7c95e150b2048d7f9ed4f5f0d5aaa539ab94d5da5285850b30f2"
     }
   ]
 }

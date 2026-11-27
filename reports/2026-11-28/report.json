@@ -1,0 +1,187 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-11-28",
+  "revision": 1,
+  "title": "AI Infra 晨报 · 2026-11-28",
+  "subtitle": "部分晨报｜覆盖缺口：架构、引擎。模型厂商文章连线失败，引擎72小时分页及部分正文未查全。跨仓四类各读两页。",
+  "articles": [
+    {
+      "id": "model-serving-gpu",
+      "title": "模型服务与 GPU 超配：HiSparse 分开接收两类 KV，SGLang 定义权重快照格式",
+      "summary": "vLLM 让普通 sparse-MLA 预填充接入 HiSparse 解码。SGLang 新增记录 tensor view 与底层存储关系的权重快照格式。两项改动分别涉及 KV 回载和权重加载。",
+      "sha256": "13f9892ca5ef65062c6b48c6c118e480712c55e8aeb2506db4dd50bab181d8a7"
+    },
+    {
+      "id": "hardware-status",
+      "title": "硬件与算力平台：GB10 的低 M MXFP8 MoE 路径为何只留给单 token",
+      "summary": "GB10 上的隔离的 MoE 按层对照显示，8 至 64 token 时低 M MXFP8 路径比 CUTLASS 慢约 4% 至 5%。Intel 技术文章另给出 Xeon AMX、Xe2 权重驻留与分离部署的测试和实现范围。",
+      "sha256": "f272bf8181058c8aebc4e52bb627a479f7bb92960365d4e07c7d101c2255851b"
+    },
+    {
+      "id": "model-architecture-status",
+      "title": "模型与架构：Qwen4Exp 优化 Blackwell QSA，GLM-5.3-Flash 接入 Ascend 预填充 CP",
+      "summary": "Qwen4Exp 在单张 GB300 的指定形状上测得 FP8 QSA 内核加速 1.07 至 1.92 倍。GLM-5.3-Flash 的另一项改动在 8 张 Ascend 950DT 上测量长提示预填充。",
+      "sha256": "d9adb4606c371a008a94c3ae1fa9d9fa8a8e070bd57c21eace2260af09e93a1a"
+    },
+    {
+      "id": "embodied-training",
+      "title": "制造业具身智能训练：DemoFoundry 改变仿真轨迹的视觉观测后怎样验证",
+      "summary": "72 小时回看。DemoFoundry v1 以每任务相同数目的轨迹比较两种视觉观测条件，用实机试验评估策略。主窗内 arXiv 查询零条，LeRobot 首屏有三条合入。",
+      "sha256": "12610c86e17e5df0291397a0d40d83e22f0aeb76607905e30aa4e2c83dac5f2d"
+    },
+    {
+      "id": "small-model-status",
+      "title": "前沿小模型：Qwen 官方作者目录首屏的覆盖范围",
+      "summary": "已读 Qwen 的 Hugging Face 作者目录首屏 100 条。最新修改记录为 11 月 20 日，首屏无主窗内创建或修改，也未核得可比较的质量与成本数据。",
+      "sha256": "60e660f9cc92fd0364145fa252f2562dd6b12155164aeae866b8072a99742302"
+    },
+    {
+      "id": "inference-engines",
+      "title": "推理引擎每日变动：HY4 Flash 加入流水线并行和分离式 DFly",
+      "summary": "vLLM 合入 HY4 Flash 的流水线并行支持，并为预填充与解码分离的 DFly 启用 Nixl 或 Mooncake。SGLang 三项合入分别涉及权重快照、GB10 与 Ascend。DeepInfer 保留实查范围。",
+      "sha256": "a9955b6aee402fa91cb7ac5e3ad061e0a7af39d8e8cc6041f6b960a1480d7fd4"
+    }
+  ],
+  "entries": [
+    {
+      "id": "2026-11-28-vllm-pr-66502",
+      "event_key": "vllm-pr-66502",
+      "title": "Mooncake 适配普通 sparse-MLA prefill 向 HiSparse decode 导入 KV",
+      "summary": "Mooncake 让普通 sparse-MLA 预填充向 HiSparse 解码导入各组连续未命中后缀，分别处理主机侧 source KV 和 GPU 侧 indexer KV。",
+      "source_urls": [
+        "https://api.github.com/repos/vllm-project/vllm/pulls/66502/files?page=1&per_page=100"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-11-28-sglang-pr-51728",
+      "event_key": "sglang-pr-51728",
+      "title": "SGLang 定义 load-diff 权重缓存快照格式",
+      "summary": "load-diff 格式编码 storage、tensor view 与值的关系，可保留视图别名。当前合入的是没有调用方的独立格式模块。",
+      "source_urls": [
+        "https://api.github.com/repos/sgl-project/sglang/pulls/51728/files?page=1&per_page=100"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu"
+    },
+    {
+      "id": "2026-11-28-vllm-pr-70187",
+      "event_key": "vllm-pr-70187",
+      "title": "Qwen4Exp 在 Blackwell 加入 FP8 QSA 分块与受限 PDL",
+      "summary": "Blackwell FP8 QSA 支持分块、小批页表融合与受限 PDL。作者在单张 GB300 的指定形状上报告内核加速 1.07 至 1.92 倍。",
+      "source_urls": [
+        "https://api.github.com/repos/vllm-project/vllm/pulls/70187/files?page=1&per_page=100"
+      ],
+      "update_of": null,
+      "article_id": "model-architecture-status"
+    },
+    {
+      "id": "2026-11-28-sglang-pr-51185",
+      "event_key": "sglang-pr-51185",
+      "title": "GLM-5.3-Flash 接入 Ascend 交错 prefill CP",
+      "summary": "GLM-5.3-Flash 的交错预填充对齐 KPool 压缩输入及原 query 的位置。作者在 8 张 Ascend 950DT 的指定配置中报告平均首 token 时延下降 10.26%。",
+      "source_urls": [
+        "https://api.github.com/repos/sgl-project/sglang/pulls/51185/files?page=1&per_page=100"
+      ],
+      "update_of": null,
+      "article_id": "model-architecture-status"
+    },
+    {
+      "id": "2026-11-28-sglang-pr-53557",
+      "event_key": "sglang-pr-53557",
+      "title": "SGLang 把 GB10 的低 M MXFP8 MoE 路径限在单 token",
+      "summary": "GB10 的低 M MXFP8 路径在单 token 时保留。作者在隔离的 MoE 按层对照中报告 8 至 64 token 时低 M 路径比 CUTLASS 慢约 4% 至 5%。",
+      "source_urls": [
+        "https://api.github.com/repos/sgl-project/sglang/pulls/53557/files?page=1&per_page=100"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status"
+    },
+    {
+      "id": "2026-11-28-vllm-pr-70300",
+      "event_key": "vllm-pr-70300",
+      "title": "HY4 Flash 支持流水线并行和 P/D 分离的 DFly",
+      "summary": "HY4 Flash 支持流水线并行，预填充与解码分离的 DFly 支持 Nixl 或 Mooncake。作者的准确率与接受率验证使用 GB200 上的特定组合。",
+      "source_urls": [
+        "https://api.github.com/repos/vllm-project/vllm/pulls/70300/files?page=1&per_page=100"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    },
+    {
+      "id": "2026-11-28-hardware-intel-platform-scope-20261128",
+      "event_key": "hardware-intel-platform-scope-20261128",
+      "title": "Intel 技术正文的平台与日期范围",
+      "summary": "Intel 技术原文标注 日期为 11 月 27 日。它界定 Xeon AMX 的形状与批次条件、Xe2 权重压缩与内核转换、EPD 的额外传输和协调。",
+      "source_urls": [
+        "https://www.lmsys.org/blog/2026-11-27-sglang-intel/"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status"
+    },
+    {
+      "id": "2026-11-28-model-official-hf-scope-20261128",
+      "event_key": "model-official-hf-scope-20261128",
+      "title": "三家官方 Hugging Face 目录的主窗状态",
+      "summary": "GLM、DeepSeek、Qwen 各读按修改时间倒序的首页 100 条，三页均无主窗内创建或修改。官方文章入口故障另计。",
+      "source_urls": [
+        "https://huggingface.co/api/models?author=zai-org&direction=-1&expand=createdAt&expand=lastModified&expand=sha&limit=100&sort=lastModified",
+        "https://huggingface.co/api/models?author=deepseek-ai&direction=-1&expand=createdAt&expand=lastModified&expand=sha&limit=100&sort=lastModified",
+        "https://huggingface.co/api/models?author=Qwen&direction=-1&expand=createdAt&expand=lastModified&expand=sha&limit=100&sort=lastModified"
+      ],
+      "update_of": null,
+      "article_id": "model-architecture-status"
+    },
+    {
+      "id": "2026-11-28-embodied-actual-search-and-lookback-20261128",
+      "event_key": "embodied-actual-search-and-lookback-20261128",
+      "title": "主窗检索与 DemoFoundry v1 的 72 小时回看",
+      "summary": "指定 arXiv 主窗返回零条，LeRobot 首页有三条合入。DemoFoundry v1 属于 72 小时回看，实机试验限于论文实验室任务。",
+      "source_urls": [
+        "https://export.arxiv.org/api/query?max_results=20&search_query=cat%3Acs.RO+AND+%28all%3A%22robot+learning%22+OR+all%3A%22robot+policy%22%29+AND+submittedDate%3A%5B202611262220+TO+202611272220%5D&sortBy=submittedDate&sortOrder=descending&start=0",
+        "https://export.arxiv.org/api/query?max_results=20&search_query=cat%3Acs.RO+AND+%28all%3A%22robot+learning%22+OR+all%3A%22robot+policy%22%29+AND+submittedDate%3A%5B202611242220+TO+202611272220%5D&sortBy=submittedDate&sortOrder=descending&start=0",
+        "https://api.github.com/repos/huggingface/lerobot/pulls?direction=desc&page=1&per_page=100&sort=updated&state=closed",
+        "https://arxiv.org/html/2611.34671v1"
+      ],
+      "update_of": null,
+      "article_id": "embodied-training"
+    },
+    {
+      "id": "2026-11-28-small-model-hf-scope-20261128",
+      "event_key": "small-model-hf-scope-20261128",
+      "title": "Qwen 官方作者目录首屏状态",
+      "summary": "按修改时间排序的首屏 100 条中，无主窗内创建或修改，未核得同条件质量或成本对照。",
+      "source_urls": [
+        "https://huggingface.co/api/models?author=Qwen&direction=-1&expand=createdAt&expand=lastModified&expand=sha&limit=100&sort=lastModified"
+      ],
+      "update_of": null,
+      "article_id": "small-model-status"
+    },
+    {
+      "id": "2026-11-28-deepinfer-closed-pr-scope-20261128",
+      "event_key": "deepinfer-closed-pr-scope-20261128",
+      "title": "DeepInfer 已关闭 PR 与基础设施索引",
+      "summary": "已查 32 条去重关闭 PR，未见主窗内合入。open-infra README 为历史索引。",
+      "source_urls": [
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/pulls?direction=desc&page=1&per_page=100&sort=updated&state=closed",
+        "https://api.github.com/repos/deepseek-ai/open-infra-index/readme"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines"
+    }
+  ],
+  "images": [
+    {
+      "path": "assets/overview.png",
+      "sha256": "2936b70efc4e3ec132b3d9706f22ba75bdfe918223177d1cde8f31d2c0e2f0e2",
+      "alt": "11 月 28 日六专题海报。HiSparse 的两类 KV、GB10 单 token 保护、Ascend 交错 CP、DemoFoundry 72 小时回看、Qwen 目录及 HY4 Flash 的流水线并行。部分晨报｜覆盖缺口：架构、引擎。模型厂商文章连线失败，引擎72小时分页及部分正文未查全。跨仓四类各读两页。"
+    },
+    {
+      "path": "assets/ascend-prefill-cp.png",
+      "sha256": "e61b8e168c735a340ce4715a29638b5ae3d94e044ecf32c1a966f5ff0ba0c9e0",
+      "alt": "8 张 Ascend 950DT 测试 GLM-5.3-Flash。开启 CP8 后平均首 token 时延从 31.43 秒降至 28.20 秒，输入吞吐从 16337.51 升至 18207.02 token/s。输入长度 65536、输出 1 token，并发 8，每组 128 请求。"
+    }
+  ],
+  "poster": "assets/overview.png"
+}
