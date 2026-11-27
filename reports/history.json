@@ -2584,6 +2584,78 @@
       "revision": 1,
       "fingerprint": "5fec20d579cd7c49d55430508458ecf04e0133d1cb528c5f31587b70ba6bdf8c",
       "content_sha256": "7e4ec3d75ce26eb3ebcb952f2446beeccdccc9736dc62d3a44aeb3acf8d93540"
+    },
+    {
+      "id": "2026-11-26-deepinfer-default-commit-window-20261126",
+      "event_key": "deepinfer-default-commit-window-20261126",
+      "date": "2026-11-26",
+      "revision": 1,
+      "fingerprint": "396a353efb39f78354d38162f2c025640047647b3dd1017c90204e9b27d5329d",
+      "content_sha256": "090c47d941241ba0194853c0c9ca5a9e6035b836ef1015319727bd324f99026d"
+    },
+    {
+      "id": "2026-11-26-lerobot-pr-5499",
+      "event_key": "lerobot-pr-5499",
+      "date": "2026-11-26",
+      "revision": 1,
+      "fingerprint": "b111c9d16d9e2fa34909b85f43d594ff0f7072841adcaedf0795be2a7830c41e",
+      "content_sha256": "a010dbe9e566c582f199e5cc0ee5409d806765d240d252a9faa5d39ac9688c30"
+    },
+    {
+      "id": "2026-11-26-lmcache-pr-6877",
+      "event_key": "lmcache-pr-6877",
+      "date": "2026-11-26",
+      "revision": 1,
+      "fingerprint": "6e0bb80dac146bea8027eb7051d46f96c4a918bb6c660a5a223ae3385addcf32",
+      "content_sha256": "c5a1a085395ad08af77109217a44d2db6baf4b97ea4780f24ef835d279e26e55"
+    },
+    {
+      "id": "2026-11-26-model-hf-directories-20261126",
+      "event_key": "model-hf-directories-20261126",
+      "date": "2026-11-26",
+      "revision": 1,
+      "fingerprint": "56474fa2f585005188b9c92cde5ce262d51a03bee61b998a6adf612f5bfc8caa",
+      "content_sha256": "d2c2b597795036349c243e99017db0415e66a5e66bc43f13d608e82faecacd1a"
+    },
+    {
+      "id": "2026-11-26-nvidia-rtx-blackwell-nvfp4-attention-register-recycling",
+      "event_key": "nvidia-rtx-blackwell-nvfp4-attention-register-recycling",
+      "date": "2026-11-26",
+      "revision": 1,
+      "fingerprint": "ba7f78d7dd3e41246e666d77e85aa7119e5d31cc9305d73df6575d0d6157599b",
+      "content_sha256": "a2954b2b31e73176ce8d75ba083d40d0273b9af3388f8c91a0a51f9c9fcd382d"
+    },
+    {
+      "id": "2026-11-26-sglang-pr-52654",
+      "event_key": "sglang-pr-52654",
+      "date": "2026-11-26",
+      "revision": 1,
+      "fingerprint": "4cdcb41c6468760551907a97babad56c17210a38e2682445a08fefd24b1fefc9",
+      "content_sha256": "42636f69e73de084adf348a770d50b1626a36571a058f1dac72d1126284ba144"
+    },
+    {
+      "id": "2026-11-26-small-model-official-hf-window-20261126",
+      "event_key": "small-model-official-hf-window-20261126",
+      "date": "2026-11-26",
+      "revision": 1,
+      "fingerprint": "a40504400d1599e44d620523fbeb3db70fc619104e5208166cc19b4aaaa48170",
+      "content_sha256": "805e5066698daedff3a9101452eccbecd03b0bf9d7483f61b776cc503507d9c8"
+    },
+    {
+      "id": "2026-11-26-vllm-pr-66884",
+      "event_key": "vllm-pr-66884",
+      "date": "2026-11-26",
+      "revision": 1,
+      "fingerprint": "86d834b8a6a4d54b599b8712730f11c787f6fb67c60308681062b5bc800f8e8a",
+      "content_sha256": "54cfa868f46a6d105085c588d665f461ba5774ea770ea74fbee41f5bd6341645"
+    },
+    {
+      "id": "2026-11-26-vllm-pr-69677",
+      "event_key": "vllm-pr-69677",
+      "date": "2026-11-26",
+      "revision": 1,
+      "fingerprint": "a75366a696056e2eacdb7917b32024941025d2aa306dd44f992396b985998504",
+      "content_sha256": "66c284cc136883498b74114fa51780e25dd707c55e49822c26b76eca042710b4"
     }
   ]
 }

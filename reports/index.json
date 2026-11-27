@@ -2022,6 +2022,59 @@
       ],
       "poster": "assets/overview.png",
       "path": "reports/2026-11-26/"
+    },
+    {
+      "schema_version": "1.0",
+      "date": "2026-11-27",
+      "revision": 1,
+      "title": "AI Infra 晨报 · 2026-11-27",
+      "subtitle": "部分晨报｜覆盖缺口：架构、引擎。三家模型文章入口失败，两引擎72小时分页及部分文章正文未查全。四类跨仓各读首屏20条。",
+      "articles": [
+        {
+          "id": "model-serving-gpu",
+          "title": "模型服务与 GPU 超配：用 GDS 读回 KV，按 DCP 分片缩小常驻缓冲",
+          "summary": "vLLM 合入两项运行状态改动。GDS 把文件里的 KV 直接读回 GPU。DCP 按本地上下文分配稀疏索引缓冲，作者在 8 张 GB300 上测得每 rank 的 CUDA graph pool 从 9.10 GiB 降到 6.91 GiB。",
+          "sha256": "af579c17c97fad4ccf938006387cabc58e544665977feeabce3e00f06c58e172",
+          "path": "reports/2026-11-27/articles/model-serving-gpu.md"
+        },
+        {
+          "id": "hardware-status",
+          "title": "硬件与算力平台：H100 文件回载与 GB300 缓冲实验各测了什么",
+          "summary": "已核读 NVIDIA 技术博客首页。两项 vLLM 作者实验分别使用 8 张 H100 测文件 KV 回载、8 张 GB300 测 DCP 显存分配，测试条件和指标分别列出。",
+          "sha256": "355edf83775780e576fda5b574b576f177a4daee866a12df7aecfaf7b095b5e1",
+          "path": "reports/2026-11-27/articles/hardware-status.md"
+        },
+        {
+          "id": "model-architecture-status",
+          "title": "模型与架构：Qwen4Exp 纯文本解码保留检查点 M-RoPE",
+          "summary": "vLLM 修复纯文本解码端的 QSA 原始 key 布局，使其与多模态预填充端一致。三家已查权重目录首页无主窗命中，官方文章入口仍有缺口。",
+          "sha256": "8b8ec9cbf8aa4c2e2dbb2972139fd3d853141b99f0f0fc0f2be73e9d2c645898",
+          "path": "reports/2026-11-27/articles/model-architecture-status.md"
+        },
+        {
+          "id": "embodied-training",
+          "title": "制造业具身智能训练：两项主窗检索的覆盖和结果",
+          "summary": "按指定检索式，arXiv 主窗返回零条。LeRobot 已关闭 PR 首页 100 条中无主窗内合入。本期没有可采用的真机训练或工厂验证指标。",
+          "sha256": "b5e8e8f14d74a2c2054b694aebbfae639825f60119391ea45192ef6803113ed5",
+          "path": "reports/2026-11-27/articles/embodied-training.md"
+        },
+        {
+          "id": "small-model-status",
+          "title": "前沿小模型：Qwen 已查目录首屏无主窗内修改",
+          "summary": "Qwen 的 Hugging Face 作者目录按修改时间倒序读取 100 条，最新一条是 11 月 20 日。首屏没有主窗内创建或修改记录，也未核得新的质量或成本对照。",
+          "sha256": "4e43e4c6d406caaaea4ef4c831cae5c32234f36bd27f3190bea9c189dc07b09a",
+          "path": "reports/2026-11-27/articles/small-model-status.md"
+        },
+        {
+          "id": "inference-engines",
+          "title": "推理引擎每日变动：SGLang 支持 NVFP4 KV 跨注意力 TP 传输",
+          "summary": "SGLang 新增 Mooncake NVFP4 页行 KV 的跨 attention TP 路径。vLLM 三项合入见服务和架构页。DeepInfer 已查 31 条关闭 PR，无主窗内合入。",
+          "sha256": "066eb6d1d36e4b0321533d05d703d72f5064aa30c60bc279a20672ea232d47f2",
+          "path": "reports/2026-11-27/articles/inference-engines.md"
+        }
+      ],
+      "poster": "assets/overview.png",
+      "path": "reports/2026-11-27/"
     }
   ],
   "entries": [
@@ -6667,6 +6720,135 @@
       "article_id": "inference-engines",
       "fingerprint": "396a353efb39f78354d38162f2c025640047647b3dd1017c90204e9b27d5329d",
       "date": "2026-11-26",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-27-vllm-pr-66805",
+      "event_key": "vllm-pr-66805",
+      "title": "vLLM 文件系统 KV 卸载接入 GPUDirect Storage",
+      "summary": "cuFile 后端在 GPU 与文件之间搬运 KV 块。作者使用 8 张 H100 和共享文件系统，在 GDS 回载文件 KV 的 inference-perf 测试中报告吞吐超过对照两倍，口径未核定。",
+      "source_urls": [
+        "https://api.github.com/repos/vllm-project/vllm/pulls/66805/files?page=1&per_page=100"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "f6e0566997c6f9c576bb4c5e2ccd5bf88ccd5a32a018b98666a2edc844a32e5c",
+      "date": "2026-11-27",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-27-vllm-pr-70178",
+      "event_key": "vllm-pr-70178",
+      "title": "vLLM 按 DCP rank 的本地 KV 上下文分配稀疏索引缓冲",
+      "summary": "解码元数据局部化后按 DCP rank 的本地上下文分配索引缓冲。旧补丁的 8 张 GB300 对照中，每 rank CUDA graph pool 从 9.10 GiB 降至 6.91 GiB。",
+      "source_urls": [
+        "https://api.github.com/repos/vllm-project/vllm/pulls/70178/files?page=1&per_page=100"
+      ],
+      "update_of": null,
+      "article_id": "model-serving-gpu",
+      "fingerprint": "0b6ed420902cf430775cc285393bf0438fd72b2d4465b59e1c93476512690675",
+      "date": "2026-11-27",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-27-vllm-pr-69882",
+      "event_key": "vllm-pr-69882",
+      "title": "Qwen4Exp 的纯文本解码保留检查点 M-RoPE",
+      "summary": "纯文本解码保留检查点的 M-RoPE 配置，使 QSA 原始 key 与多模态预填充使用同一布局。",
+      "source_urls": [
+        "https://api.github.com/repos/vllm-project/vllm/pulls/69882/files?page=1&per_page=100"
+      ],
+      "update_of": null,
+      "article_id": "model-architecture-status",
+      "fingerprint": "3ed809ca8d6d319559a30b987611cdb523d2cf54290b97b71dfa8b00c4927bfe",
+      "date": "2026-11-27",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-27-sglang-pr-51234",
+      "event_key": "sglang-pr-51234",
+      "title": "SGLang 支持 NVFP4 页行 KV 跨不同注意力 TP 布局传输",
+      "summary": "Mooncake 按页行切分 NVFP4 主 KV 的注意力头，协调 index K 和 draft KV 的传输，支持适配条件下的不同 attention TP 布局。",
+      "source_urls": [
+        "https://api.github.com/repos/sgl-project/sglang/pulls/51234/files?page=1&per_page=100"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "271206f31e9c339f86710370578c8d24d6822ea9ee07a4b915af6f0d333279d9",
+      "date": "2026-11-27",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-27-hardware-source-scope-20261127",
+      "event_key": "hardware-source-scope-20261127",
+      "title": "NVIDIA 技术博客首页已查",
+      "summary": "本期状态限于技术博客首页。H100、GB300 的两个数字来自不同作者实验，各自的硬件与条件在正文列明。",
+      "source_urls": [
+        "https://developer.nvidia.com/blog/"
+      ],
+      "update_of": null,
+      "article_id": "hardware-status",
+      "fingerprint": "28c9208bfb0f92a1a4967743c7c23db335190a5e88d7b81dd9ca6a3ba1c7e55d",
+      "date": "2026-11-27",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-27-model-hf-directories-20261127",
+      "event_key": "model-hf-directories-20261127",
+      "title": "三家官方 Hugging Face 目录的主窗状态",
+      "summary": "GLM、DeepSeek、Qwen 各读按修改时间倒序的首页 100 条，已查记录无主窗内创建或修改。官方文章入口故障另列。",
+      "source_urls": [
+        "https://huggingface.co/api/models?author=Qwen&direction=-1&expand=createdAt&expand=lastModified&expand=sha&limit=100&sort=lastModified",
+        "https://huggingface.co/api/models?author=deepseek-ai&direction=-1&expand=createdAt&expand=lastModified&expand=sha&limit=100&sort=lastModified",
+        "https://huggingface.co/api/models?author=zai-org&direction=-1&expand=createdAt&expand=lastModified&expand=sha&limit=100&sort=lastModified"
+      ],
+      "update_of": null,
+      "article_id": "model-architecture-status",
+      "fingerprint": "8a0831f3dcc86edf2137ff5cb70655f9e51a6e63d16f0adc192973952d4d0b39",
+      "date": "2026-11-27",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-27-embodied-source-scope-20261127",
+      "event_key": "embodied-source-scope-20261127",
+      "title": "主窗 arXiv 检索与 LeRobot PR 首页",
+      "summary": "指定 arXiv 查询返回零条，LeRobot 已关闭 PR 首页 100 条无主窗内合入。",
+      "source_urls": [
+        "https://api.github.com/repos/huggingface/lerobot/pulls?direction=desc&page=1&per_page=100&sort=updated&state=closed",
+        "https://export.arxiv.org/api/query?max_results=20&search_query=cat%3Acs.RO+AND+%28all%3A%22robot+learning%22+OR+all%3A%22robot+policy%22%29+AND+submittedDate%3A%5B202611252220+TO+202611262220%5D&sortBy=submittedDate&sortOrder=descending&start=0"
+      ],
+      "update_of": null,
+      "article_id": "embodied-training",
+      "fingerprint": "48e756fef00245b9ad89cf68b5fdabcdb252796c7f3433ad87cf5746ecda16f7",
+      "date": "2026-11-27",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-27-small-model-source-scope-20261127",
+      "event_key": "small-model-source-scope-20261127",
+      "title": "Qwen 官方作者目录首屏状态",
+      "summary": "按修改时间排序的首屏 100 条无主窗内创建或修改，当前材料未核得新型号及质量或成本对照。",
+      "source_urls": [
+        "https://huggingface.co/api/models?author=Qwen&direction=-1&expand=createdAt&expand=lastModified&expand=sha&limit=100&sort=lastModified"
+      ],
+      "update_of": null,
+      "article_id": "small-model-status",
+      "fingerprint": "ee4eb6a93e29baa542687e51ee817dea14caa82e0bc04dbb3ea42abb8c0925ee",
+      "date": "2026-11-27",
+      "revision": 1
+    },
+    {
+      "id": "2026-11-27-deepinfer-closed-pr-scope-20261127",
+      "event_key": "deepinfer-closed-pr-scope-20261127",
+      "title": "DeepInfer 已关闭 PR 列表状态",
+      "summary": "已查 31 条，未见主窗内合入。发行版本及其他分支未由本次列表覆盖。",
+      "source_urls": [
+        "https://api.github.com/repos/deepseek-ai/DeepInfer/pulls?direction=desc&page=1&per_page=100&sort=updated&state=closed"
+      ],
+      "update_of": null,
+      "article_id": "inference-engines",
+      "fingerprint": "8a0ec94a9d415e0cca9b47a6690c8ff748b9436d5b451d0f52bbe6f716938474",
+      "date": "2026-11-27",
       "revision": 1
     }
   ]
