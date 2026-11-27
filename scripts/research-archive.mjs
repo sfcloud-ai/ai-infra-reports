@@ -136,6 +136,21 @@ export function storeResearchArchive(db,event,bytes){
  settleResearchArchiveUpload(db,event,bytes.length,originalUpload);
  return {hash,command_id:value.command_id,already_stored:false};
 }
+// Host custody does not resolve Slack delivery. An existing POST may be retained
+// only when its original intent binds the same ticket and bytes, with no completion.
+export function originalUncertainHostPost(db,request,hash,file,byteLength){
+ const key='archive:'+hash+':';
+ const ops=db.prepare("SELECT * FROM research_control_ops WHERE request_id=? AND kind='native' AND operation_key IN (?,?)").all(request,key+'post',key+'complete');
+ if(!ops.length)return null;
+ const [post]=ops, input=post.input;
+ if(ops.length!==1||post.operation_key!==key+'post'||!UUID.test(post.operation_id)||
+    !['intent','unknown'].includes(post.phase)||post.native_result!==null||digest(input)!==post.input_hash)return false;
+ let value;
+ try{value=JSON.parse(input);}catch{return false;}
+ return keys(value,'archive_sha256,permit_id,step,file_id,source_ts,bytes,sha256')&&value.step==='post'&&
+  value.permit_id===null&&value.source_ts===null&&value.archive_sha256===hash&&value.sha256===hash&&
+  value.file_id===file&&value.bytes===byteLength?post:false;
+}
 function hostProvenance(row,hash){
  if(!row||!row.file_id?.startsWith('t4-sha256:')&&!row.source_ts?.startsWith('t4-receipt:'))return null;
  if(row.file_id!=='t4-sha256:'+hash||!row.source_ts?.startsWith('t4-receipt:')||row.source_ts==='t4-receipt:')return {status:'rejected',code:'invalid_host_archive_provenance'};
@@ -151,12 +166,8 @@ export function verifiedHostProvenance(db,metadata,hash){
  receiptGuard??=readFileSync(new URL('../deployment/host-archive-guard.sql',import.meta.url),'utf8').replaceAll('\r\n','\n').trim();
  if(db.prepare("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='host_archive_native_guard'").get()?.sql!==receiptGuard)return invalid;
  const key='archive:'+hash+':';
- if(db.prepare("SELECT 1 FROM research_control_ops WHERE request_id=? AND kind='native' AND operation_key IN (?,?)").get(row.request_id,key+'post',key+'complete'))return invalid;
  const ticket=db.prepare("SELECT operation_id,input,input_hash,native_result FROM research_control_ops WHERE request_id=? AND kind='native' AND operation_key=? AND phase='acknowledged'").get(row.request_id,key+'ticket');
  if(!ticket||!UUID.test(ticket.operation_id)||digest(ticket.input)!==ticket.input_hash)return invalid;
- const prefix='t4-receipt:'+ticket.operation_id+':';
- const timestamp=row.source_ts.slice(prefix.length),millis=Date.parse(timestamp);
- if(!row.source_ts.startsWith(prefix)||!Number.isFinite(millis)||new Date(millis).toISOString()!==timestamp)return invalid;
  const chain=db.prepare(`WITH RECURSIVE ancestry(hash,previous_hash) AS (
    SELECT r.hash,r.previous_hash FROM research_archive_heads h JOIN research_archives r ON r.hash=h.hash
    WHERE h.report_date=:day AND r.report_date=:day AND r.request_id=:request
@@ -173,6 +184,12 @@ export function verifiedHostProvenance(db,metadata,hash){
  if(input?.step!=='ticket'||input.sha256!==hash||input.archive_sha256!==hash||input.bytes!==row.bytes.length||
     input.permit_id!==null||input.file_id!==null||input.source_ts!==null||result?.sha256!==hash||result.bytes!==row.bytes.length||
     result.source_ts!==null||typeof result.file_id!=='string'||!/^F[A-Z0-9]+$/.test(result.file_id))return invalid;
+ const post=originalUncertainHostPost(db,row.request_id,hash,result.file_id,row.bytes.length);
+ if(post===false)return invalid;
+ const prefix='t4-receipt:'+ticket.operation_id+':'+(post?post.operation_id+':':'');
+ const timestamp=row.source_ts.slice(prefix.length),millis=Date.parse(timestamp);
+ if(!row.source_ts.startsWith(prefix)||!Number.isFinite(millis)||new Date(millis).toISOString()!==timestamp)return invalid;
+ if(post)Object.assign(provenance,{original_post_operation_id:post.operation_id,original_post_outcome:'unknown'});
  const {value,files}=archive;
  const validManifest=Array.isArray(manifest)&&manifest.length===files.length&&manifest.every((entry,i)=>
   keys(entry,'path,sha256,bytes')&&entry.path===files[i].path&&entry.sha256===files[i].sha256&&entry.bytes===files[i].bytes);

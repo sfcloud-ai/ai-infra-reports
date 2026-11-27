@@ -8,9 +8,9 @@ import {digest} from '../scripts/archive.mjs';
 import {withHandoffLock} from '../scripts/handoff-lock.mjs';
 import {assertIntakeScope} from '../scripts/publisher-inbox.mjs';
 import {isRepositoryResearchPlan} from '../scripts/research-budget.mjs';
-import {ARCHIVE_LIMIT,assertResearchArchive,decodeResearchArchive,storeResearchArchive,verifiedHostProvenance} from '../scripts/research-archive.mjs';
+import {ARCHIVE_LIMIT,assertResearchArchive,decodeResearchArchive,storeResearchArchive,verifiedHostProvenance,originalUncertainHostPost} from '../scripts/research-archive.mjs';
 import {assertResearchControl} from '../scripts/research-control.mjs';
-import {storedRecoveryForOperation} from '../scripts/research-archive-recovery.mjs';
+import {storedRecoveryForOperation,recoveryForOperation} from '../scripts/research-archive-recovery.mjs';
 import {privateDirectory,privateFile,validateLiveConfig,PUBLISHER_LEDGER_LIMIT} from '../scripts/run-handoff.mjs';
 
 const inbox='/var/lib/report-publisher/host-archive-inbox';
@@ -65,8 +65,9 @@ export function receiveHostArchive(db,{request,operation,file,hash,lastControl},
   const input=JSON.parse(ticket.input),result=JSON.parse(ticket.native_result);
   check(input.step==='ticket'&&input.permit_id===null&&input.file_id===null&&input.source_ts===null&&input.archive_sha256===hash&&input.sha256===hash&&input.bytes===bytes.length&&
         result?.file_id===file&&result.source_ts===null&&result.sha256===hash&&result.bytes===bytes.length,'Original ticket binding differs');
-  check(!db.prepare('SELECT 1 FROM research_control_ops WHERE request_id=? AND operation_key IN (?,?)').get(request,key+'post',key+'complete'),'An original POST or completion requires reconciliation');
-  const localFile='t4-sha256:'+hash, prefix='t4-receipt:'+operation+':';
+  const post=originalUncertainHostPost(db,request,hash,file,bytes.length);
+  check(post!==false&&(!post||!recoveryForOperation(db,request,post.operation_id)),'An original POST or completion requires reconciliation');
+  const localFile='t4-sha256:'+hash, prefix='t4-receipt:'+operation+':'+(post?post.operation_id+':':'');
   let prior=db.prepare('SELECT request_id,source_ts,file_id,bytes FROM research_archives WHERE hash=?').get(hash);
   const installed=db.prepare("SELECT sql FROM sqlite_master WHERE name='host_archive_native_guard'").get();
   const hasReceipt=db.prepare("SELECT 1 FROM research_archives WHERE file_id='t4-sha256:'||hash LIMIT 1").get();
@@ -93,7 +94,7 @@ export function receiveHostArchive(db,{request,operation,file,hash,lastControl},
     SELECT e.*,CASE WHEN json_extract(diagnostic,'$.code')='archive_parent_unavailable' THEN diagnostic
       ELSE json_extract(diagnostic,'$.verified_parent') END AS parent FROM research_archive_events e WHERE e.kind='save')
     SELECT 1 FROM research_control_ops o
-    WHERE o.request_id=? AND o.kind='native' AND (o.operation_key GLOB 'archive:*:post' OR o.operation_key GLOB 'archive:*:complete')
+    WHERE o.request_id=? AND o.kind='native' AND o.operation_id IS NOT ? AND (o.operation_key GLOB 'archive:*:post' OR o.operation_key GLOB 'archive:*:complete')
     AND NOT EXISTS (SELECT 1 FROM research_archives a WHERE a.request_id=o.request_id AND a.hash=json_extract(o.input,'$.archive_sha256'))
     AND NOT EXISTS (SELECT 1 FROM saves e JOIN research_control_ops c ON c.request_id=e.request_id
       AND c.kind='native' AND c.operation_key='archive:'||e.hash||':complete'
@@ -108,7 +109,7 @@ export function receiveHostArchive(db,{request,operation,file,hash,lastControl},
          AND json_extract(e.parent,'$.source_ts')=e.source_ts AND json_extract(e.parent,'$.file_id')=e.file_id
          AND json_extract(e.parent,'$.request_id')=e.request_id AND json_extract(e.parent,'$.child_sha256')=e.hash
          AND json_type(e.parent,'$.expected_head') IS NOT NULL AND json_extract(e.parent,'$.expected_head') IS ?
-         AND json_extract(e.parent,'$.missing_parent_sha256')=?))) LIMIT 1`).get(request,value.previous_sha256,hash);
+         AND json_extract(e.parent,'$.missing_parent_sha256')=?))) LIMIT 1`).get(request,post?.operation_id??null,value.previous_sha256,hash);
    check(!competing,'Unresolved archive upload requires reconciliation');
    const waitingChildren=db.prepare(`SELECT DISTINCT hash FROM research_archive_events
     WHERE request_id=? AND kind='save' AND phase='pending'
@@ -123,7 +124,7 @@ export function receiveHostArchive(db,{request,operation,file,hash,lastControl},
   check(prior?.request_id===request&&prior.file_id===localFile&&prior.source_ts.startsWith(prefix)&&Buffer.from(prior.bytes).equals(bytes),'Original archive provenance conflict');
   if(!installed)db.exec(guard);
   check(verifiedHostProvenance(db,prior,hash)?.host_receipt_id===prior.source_ts,'Original archive provenance conflict');
-  const receipt={transport:'t4_host_archive',request_id:request,original_ticket:operation,original_slack_file:file,sha256:hash,bytes:bytes.length,receipt_id:prior.source_ts};
+  const receipt={transport:'t4_host_archive',request_id:request,original_ticket:operation,original_slack_file:file,sha256:hash,bytes:bytes.length,receipt_id:prior.source_ts,...(post?{original_post_operation_id:post.operation_id,original_post_outcome:'unknown'}:{})};
   const pages=db.prepare('PRAGMA page_count').get().page_count;
   const pageSize=db.prepare('PRAGMA page_size').get().page_size;
   check(pages*pageSize<=PUBLISHER_LEDGER_LIMIT,'Publisher ledger size limit');

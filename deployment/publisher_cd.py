@@ -421,12 +421,31 @@ def snapshot(path, settled=True, *, fingerprint=True):
                     raise ValueError('invalid_archive_recovery_marker')
             if set(authority) != expected or not research:
                 raise ValueError('unsupported_research_control_schema')
-            if has_host_archive and database.execute("""SELECT 1 FROM research_archives a JOIN research_control_ops o
-                    ON o.request_id=a.request_id AND o.kind='native'
-                    WHERE a.file_id='t4-sha256:'||a.hash AND
-                      (o.operation_key IN ('archive:'||a.hash||':post','archive:'||a.hash||':complete')
-                       OR (o.operation_key='archive:'||a.hash||':ticket' AND o.phase!='acknowledged')) LIMIT 1""").fetchone():
-                raise ValueError('host_archive_native_claim_conflict')
+            if has_host_archive:
+                for archive_hash, request, source_ts, size in database.execute(
+                        "SELECT hash,request_id,source_ts,length(bytes) FROM research_archives WHERE file_id='t4-sha256:'||hash"):
+                    key = 'archive:' + archive_hash + ':'
+                    records = list(database.execute("""SELECT operation_key,operation_id,phase,input,input_hash,native_result
+                        FROM research_control_ops WHERE request_id=? AND kind='native' AND operation_key IN (?,?,?)""",
+                        (request, key + 'ticket', key + 'post', key + 'complete')))
+                    phases = {row[0]: row[1:] for row in records}
+                    ticket = phases.get(key + 'ticket')
+                    if key + 'complete' in phases or ticket and ticket[1] != 'acknowledged':
+                        raise ValueError('host_archive_native_claim_conflict')
+                    post = phases.get(key + 'post')
+                    # Legacy v1 input is still subject to the original verifier.
+                    recovery_marker = re.fullmatch(r't4-receipt:([0-9a-f-]{36}):([0-9a-f-]{36}):(.+)', source_ts)
+                    if post is None and recovery_marker is None:
+                        continue
+                    if (len(records) != 2 or not recovery_marker or not ticket or not post
+                            or ticket[0] != recovery_marker[1] or post[0] != recovery_marker[2]
+                            or post[1] not in ('intent', 'unknown') or post[4] is not None
+                            or hashlib.sha256(post[2].encode()).hexdigest() != post[3]):
+                        raise ValueError('host_archive_native_claim_conflict')
+                    original_file = json.loads(ticket[4])['file_id']
+                    if json.loads(post[2]) != {'archive_sha256': archive_hash, 'permit_id': None, 'step': 'post',
+                            'file_id': original_file, 'source_ts': None, 'bytes': size, 'sha256': archive_hash}:
+                        raise ValueError('host_archive_native_claim_conflict')
             records = database.execute('SELECT id,binding,evidence_reference FROM research_control_policy').fetchall()
             if len(records) != 1 or records[0][0] != 1 or not records[0][2]:
                 raise ValueError('incomplete_research_control_policy')
@@ -980,6 +999,12 @@ def compatibility(config, release, operation, expected):
         script += "const recovery=await import('./scripts/research-archive-recovery.mjs');if(recovery.ARCHIVE_RECOVERY_VERSION!==1)throw Error('archive_recovery_requires_compatible_release');"
     if needs_host_archive:
         script += HOST_ARCHIVE_CAPABILITY
+        # A prior compatible controller already validates the candidate's full
+        # Node provenance; explicitly reject rollback to a v1-only reader.
+        with closing(sqlite3.connect(database)) as isolated:
+            if isolated.execute("SELECT 1 FROM research_archives WHERE file_id='t4-sha256:'||hash AND substr(source_ts,85,1)=':'").fetchone():
+                script += "if(host.HOST_ARCHIVE_UNKNOWN_POST_VERSION!==1)throw Error('host_archive_requires_compatible_release');"
+
         script += "const {DatabaseSync}=await import('node:sqlite');const archives=await import('./scripts/research-archive.mjs');const archiveDb=new DatabaseSync('/probe/handoff.sqlite',{readOnly:true});try{archives.verifyStoredHostArchives(archiveDb)}finally{archiveDb.close()};"
     if needs_pages:
         script += "const pages=await import('./scripts/research-page-authority.mjs');if(pages.PAGE_AUTHORITY_VERSION!==1)throw Error('page_authority_requires_compatible_release');"
